@@ -6,6 +6,7 @@ No persistent permissions. The caller must explicitly consent before an input ev
 from __future__ import annotations
 
 import asyncio
+import math
 import secrets
 
 from .wayland import PORTAL_NAME, PORTAL_PATH, WaylandError
@@ -122,7 +123,7 @@ class RemoteDesktop:
     async def move(self, dx: float, dy: float):
         if not self.session or not self.devices & POINTER:
             raise WaylandError("Sessão sem permissão de ponteiro")
-        if abs(dx) > 50 or abs(dy) > 50:
+        if not (math.isfinite(dx) and math.isfinite(dy)) or abs(dx) > 50 or abs(dy) > 50:
             raise WaylandError("Movimento de teste limitado a 50 pixels por eixo")
         await self._call(INTERFACE, "NotifyPointerMotion", "oa{sv}dd",
                          [self.session, {}, float(dx), float(dy)])
@@ -270,7 +271,7 @@ def agent_step(approve, action, dx=0, dy=0, text=""):
     if action == "move":
         if type(dx) not in (int, float) or type(dy) not in (int, float):
             raise WaylandError("Deslocamento inválido")
-        if not (-50 <= dx <= 50 and -50 <= dy <= 50):
+        if not (math.isfinite(dx) and math.isfinite(dy)) or not (-50 <= dx <= 50 and -50 <= dy <= 50):
             raise WaylandError("Movimento limitado a 50 pixels por eixo")
         description = f"MOVER ponteiro em dx={dx}, dy={dy} pixels"
     elif action == "click":
