@@ -9,6 +9,10 @@ def may_fallback(error):
     """404 só autoriza fallback se vier de erro explicitamente atribuído ao provedor."""
     if error.status in TRANSIENT or error.status is None:
         return True
+    if error.status == 400:
+        detail = str(error).lower()
+        return ("upstream provider gemini returned http 400" in detail
+                and "this model only supports interactions api" in detail)
     if error.status == 404:
         detail = str(error).lower()
         return ("upstream provider" in detail and "returned http 404" in detail
