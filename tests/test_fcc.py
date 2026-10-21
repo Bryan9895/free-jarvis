@@ -5,7 +5,7 @@ import json
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
-from jarvis.fcc import FCCClient, FCCError, AutoModelClient
+from jarvis.fcc import FCCClient, FCCError, AutoModelClient, may_fallback
 from jarvis.config import Config
 
 class HTTPResponse:
@@ -57,6 +57,27 @@ class FCCTests(unittest.TestCase):
         self.assertEqual(fake.seen, ["first","second"])
         self.assertEqual(a.active_model, "second")
         self.assertEqual(swaps, ["second"])
+
+    def test_upstream_nim_404_triggers_switch(self):
+        class UpstreamFailureClient(FakeClient):
+            def responses(self, payload):
+                self.seen.append(payload["model"])
+                if payload["model"] == "first":
+                    raise FCCError(
+                        'HTTP 404 em /v1/responses: Upstream provider NIM returned HTTP 404. '
+                        'Category: upstream. Provider API request failed.', 404)
+                return {"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}
+        backend = UpstreamFailureClient()
+        client = AutoModelClient(backend)
+        self.assertEqual(client.diagnostic()["model"], "second")
+        self.assertEqual(backend.seen, ["first", "second"])
+
+    def test_normal_404_not_switched(self):
+        client = AutoModelClient(FakeClient([404]))
+        client.initialize()
+        with self.assertRaises(FCCError):
+            client.responses({"input":"olá"})
+        self.assertFalse(may_fallback(FCCError("404 não encontrado", 404)))
 
     def test_permanent_auth_failure_no_fallback(self):
         fake=FakeClient([401])
