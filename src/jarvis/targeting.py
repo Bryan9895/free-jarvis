@@ -20,12 +20,25 @@ def parse_target(text):
     if not isinstance(text, str) or len(text) > 12000:
         raise WaylandError("Resposta de localização inválida.")
     stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^\`\`\`(?:json)?\s*|\s*\`\`\`$", "", stripped, flags=re.I).strip()
-    try:
-        obj = json.loads(stripped)
-    except (ValueError, TypeError) as exc:
-        raise WaylandError("A IA não retornou JSON de localização válido; nenhum clique será feito.") from exc
+    decoder = json.JSONDecoder()
+    # Modelos locais podem devolver prosa, raciocínio ou um bloco Markdown
+    # antes do JSON. Apenas UM objeto JSON completo é aceitável.
+    candidates = []
+    for index, character in enumerate(stripped):
+        if character != "{":
+            continue
+        try:
+            obj, end = decoder.raw_decode(stripped, index)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(obj, dict):
+            candidates.append((index, end, obj))
+    if len(candidates) != 1:
+        raise WaylandError(
+            "A IA não devolveu um único objeto JSON de localização válido "
+            f"({len(candidates)} objetos encontrados); nenhum clique será feito."
+        )
+    _, _, obj = candidates[0]
     if not isinstance(obj, dict):
         raise WaylandError("A localização deve ser um objeto.")
     found = obj.get("found")
@@ -96,7 +109,15 @@ def locate_target(client, model, workspace, approve, target):
     )
     if observation.get("status") != "analyzed":
         return observation
-    data = parse_target(observation["answer"])
+    try:
+        data = parse_target(observation["answer"])
+    except WaylandError as exc:
+        # Não inventar coordenadas. Mostrar uma amostra para diagnóstico,
+        # sem despejar toda a resposta/possível conteúdo privado da tela.
+        answer = observation["answer"].strip()
+        excerpt = answer[:600] + ("…" if len(answer) > 600 else "")
+        return {"status": "unstructured", "reason": str(exc),
+                "model_excerpt": excerpt, "action_executed": False}
     if not data["found"]:
         return {"status": "not_found", "detail": data, "action_executed": False}
     preview = save_preview(observation["screenshot"], data["bbox"], workspace)
