@@ -80,3 +80,18 @@ Assistente pessoal open-source em português, com FCC como gateway de modelos, e
 - `tests/test_voice.py`: testes simulados de transcrição, TTS e limpeza, sem acesso a microfone real.
 - Dependências opcionais em `pip install -e '.[voice]'`.
 - **Ainda pendente nesta etapa**: instalação/teste físico no Ubuntu do usuário, dispositivo de entrada selecionável, palavra de ativação local, detecção de silêncio e ajustes de latência. Não confundir o protótipo com reconhecimento de voz finalizado.
+
+## Diagnóstico e seleção automática de modelos FCC — entrega 2026-10-21
+- Cliente usa `GET /v1/models?view=responses`, não a lista de aliases da interface Claude.
+- Se `FCC_MODEL` estiver ausente, seleciona o `default_model_id` do catálogo; `FCC_FALLBACK_MODELS` permite ordenar alternativas.
+- Durante requisições de geração, troca de modelo em HTTP 429/500/502/503/504 ou falha de transporte. Nunca tenta mascarar 401/403. Em caso de troca, registra o novo modelo ativo.
+- Novo `jarvis --check-fcc` consulta saúde, catálogo e envia uma requisição curta de inferência. O endpoint `/health` sozinho só prova que o processo HTTP está vivo.
+- Testes de contrato simulados e teste HTTP local com servidor fictício adicionados. A execução real do FCC no Ubuntu permanece uma validação do usuário.
+- **Privacidade**: troca automática entre provedores pode encaminhar o prompt a outro provedor. Para maior controle, restrinja os modelos expostos/configurados no FCC e configure `FCC_FALLBACK_MODELS` conscientemente.
+
+## Etapa 5 — implementação parcial, respeitando Wayland
+- `desktop_info`: informa sessão, compositor e detecção de portais usando DBus na sessão Linux.
+- `desktop_screenshot`: solicita a captura pelo portal oficial XDG, com confirmação no terminal e janela nativa de permissão. A imagem é escrita no workspace, sem envio automático ao modelo.
+- `desktop_open_app`: lança ID .desktop permitido em `JARVIS_ALLOWED_APPS` com aprovação; lançamento ainda precisa de confirmação visual para declarar sucesso.
+- Dependência opcional `dbus-next`; testes unitários simulam diálogo e retorno de caminho do portal.
+- **Ainda não implementado**: sessão `RemoteDesktop` completa (captura via PipeWire, libei/teclado, pointer), reconhecimento do conteúdo da captura pela IA, testes reais GNOME/Wayland e revogação centralizada de sessões. Não utilizar permissão ampla nem `sudo` para contornar o compositor.
