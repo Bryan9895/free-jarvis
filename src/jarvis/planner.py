@@ -43,10 +43,26 @@ def _extract_plan(text):
 
 
 class TaskPlanner:
-    def __init__(self, client, agent):
+    def __init__(self, client, agent, store=None):
         self.client = client
         self.agent = agent
-        self.plan = None
+        self.store = store
+        self.plan = store.latest() if store is not None else None
+        if self.plan and self.plan["status"] == "running":
+            self.plan["status"] = "interrupted"
+            for step in self.plan["steps"]:
+                if step["status"] == "running":
+                    step["status"] = "interrupted"
+            self._save()
+
+    def _save(self):
+        if self.store is not None and self.plan:
+            self.store.save(self.plan)
+
+    def history(self, limit=10):
+        if self.store is None:
+            return [self.snapshot()] if self.plan else []
+        return self.store.recent(limit)
 
     def prepare(self, goal):
         if not isinstance(goal, str) or not 1 <= len(goal.strip()) <= MAX_GOAL:
@@ -77,6 +93,7 @@ class TaskPlanner:
         steps = _extract_plan(_output_text(response))
         self.plan = {"goal": goal.strip(), "model": model, "status": "ready",
                      "steps": steps, "created_at": time.time()}
+        self._save()
         return self.snapshot()
 
     def snapshot(self):
@@ -90,6 +107,7 @@ class TaskPlanner:
         if self.plan["status"] == "running":
             raise ValueError("Plano em execução não pode ser cancelado por este comando")
         self.plan["status"] = "cancelled"
+        self._save()
         return self.snapshot()
 
     def execute(self, approve, report=print):
@@ -98,10 +116,13 @@ class TaskPlanner:
         summary = "\n".join(f"{s['id']}. {s['description']}" for s in self.plan["steps"])
         if not approve("EXECUTAR PLANO COM ATÉ CINCO ETAPAS?\n" + summary):
             self.plan["status"] = "cancelled"
+            self._save()
             return self.snapshot()
         self.plan["status"] = "running"
+        self._save()
         for step in self.plan["steps"]:
             step["status"] = "running"
+            self._save()
             report(f"[{step['id']}/{len(self.plan['steps'])}] {step['description']}")
             try:
                 result = self.agent.ask(step["description"], mode="tools")
@@ -109,6 +130,7 @@ class TaskPlanner:
                 step["status"] = "failed"
                 step["result"] = str(exc)[:300]
                 self.plan["status"] = "stopped"
+                self._save()
                 break
             step["result"] = result[:2000]
             metrics = getattr(self.agent, "last_metrics", {})
@@ -121,11 +143,14 @@ class TaskPlanner:
                 break
             # Uma resposta de linguagem do modelo não comprova execução.
             step["status"] = "reported_unverified"
+            self._save()
             report(result)
             # Evita executar etapas posteriores quando o agente não concluiu a execução.
             if "Limite de execução atingido" in result:
                 self.plan["status"] = "stopped"
+                self._save()
                 break
         else:
             self.plan["status"] = "completed_unverified"
+        self._save()
         return self.snapshot()
