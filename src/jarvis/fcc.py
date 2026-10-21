@@ -162,6 +162,16 @@ class AutoModelClient:
         self.candidates = [name]
         return name
 
+    def use_all_models(self):
+        """Inclui todos os IDs Responses como alternativas, preservando a ordem FCC."""
+        models = self.available_models()
+        if not models:
+            raise FCCError("Nenhum modelo Responses anunciado.")
+        current = self.active_model if self.active_model in models else models[0]
+        self.candidates = [current] + [m for m in models if m != current]
+        self.active_model = current
+        return list(self.candidates)
+
     def responses(self, payload):
         if not self.candidates:
             self.initialize()
