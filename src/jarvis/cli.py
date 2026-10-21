@@ -12,7 +12,7 @@ from .agent import Agent
 def confirm(action):
     print(f"\n⚠️  AUTORIZAÇÃO NECESSÁRIA: {action}")
     try:
-        return input("Autorizar esta operação? Digite SIM: ").strip() == "SIM"
+        return input("Autorizar esta operação? Digite SIM: ").strip().casefold() == "sim"
     except EOFError:
         return False
 
@@ -59,7 +59,10 @@ def main():
             print(json.dumps(client.request("GET", "/health"), ensure_ascii=False))
             return
         if args.models:
-            print(json.dumps(client.models(), indent=2, ensure_ascii=False))
+            catalog = client.models()
+            print("Modelo padrão:", catalog.get("default_model_id", "não informado"))
+            for number, model in enumerate(catalog.get("data", []), 1):
+                print(f"{number:>2}. {model.get('id', '?')}")
             return
         auto = AutoModelClient(client, preferred=c.model,
                                backups=[x.strip() for x in os.getenv("FCC_FALLBACK_MODELS", "").split(",") if x.strip()],
