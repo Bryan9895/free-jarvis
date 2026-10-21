@@ -56,7 +56,7 @@ class FCCClient:
                     if not lines:
                         return
                     try:
-                        data = json.loads("\\n".join(lines))
+                        data = json.loads("\n".join(lines))
                     except ValueError as exc:
                         raise FCCError("Evento SSE inválido do FCC") from exc
                     kind = data.get("type", event) if isinstance(data, dict) else event
@@ -65,7 +65,7 @@ class FCCClient:
                     elif kind in ("response.failed", "response.incomplete", "error"):
                         failed = data
                 for raw in response:
-                    line = raw.decode("utf-8", errors="replace").rstrip("\\r\\n")
+                    line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
                     if not line:
                         process()
                         event, lines = "", []
