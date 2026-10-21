@@ -288,3 +288,31 @@ jarvis-fcc --desktop-remote-test
 ```
 
 Para evitar esperar por provedores remotos no diagnóstico, selecione explicitamente um modelo local anunciado pelo FCC, por exemplo `export FCC_MODEL='ollama/qwen3.5:2b'` **se disponível e carregado no Ollama**; confirmar um modelo listado não basta para garantir que sua inferência funcione.
+
+### Modelo local Ollama: timeout e política de troca (21/10/2026)
+
+Em teste real, `ollama/qwen3.5:2b` excedeu o timeout anterior de 15 segundos do JARVIS FCC. Em seguida, o sistema tentou modelos Gemini que exigem uma rota diferente (Interactions API). Isso **não prova** que o Qwen não funciona: um modelo carregado a frio pode demorar e a resposta da integração local ainda precisa ser confirmada.
+
+Agora, com `FCC_MODEL` explicitamente selecionado, a JARVIS **não tenta outros modelos automaticamente**; ela usa somente `FCC_FALLBACK_MODELS` declarados pelo usuário. Sem `FCC_MODEL`, pode tentar outros modelos anunciados **do mesmo provedor**. Para autorizar descoberta entre provedores, configure `FCC_ALLOW_CROSS_PROVIDER=1` (cuidado com privacidade e cobranças).
+
+O diagnóstico usa timeout de 120 segundos para um modelo `ollama/` escolhido e 30 segundos para os demais. É possível ajustar:
+
+```bash
+export FCC_MODEL='ollama/qwen3.5:2b'
+unset FCC_FALLBACK_MODELS
+unset FCC_ALLOW_CROSS_PROVIDER
+export FCC_DIAGNOSTIC_TIMEOUT=120
+jarvis-fcc --check-fcc
+```
+
+Para testar diretamente o mecanismo local antes de usar o FCC:
+
+```bash
+ollama list
+ollama ps
+ollama run qwen3.5:2b "Responda apenas OK"
+```
+
+Se a execução direta do Ollama funcionar, mas `jarvis-fcc --check-fcc` não, o problema é provavelmente na integração/servidor FCC, e não necessariamente nos pesos do modelo. Se ambos falharem, investigue Ollama, carregamento do modelo e recursos disponíveis. Evite iniciar múltiplas gerações simultâneas em um computador com RAM limitada.
+
+**Wayland validado em dispositivo real:** o usuário confirmou que o movimento do ponteiro funcionou após autorizar interação remota no GNOME. Não foram testados ainda cliques nem digitação via portal.
