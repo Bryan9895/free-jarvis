@@ -1,4 +1,5 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from jarvis.tools import Toolkit
@@ -10,7 +11,7 @@ class DummyClient:
     def responses(self, payload):
         self.calls.append(payload)
         if len(self.calls)==1:
-            return {"id":"resp_1", "output":[{"type":"function_call", "name":"list_files", "call_id":"call_1", "arguments":"{\\"path\\":\\".\\"}"}]}
+            return {"id":"resp_1", "output":[{"type":"function_call", "name":"list_files", "call_id":"call_1", "arguments":json.dumps({"path":"."})}]}
         return {"id":"resp_2", "output":[{"type":"message","content":[{"type":"output_text","text":"Diretório analisado."}]}]}
 
 class JarvisTests(unittest.TestCase):
