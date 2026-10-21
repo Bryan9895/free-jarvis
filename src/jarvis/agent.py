@@ -60,7 +60,7 @@ class Agent:
                     "stream": True,
                     "parallel_tool_calls": False,
                     "reasoning": {"effort": "none"},
-                    "max_output_tokens": 1024 if chosen == "fast" else 2048,
+                    "max_output_tokens": 512 if chosen == "fast" else 1536,
                 }
                 t0 = time.monotonic()
                 result = self.client.responses(payload)
