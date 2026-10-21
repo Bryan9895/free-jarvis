@@ -55,7 +55,7 @@ def extract_text(response):
     ).strip()
 
 
-def analyze_screen(client, model, workspace, approve, question):
+def analyze_screen(client, model, workspace, approve, question, *, max_output_tokens=1200, reasoning_effort=None, retry_incomplete=False):
     """Uma captura, duas confirmações, uma inferência sem tools ou fallback."""
     if not isinstance(question, str) or not question.strip() or len(question) > MAX_QUESTION:
         raise WaylandError("Pergunta deve ter de 1 a 500 caracteres")
@@ -63,13 +63,20 @@ def analyze_screen(client, model, workspace, approve, question):
         raise WaylandError("Informe um modelo explícito capaz de interpretar imagens")
     if not model.startswith("ollama/") and os.getenv("JARVIS_ALLOW_REMOTE_VISION") != "1":
         raise WaylandError("Envio remoto de imagens bloqueado. Use modelo ollama/ ou autorize JARVIS_ALLOW_REMOTE_VISION=1")
+    if type(max_output_tokens) is not int or not 256 <= max_output_tokens <= 4096:
+        raise WaylandError("Limite de saída inválido para visão.")
+    if reasoning_effort not in (None, "none"):
+        raise WaylandError("Esforço de raciocínio inválido para visão.")
+    if type(retry_incomplete) is not bool:
+        raise WaylandError("Configuração de nova tentativa inválida.")
     capture = screenshot(Path(workspace), approve)
     if capture.get("status") == "rejected":
         return capture
     image_url = prepare_image(Path(capture["path"]))
     destination = "Ollama local" if model.startswith("ollama/") else "PROVEDOR REMOTO"
     if not approve(
-        f"ENVIAR imagem da tela ({destination}, modelo {model}) para análise? "
+        f"ENVIAR imagem da tela ({destination}, modelo {model}) para análise" +
+        (" (até duas tentativas com a mesma imagem)" if retry_incomplete else "") + "? "
         "Ela pode conter senhas, chats e documentos privados."
     ):
         return {"status": "rejected", "stage": "send_image", "screenshot": capture["path"]}
@@ -87,12 +94,22 @@ def analyze_screen(client, model, workspace, approve, question):
                 {"type": "input_image", "image_url": image_url},
             ],
         }],
-        "max_output_tokens": 1200,
+        "max_output_tokens": max_output_tokens,
         "stream": True,
         "tools": [],
     }
+    if reasoning_effort is not None:
+        payload["reasoning"] = {"effort": reasoning_effort}
     # Chama FCCClient, NÃO AutoModelClient, para proibir troca de provedor.
-    response = client.responses(payload)
+    try:
+        response = client.responses(payload)
+    except FCCError as exc:
+        if not (retry_incomplete and "response.incomplete" in str(exc)
+                and "max_output_tokens" in str(exc)):
+            raise
+        # Uma única repetição, sem nova captura e sem trocar de modelo/provedor.
+        payload["max_output_tokens"] = min(4096, max_output_tokens * 2)
+        response = client.responses(payload)
     answer = extract_text(response)
     if not answer:
         raise FCCError("O modelo não retornou análise textual. Verifique se suporta visão e formato input_image.")
