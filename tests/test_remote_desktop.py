@@ -2,7 +2,7 @@
 import asyncio
 import unittest
 from unittest.mock import patch
-from jarvis.remote_desktop import RemoteDesktop, POINTER, test_remote_pointer as run_demo, test_remote_pointer_async
+from jarvis.remote_desktop import RemoteDesktop, POINTER, KEYBOARD, LEFT_BUTTON, PRESSED, RELEASED, test_remote_pointer as run_demo, test_remote_pointer_async, test_input
 from jarvis.wayland import WaylandError
 
 class RemoteDesktopTests(unittest.TestCase):
@@ -55,6 +55,52 @@ class RemoteDesktopTests(unittest.TestCase):
             self.assertEqual(events.count("move"),3)
             self.assertIn("pause",events)
         asyncio.run(exercise())
+
+    def test_click_requires_pointer(self):
+        async def run():
+            d = RemoteDesktop()
+            d.session = "/session/mock"
+            d.devices = KEYBOARD
+            with self.assertRaises(WaylandError):
+                await d.click_left()
+        asyncio.run(run())
+
+    def test_keyboard_requires_keyboard(self):
+        async def run():
+            d = RemoteDesktop()
+            d.session = "/session/mock"
+            d.devices = POINTER
+            with self.assertRaises(WaylandError):
+                await d.type_test_letter()
+        asyncio.run(run())
+
+    def test_click_press_release_and_keyboard_keysym(self):
+        async def run():
+            d = RemoteDesktop()
+            d.session = "/session/mock"
+            d.devices = POINTER | KEYBOARD
+            calls = []
+            async def fake_call(interface, member, signature="", body=None, path=None):
+                calls.append((member, signature, body))
+            d._call = fake_call
+            await d.click_left()
+            await d.type_test_letter()
+            self.assertEqual(calls[0][0:2], ("NotifyPointerButton", "oa{sv}iu"))
+            self.assertEqual(calls[0][2][-2:], [LEFT_BUTTON, PRESSED])
+            self.assertEqual(calls[1][2][-2:], [LEFT_BUTTON, RELEASED])
+            self.assertEqual(calls[2][0:2], ("NotifyKeyboardKeysym", "oa{sv}iu"))
+            self.assertEqual(calls[2][2][-2:], [ord("j"), PRESSED])
+            self.assertEqual(calls[3][2][-2:], [ord("j"), RELEASED])
+        asyncio.run(run())
+
+    def test_click_and_keyboard_rejected_without_portal(self):
+        with patch.dict("os.environ", {"XDG_SESSION_TYPE":"wayland"}), patch("jarvis.remote_desktop.asyncio.run", side_effect=AssertionError("never")):
+            self.assertEqual(test_input(lambda _: False, "click")["status"], "rejected")
+            self.assertEqual(test_input(lambda _: False, "keyboard")["status"], "rejected")
+
+    def test_disallows_other_input_kinds(self):
+        with self.assertRaises(WaylandError):
+            test_input(lambda _: True, "arbitrary")
 
     def test_notification_signature(self):
         async def exercise():
