@@ -39,7 +39,54 @@ class FCCClient:
         return self.request("GET", "/v1/models?view=responses")
 
     def responses(self, payload):
-        return self.request("POST", "/v1/responses", payload)
+        """FCC exige stream=true; monta a resposta final do evento SSE response.completed."""
+        headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        body = json.dumps({**payload, "stream": True}).encode()
+        req = Request(self.base_url + "/v1/responses", data=body, headers=headers, method="POST")
+        try:
+            with urlopen(req, timeout=self.timeout) as response:
+                final = None
+                failed = None
+                event = ""
+                lines = []
+                def process():
+                    nonlocal final, failed
+                    if not lines:
+                        return
+                    try:
+                        data = json.loads("\\n".join(lines))
+                    except ValueError as exc:
+                        raise FCCError("Evento SSE inválido do FCC") from exc
+                    kind = data.get("type", event) if isinstance(data, dict) else event
+                    if kind == "response.completed":
+                        final = data.get("response")
+                    elif kind in ("response.failed", "response.incomplete", "error"):
+                        failed = data
+                for raw in response:
+                    line = raw.decode("utf-8", errors="replace").rstrip("\\r\\n")
+                    if not line:
+                        process()
+                        event, lines = "", []
+                    elif line.startswith("event:"):
+                        event = line[6:].strip()
+                    elif line.startswith("data:"):
+                        if line[5:].strip() == "[DONE]":
+                            break
+                        lines.append(line[5:].lstrip())
+                process()
+                if failed is not None:
+                    detail = failed.get("response", {}).get("error") if isinstance(failed.get("response"), dict) else failed.get("error")
+                    raise FCCError("FCC não concluiu a resposta: " + str(detail or failed)[:600])
+                if not isinstance(final, dict) or not isinstance(final.get("output"), list):
+                    raise FCCError("Streaming encerrado sem evento response.completed válido")
+                return final
+        except HTTPError as exc:
+            detail = exc.read(700).decode(errors="replace")
+            raise FCCError(f"HTTP {exc.code} em /v1/responses: {detail}", exc.code) from exc
+        except (URLError, TimeoutError, ConnectionError) as exc:
+            raise FCCError(f"Conexão FCC interrompida: {exc}") from exc
 
 class AutoModelClient:
     """Seleciona modelo inicial e tenta outro para falhas transitórias.
@@ -96,7 +143,7 @@ class AutoModelClient:
         self.initialize()
         response = self.responses({
             "model": self.active_model, "input": "Responda somente: OK",
-            "max_output_tokens": 48, "stream": False
+            "max_output_tokens": 48, "stream": True
         })
         output = response.get("output", [])
         text = response.get("output_text") or " ".join(
