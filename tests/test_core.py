@@ -45,7 +45,7 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(agent.ask("O que é uma rede neural?"), "É uma rede.")
             self.assertEqual(client.requests[0]["tools"], [])
             self.assertEqual(client.requests[0]["reasoning"], {"effort": "none"})
-            self.assertEqual(client.requests[0]["max_output_tokens"], 1024)
+            self.assertEqual(client.requests[0]["max_output_tokens"], 512)
             self.assertEqual(agent.last_metrics["route"], "fast")
             self.assertEqual(agent.last_metrics["model_rounds"], 1)
             memory.close()
