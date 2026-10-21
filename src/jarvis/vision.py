@@ -108,8 +108,8 @@ def analyze_screen(client, model, workspace, approve, question, *, max_output_to
                 and "max_output_tokens" in str(exc)):
             raise
         # Uma única repetição, sem nova captura e sem trocar de modelo/provedor.
-        payload["max_output_tokens"] = min(4096, max_output_tokens * 2)
-        response = client.responses(payload)
+        retry_payload = {**payload, "max_output_tokens": min(4096, max_output_tokens * 2)}
+        response = client.responses(retry_payload)
     answer = extract_text(response)
     if not answer:
         raise FCCError("O modelo não retornou análise textual. Verifique se suporta visão e formato input_image.")
