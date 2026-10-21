@@ -136,8 +136,18 @@ class RemoteDesktop:
 async def test_remote_pointer_async():
     desktop = RemoteDesktop()
     try:
-        await desktop.start()
-        return await desktop.move(25, 0)
+        info = await desktop.start()
+        # Dar tempo para o diálogo GNOME desaparecer e o desktop retomar o foco.
+        await asyncio.sleep(1.5)
+        movements = []
+        for _ in range(3):
+            movements.append(await desktop.move(25, 0))
+            await asyncio.sleep(0.5)
+        # Manter sessão autorizada ativa para o compositor processar os eventos.
+        await asyncio.sleep(2)
+        return {"status": "sent_unverified", "devices": desktop.devices,
+                "pointer_authorized": info["pointer"], "events_sent": len(movements),
+                "total_dx": 75, "total_dy": 0}
     finally:
         await desktop.close()
 
@@ -146,6 +156,6 @@ def test_remote_pointer(approve):
     import os
     if os.getenv("XDG_SESSION_TYPE", "").lower() != "wayland":
         raise WaylandError("Teste disponível apenas em sessão Wayland")
-    if not approve("ABRIR sessão RemoteDesktop e MOVER o ponteiro 25 pixels para a direita?"):
+    if not approve("ABRIR sessão RemoteDesktop e MOVER o ponteiro 75 pixels à direita (3 eventos), encerrando em seguida?"):
         return {"status": "rejected"}
     return asyncio.run(test_remote_pointer_async())
