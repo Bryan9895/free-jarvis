@@ -96,6 +96,30 @@ class FCCTests(unittest.TestCase):
         self.assertGreaterEqual(capture.last_payload["max_output_tokens"], 512)
         self.assertTrue(capture.last_payload["stream"])
 
+    def test_switch_to_any_listed_fcc_model(self):
+        backend = FakeClient()
+        auto = AutoModelClient(backend, preferred="first")
+        auto.initialize()
+        self.assertEqual(auto.available_models(), ["first", "second"])
+        self.assertEqual(auto.select_model("second"), "second")
+        self.assertEqual(auto.candidates, ["second"])
+        auto.responses({"input":"teste"})
+        self.assertEqual(backend.seen[-1], "second")
+
+    def test_unknown_model_cannot_be_selected(self):
+        auto = AutoModelClient(FakeClient())
+        auto.initialize()
+        with self.assertRaises(FCCError):
+            auto.select_model("not-announced")
+        self.assertEqual(auto.active_model, "first")
+
+    def test_all_models_in_catalog_can_be_fallbacks(self):
+        auto = AutoModelClient(FakeClient([503]))
+        auto.initialize()
+        self.assertEqual(auto.use_all_models(), ["first", "second"])
+        auto.responses({"input":"teste"})
+        self.assertEqual(auto.active_model, "second")
+
     def test_default_model_automatic(self):
         a=AutoModelClient(FakeClient())
         self.assertEqual(a.initialize(), "first")
