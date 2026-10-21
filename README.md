@@ -11,24 +11,98 @@ Assistente pessoal em Python usando [Free Claude Code](https://github.com/Alisha
 - Workspace restrito para listagem, leitura e escrita autorizada.
 - Terminal apenas para inspeção, GitHub CLI (consulta) e abertura de URLs com confirmação.
 
-Ainda não há voz, interface gráfica nem controle Wayland. Veja `docs/ROADMAP.md`.
+Há protótipos de voz, navegador e diagnóstico Wayland; o controle global de mouse e teclado continua pendente. Veja `docs/ROADMAP.md`.
 
-## Instalação
+## Instalação para novos usuários — Ubuntu/Linux
+
+> **IMPORTANTE:** entre na pasta `free-jarvis` antes de criar o ambiente virtual
+> ou instalar os pacotes. Se você instalar a partir da pasta pai, o Python não
+> encontrará `pyproject.toml` e poderá executar outro software chamado `jarvis`.
+
+Se ainda não clonou o repositório:
+
+```bash
+git clone git@github.com:Bryan9895/free-jarvis.git
+cd free-jarvis
+```
+
+Se já clonou em `~/Documentos/Projetos/Jarvis`:
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+```
+
+Verifique a pasta correta; ambos os arquivos devem existir:
+
+```bash
+pwd
+ls -l pyproject.toml src/jarvis/cli.py
+```
+
+Crie o ambiente **dentro desse repositório** e instale:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
-mkdir -p ~/Projetos
-export FCC_URL=http://127.0.0.1:8082
-export JARVIS_WORKSPACE="$HOME/Projetos"
-jarvis --health
-jarvis --models
-export FCC_MODEL='ID_DO_MODELO'
-jarvis
+python -m pip install -e .
 ```
 
-Configure `FCC_TOKEN` no ambiente caso o proxy exija autenticação. **Não publique credenciais.**
+### Verificar se esta JARVIS está instalada
+
+Use o comando específico **`jarvis-fcc`**, e não o genérico `jarvis`,
+que pode pertencer a outro projeto (como OpenJarvis):
+
+```bash
+jarvis-fcc --doctor
+jarvis-fcc --help
+```
+
+O diagnóstico mostra o caminho do módulo Python carregado e confirma a instalação
+sem exigir FCC, microfone ou interface gráfica. Alternativa equivalente:
+
+```bash
+python -m jarvis --doctor
+```
+
+### Configurar e verificar o FCC
+
+Inicie `fcc-server` em outro terminal e configure um provedor/modelo no painel
+do Free Claude Code. Então:
+
+```bash
+mkdir -p "$HOME/Projetos"
+export FCC_URL=http://127.0.0.1:8082
+export JARVIS_WORKSPACE="$HOME/Projetos"
+
+jarvis-fcc --health
+jarvis-fcc --models
+jarvis-fcc --check-fcc
+```
+
+`--health` só testa HTTP; `--check-fcc` faz uma **inferência real** usando o
+provedor configurado, sujeito a quotas e cobrança. `FCC_MODEL` é **opcional**;
+por padrão escolhemos o modelo anunciado pelo FCC e tentamos fallback em erros
+transitórios. Não coloque `ID_DO_MODELO` literalmente: escolha um ID real de
+`--models` caso queira fixar o principal.
+
+Iniciar chat:
+
+```bash
+jarvis-fcc
+```
+
+Instale as capacidades extras somente depois do diagnóstico básico:
+
+```bash
+python -m pip install -e '.[browser,desktop]'
+python -m playwright install chromium
+jarvis-fcc --desktop-info
+```
+
+O modo de voz requer `python -m pip install -e '.[voice]'`, além das dependências
+de áudio descritas abaixo. **Não é necessário recriar outro ambiente virtual
+na pasta pai.** Nenhum teste do GitHub Actions acessa o FCC instalado em seu PC.
 
 ## Testes
 
