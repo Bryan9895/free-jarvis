@@ -427,3 +427,18 @@ jarvis-fcc --locate-target "Ícone do gerenciador de arquivos"
 Dentro do chat, use `/localizar Ícone do gerenciador de arquivos`. Após as autorizações de captura e envio ao Ollama, abra `~/Projetos/jarvis_target_preview.png` para conferir a sugestão. O modelo pode errar a região, especialmente em interfaces compactas, escalonadas ou em múltiplos monitores. O status `proposal_only` **não representa identificação validada**. Se `found=false` ou os dados forem inválidos, a ação é interrompida.
 
 **Nenhum clique, digitação, movimento do cursor ou execução de comandos ocorre nesse modo.** Não habilita automação coordenada e não assume que o modelo sabe a posição real do mouse. A próxima integração precisará da API de movimento absoluto vinculada a uma stream ScreenCast e de confirmação humana de alvo, antes de enviar qualquer evento.
+
+### Correção do `--locate-target` com Qwen 3.5 (response.incomplete)
+
+Um teste real do localizador visual em `ollama/qwen3.5:2b` retornou `response.incomplete` com `reason=max_output_tokens`. A captura e o envio da imagem foram autorizados, mas o modelo não finalizou a resposta no orçamento anterior de 1.200 tokens.
+
+O localizador agora usa `reasoning={"effort":"none"}` e `max_output_tokens=2048`. Se (e somente se) a saída terminar com esse erro de limite, o mesmo modelo recebe **uma segunda tentativa** com `max_output_tokens=4096`; nenhuma outra captura ou novo provedor é iniciado. A confirmação de envio informa que podem ocorrer até duas tentativas. O Qwen/FCC pode ignorar `reasoning.effort`; por isso, mesmo com essa correção, ainda é possível receber uma resposta incompleta ou um JSON inválido. Isso não executa nenhum clique.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+export FCC_MODEL='ollama/qwen3.5:2b'
+jarvis-fcc --locate-target 'Ícone do gerenciador de arquivos'
+```
+
+Se continuar incompleto após duas tentativas, não repita indefinidamente: será necessário mudar a configuração de raciocínio para esse modelo no FCC ou usar um modelo visual mais adequado ao posicionamento espacial. Uma descrição de tela bem-sucedida **não garante** que o modelo seja capaz de devolver caixas delimitadoras corretas.
