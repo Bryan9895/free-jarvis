@@ -391,3 +391,22 @@ Dentro de uma sessão `jarvis-fcc`, o comando especial `/tela` (ou `/tela Por qu
 Por padrão, somente IDs `ollama/` são aceitos. Se seu FCC estiver apontando Ollama para um servidor remoto, os dados ainda podem deixar a máquina: verifique sua configuração. Para analisar usando outro provedor, seria necessário habilitar explicitamente `JARVIS_ALLOW_REMOTE_VISION=1`; isso pode enviar o conteúdo da tela a terceiros e consumir cota. Não recomendamos enquanto houver documentos, mensagens, credenciais ou dados privados visíveis.
 
 **Limitações:** não há captura contínua, detecção de alvo clicável, coordenadas inferidas automaticamente nem execução de ações com base em observações. O modelo pode interpretar imagens incorretamente. Se o Qwen 3.5 2B não aceitar `input_image` via FCC, o comando informa erro; será preciso investigar o suporte visual específico da combinação modelo/provedor, não assumir que o recurso funciona.
+
+### Clique guiado por visão — etapa supervisionada
+
+Após validação da visão do Qwen 3.5 2B via FCC, foi implementado um experimento para **observar → propor → posicionar manualmente → autorizar clique → observar novamente → comparar**.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+python -m pip install -e '.[desktop,vision]'
+export FCC_MODEL='ollama/qwen3.5:2b'
+jarvis-fcc --guided-click "Selecione uma área vazia da janela de teste"
+```
+
+Também disponível dentro do chat via `/clicar-guiado <descrição do alvo>`.
+
+O fluxo usa SOMENTE `ollama/` explicitamente escolhido; captura a tela com confirmação do terminal e GNOME, pede aprovação de envio ao modelo, apresenta a explicação visual (pode alucinar), então **o usuário posiciona o cursor manualmente**, confirma `CLICAR`, autoriza o clique e o portal GNOME. Uma captura posterior e o envio de duas imagens para comparação são opcionais e exigem novas aprovações. O modelo apenas avalia diferenças visíveis; o resultado continua `sent_unverified`, nunca `success` automático.
+
+**Use somente em uma janela descartável com área vazia ou aplicativo de demonstração**, nunca em botões que enviam mensagens, compram, apagam, instalam ou alteram arquivos. A IA ainda não conhece coordenadas reais do mouse, nem tem validação robusta para operar sozinha. Este experimento é separadamente acionado, não acrescenta ferramentas autônomas ao agente e não executa passos encadeados sem autorização.
