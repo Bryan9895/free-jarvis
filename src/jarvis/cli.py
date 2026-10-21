@@ -142,6 +142,7 @@ def main():
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
             print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
+        print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         try:
             while True:
                 try:
@@ -177,6 +178,13 @@ def main():
                     continue
                 if msg.lower() == "/modelo atual":
                     print("Modelo atual:", auto.active_model)
+                    continue
+                if msg.lower() == "/modelo todos":
+                    try:
+                        models = auto.use_all_models()
+                        print("Modelos como alternativas (nem todos aceitam tools/visão):", len(models))
+                    except FCCError as exc:
+                        print("FCC:", exc, file=sys.stderr)
                     continue
                 if msg.lower() == "/modelo auto":
                     auto.preferred = ""
