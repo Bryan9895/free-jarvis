@@ -351,3 +351,22 @@ Os testes de movimento do ponteiro e de captura de tela já foram **confirmados 
 A autorização de teclado e a de ponteiro são solicitadas **separadamente**, nunca juntas. As ações enviam pares pressionar/liberar usando `NotifyPointerButton` ou `NotifyKeyboardKeysym`, sem bypass de Wayland. O campo `status=sent_unverified` indica apenas que a chamada D-Bus foi aceita; a confirmação visual depende do usuário. **Não execute esses testes sobre interfaces que façam compras, exclusões, envios ou outras ações irreversíveis.**
 
 A automação de cliques e digitação a partir de comandos de linguagem natural continua bloqueada até validarmos os testes físicos e adicionarmos salvaguardas e verificação do contexto visual.
+
+### Integração experimental de ações do desktop solicitadas pelo agente
+
+Após a validação física de captura, movimento, clique esquerdo e entrada simples de teclado no GNOME/Wayland, foi adicionada a ferramenta `desktop_input` para o agente de IA. Ela **não é oferecida ao modelo por padrão**. Para habilitar explicitamente em uma sessão de teste:
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+export FCC_MODEL="ollama/qwen3.5:2b"
+export JARVIS_ENABLE_DESKTOP_INPUT=1
+jarvis-fcc
+```
+
+Teste com um aplicativo de texto vazio ou área de trabalho sem ações sensíveis. Peça, por exemplo, **"Solicite a ferramenta desktop_input para mover o ponteiro 20 pixels para a direita"**. O modelo não observa sua tela nem conhece a posição real do cursor, portanto a instrução humana é essencial. Cada solicitação exige uma confirmação no terminal e a autorização de controle remoto do GNOME; a sessão D-Bus encerra ao terminar a ação. Exemplos de operações possíveis: `move` (deslocamento relativo de no máximo 50 pixels por eixo), `click` (um clique esquerdo onde o cursor estiver) e `type` (no máximo 40 caracteres, apenas `a-z`, `0-9` e espaços, sem atalhos nem Enter).
+
+**Limites e privacidade:** confirmação `SIM` pode autorizar um clique com efeitos reais, como excluir um arquivo ou confirmar uma ação; por isso mantenha janelas sensíveis fechadas. O recurso não verifica foco da janela nem conteúdo da tela, não envia capturas ao modelo e não deve ser usado para fluxos irreversíveis. Mesmo que o retorno indique `sent_unverified`, confirme o resultado visualmente. **Para desativar novamente**, interrompa o chat e execute `unset JARVIS_ENABLE_DESKTOP_INPUT`. Não use `sudo`, uinput ou mecanismos de bypass do portal. Não há controle persistente ou automatização ilimitada; cada chamada solicita autorização novamente.
+
+A documentação e os testes confirmam as proteções de software. **A integração completa entre FCC, ferramenta e entrada desktop solicitada pelo modelo precisa de validação física no GNOME**.
