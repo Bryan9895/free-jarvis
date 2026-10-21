@@ -76,6 +76,7 @@ def main():
             return
         auto = AutoModelClient(client, preferred=c.model,
                                backups=[x.strip() for x in os.getenv("FCC_FALLBACK_MODELS", "").split(",") if x.strip()],
+                               allow_cross_provider=os.getenv("FCC_ALLOW_CROSS_PROVIDER", "") == "1",
                                on_switch=lambda model: print(f"⚠️ FCC: modelo alterado automaticamente para {model}"))
         if args.check_fcc:
             print(json.dumps({"health": client.health(), "inference": auto.diagnostic()}, ensure_ascii=False, indent=2))
