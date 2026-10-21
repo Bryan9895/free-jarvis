@@ -33,6 +33,9 @@ def route(message: str, mode="auto") -> str:
         return "tools"
     if re.match(_INFO, normalized):
         return "fast"
+    # Perguntas curtas sem verbos de ação e sem referências ao computador.
+    if normalized.endswith("?") and len(normalized) <= 140:
+        return "fast"
     if normalized in ("oi", "olá", "ola", "bom dia", "boa tarde", "boa noite"):
         return "fast"
     return "tools"
