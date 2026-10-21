@@ -50,6 +50,16 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(agent.last_metrics["model_rounds"], 1)
             memory.close()
 
+    def test_fast_remote_model_does_not_force_ollama_reasoning(self):
+        with tempfile.TemporaryDirectory() as td:
+            client=FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}])
+            memory=Memory(Path(td)/"m.db")
+            agent=Agent(client, Toolkit(Path(td)), memory, "gemini/example")
+            agent.ask("O que é fotossíntese?")
+            self.assertNotIn("reasoning", client.requests[0])
+            self.assertEqual(client.requests[0]["tools"], [])
+            memory.close()
+
     def test_desktop_requests_keep_tools(self):
         with tempfile.TemporaryDirectory() as td:
             client=FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}])
