@@ -117,6 +117,14 @@ class Toolkit:
             self._browser.close()
             self._browser = None
 
+    def desktop_info(self):
+        from .wayland import desktop_info
+        return desktop_info()
+
+    def desktop_screenshot(self):
+        from .wayland import screenshot
+        return screenshot(self.workspace, self.approve)
+
     def execute(self, name, arguments):
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
@@ -125,6 +133,7 @@ class Toolkit:
             "browser_navigate": self.browser_navigate, "browser_inspect": self.browser_inspect,
             "browser_click": self.browser_click, "browser_fill": self.browser_fill,
             "browser_screenshot": self.browser_screenshot,
+            "desktop_info": self.desktop_info, "desktop_screenshot": self.desktop_screenshot,
         }
         if name not in operations:
             return {"error": "Ferramenta desconhecida"}
@@ -132,8 +141,12 @@ class Toolkit:
             return {"result": operations[name](**arguments)}
         except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError, ValueError) as exc:
             return {"error": str(exc)}
+        except RuntimeError as exc:
+            return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"desktop_info","description":"Diagnostica sessão Wayland, compositor, Screenshot e RemoteDesktop portals; não controla o computador.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+    {"type":"function","name":"desktop_screenshot","description":"Solicita captura da área de trabalho via portal XDG, com dupla aprovação do usuário. Salva imagem no workspace. A imagem não é transmitida ao modelo automaticamente.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"browser_navigate","description":"Navega em endereço público HTTP/HTTPS com navegador Chromium isolado; exige aprovação.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"],"additionalProperties":False}},
     {"type":"function","name":"browser_inspect","description":"Lê título, URL, texto e elementos interativos da página atual sem executar JavaScript fornecido pelo modelo.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"browser_click","description":"Clica exatamente em um elemento CSS, após aprovação; pode enviar formulário.","parameters":{"type":"object","properties":{"selector":{"type":"string"}},"required":["selector"],"additionalProperties":False}},
