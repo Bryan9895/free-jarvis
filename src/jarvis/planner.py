@@ -111,6 +111,13 @@ class TaskPlanner:
                 self.plan["status"] = "stopped"
                 break
             step["result"] = result[:2000]
+            problems = getattr(self.agent, "last_metrics", {}).get("tool_problems", [])
+            if problems:
+                step["status"] = "blocked"
+                step["problems"] = problems
+                self.plan["status"] = "stopped"
+                report("Execução interrompida: ferramenta recusada ou com erro.")
+                break
             # Uma resposta de linguagem do modelo não comprova execução.
             step["status"] = "reported_unverified"
             report(result)
