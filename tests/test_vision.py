@@ -76,7 +76,8 @@ class VisionTests(unittest.TestCase):
         self.assertEqual(client.responses.call_args_list[0].args[0]["max_output_tokens"],2048)
         self.assertEqual(client.responses.call_args_list[1].args[0]["max_output_tokens"],4096)
         self.assertEqual(client.responses.call_args_list[0].args[0]["reasoning"],{"effort":"none"})
-        self.assertEqual(len(approvals),2)
+        # O mock de screenshot ignora a autorização da captura; só o envio real chama approve.
+        self.assertEqual(len(approvals),1)
         capture.assert_called_once()
         prepare.assert_called_once()
 
