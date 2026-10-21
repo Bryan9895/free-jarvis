@@ -1,4 +1,6 @@
 import json
+import os
+from unittest.mock import patch
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,6 +17,26 @@ class FakeClient:
         return next(self.sequence)
 
 class CoreTests(unittest.TestCase):
+    def test_desktop_input_is_hidden_by_default(self):
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {"JARVIS_ENABLE_DESKTOP_INPUT": ""}):
+            client = FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}])
+            memory = Memory(Path(td)/"m.db")
+            Agent(client, Toolkit(Path(td)), memory, "fake").ask("teste")
+            self.assertNotIn("desktop_input", [t["name"] for t in client.requests[0]["tools"]])
+            memory.close()
+
+    def test_desktop_input_requires_opt_in_and_does_not_run(self):
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {"JARVIS_ENABLE_DESKTOP_INPUT":"1"}):
+            toolkit=Toolkit(Path(td), approve=lambda _: False)
+            with patch.dict(os.environ, {"XDG_SESSION_TYPE":"wayland"}):
+                outcome=toolkit.execute("desktop_input", {"action":"click"})
+            self.assertEqual(outcome["result"]["status"],"rejected")
+            client=FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}])
+            memory=Memory(Path(td)/"m.db")
+            Agent(client, toolkit, memory, "fake").ask("teste")
+            self.assertIn("desktop_input", [t["name"] for t in client.requests[0]["tools"]])
+            memory.close()
+
     def test_call_roundtrip(self):
         with tempfile.TemporaryDirectory() as td:
             call = {"type":"function_call", "name":"list_files", "call_id":"c1", "arguments":"{}"}
