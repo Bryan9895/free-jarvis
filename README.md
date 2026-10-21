@@ -442,3 +442,18 @@ jarvis-fcc --locate-target 'Ícone do gerenciador de arquivos'
 ```
 
 Se continuar incompleto após duas tentativas, não repita indefinidamente: será necessário mudar a configuração de raciocínio para esse modelo no FCC ou usar um modelo visual mais adequado ao posicionamento espacial. Uma descrição de tela bem-sucedida **não garante** que o modelo seja capaz de devolver caixas delimitadoras corretas.
+
+### Qwen retornou texto, mas não JSON no localizador
+
+Se `--locate-target` responder `A IA não retornou JSON de localização válido`, significa que **a inferência completou**, mas o conteúdo não obedeceu ao contrato de coordenadas. Isso é diferente do erro anterior `response.incomplete`.
+
+O localizador agora extrai **um único objeto JSON completo** mesmo que apareça em bloco Markdown ou venha precedido/seguido de explicação. A validação de `bbox`, limites, `found` e `confidence` permanece obrigatória. Se não houver um objeto inequívoco, retorna `status=unstructured`, `action_executed=false` e um trecho limitado da saída (`model_excerpt`) para diagnóstico. Isso não cria uma região fictícia nem tenta clicar.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+export FCC_MODEL='ollama/qwen3.5:2b'
+jarvis-fcc --locate-target 'Ícone do gerenciador de arquivos'
+```
+
+Caso receba `unstructured`, compartilhe `model_excerpt` **após verificar que não contém dados privados**. Um modelo que descreve bem a tela pode não conseguir estimar caixas espaciais confiáveis. A pré-visualização só é gerada quando `found=true` e a caixa está formalmente válida; ainda será necessária conferência humana.
