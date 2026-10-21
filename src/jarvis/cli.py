@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
     parser.add_argument("--desktop-info", action="store_true", help="Inspeciona portais e compositor Wayland sem iniciar FCC")
+    parser.add_argument("--desktop-remote-test", action="store_true", help="Solicita permissão RemoteDesktop e testa pequeno movimento de ponteiro")
     parser.add_argument("--desktop-screenshot", action="store_true", help="Solicita captura de tela via portal Wayland com confirmação")
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
@@ -44,6 +45,15 @@ def main():
     if args.desktop_info:
         from .wayland import desktop_info
         print(json.dumps(desktop_info(), indent=2, ensure_ascii=False))
+        return
+    if args.desktop_remote_test:
+        from .remote_desktop import test_remote_pointer
+        from .wayland import WaylandError
+        try:
+            print(json.dumps(test_remote_pointer(confirm), ensure_ascii=False, indent=2))
+        except (WaylandError, OSError) as exc:
+            print(f"Erro RemoteDesktop: {exc}", file=sys.stderr)
+            sys.exit(1)
         return
     if args.desktop_screenshot:
         from .wayland import screenshot, WaylandError
