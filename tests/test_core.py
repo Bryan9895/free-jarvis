@@ -37,6 +37,60 @@ class CoreTests(unittest.TestCase):
             self.assertIn("desktop_input", [t["name"] for t in client.requests[0]["tools"]])
             memory.close()
 
+    def test_fast_question_omits_tools_and_reasoning(self):
+        with tempfile.TemporaryDirectory() as td:
+            client=FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"É uma rede."}]}]}])
+            memory=Memory(Path(td)/"m.db")
+            agent=Agent(client, Toolkit(Path(td)), memory, "ollama/model")
+            self.assertEqual(agent.ask("O que é uma rede neural?"), "É uma rede.")
+            self.assertEqual(client.requests[0]["tools"], [])
+            self.assertEqual(client.requests[0]["reasoning"], {"effort": "none"})
+            self.assertEqual(client.requests[0]["max_output_tokens"], 1024)
+            self.assertEqual(agent.last_metrics["route"], "fast")
+            self.assertEqual(agent.last_metrics["model_rounds"], 1)
+            memory.close()
+
+    def test_desktop_requests_keep_tools(self):
+        with tempfile.TemporaryDirectory() as td:
+            client=FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}])
+            memory=Memory(Path(td)/"m.db")
+            agent=Agent(client, Toolkit(Path(td)), memory, "fake")
+            agent.ask("Explique o erro na minha tela")
+            self.assertTrue(client.requests[0]["tools"])
+            self.assertEqual(agent.last_metrics["route"], "tools")
+            memory.close()
+
+    def test_duplicate_tool_call_executes_once(self):
+        with tempfile.TemporaryDirectory() as td:
+            def call(cid):
+                return {"type":"function_call","name":"list_files","call_id":cid,"arguments":'{"path":"."}'}
+            client=FakeClient([
+                {"output":[call("c1")]}, {"output":[call("c2")]},
+                {"output":[{"type":"message","content":[{"type":"output_text","text":"Concluído"}]}]},
+            ])
+            memory=Memory(Path(td)/"m.db")
+            toolkit=Toolkit(Path(td))
+            with patch.object(toolkit,"execute",wraps=toolkit.execute) as execute:
+                agent=Agent(client, toolkit, memory, "fake")
+                agent.ask("Liste os arquivos na pasta")
+                self.assertEqual(execute.call_count,1)
+            self.assertEqual(agent.last_metrics["tools_executed"],1)
+            second=json.loads(client.requests[2]["input"][-1]["output"])
+            self.assertTrue(second["reused_previous_result"])
+            memory.close()
+
+    def test_fast_mode_never_executes_tools(self):
+        with tempfile.TemporaryDirectory() as td:
+            call={"type":"function_call","name":"write_file","call_id":"c1",
+                  "arguments":'{"path":"danger","content":"x"}'}
+            client=FakeClient([{"output":[call]}])
+            memory=Memory(Path(td)/"m.db")
+            agent=Agent(client,Toolkit(Path(td),approve=lambda _:True),memory,"fake")
+            answer=agent.ask("escreva",mode="fast")
+            self.assertIn("modo rápido",answer)
+            self.assertFalse((Path(td)/"danger").exists())
+            memory.close()
+
     def test_call_roundtrip(self):
         with tempfile.TemporaryDirectory() as td:
             call = {"type":"function_call", "name":"list_files", "call_id":"c1", "arguments":"{}"}
