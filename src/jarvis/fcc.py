@@ -5,6 +5,16 @@ from urllib.error import HTTPError, URLError
 
 TRANSIENT = frozenset({429, 500, 502, 503, 504})
 
+def may_fallback(error):
+    """404 só autoriza fallback se vier de erro explicitamente atribuído ao provedor."""
+    if error.status in TRANSIENT or error.status is None:
+        return True
+    if error.status == 404:
+        detail = str(error).lower()
+        return ("upstream provider" in detail and "returned http 404" in detail
+                and "category: upstream" in detail)
+    return False
+
 class FCCError(RuntimeError):
     def __init__(self, message, status=None):
         super().__init__(message)
@@ -133,7 +143,7 @@ class AutoModelClient:
                 return response
             except FCCError as exc:
                 last_error = exc
-                if exc.status not in TRANSIENT and exc.status is not None:
+                if not may_fallback(exc):
                     raise
                 # Erros de transporte podem significar que o servidor está desligado,
                 # mas tentar outro modelo não executa ações externas no computador.
