@@ -111,7 +111,8 @@ class TaskPlanner:
                 self.plan["status"] = "stopped"
                 break
             step["result"] = result[:2000]
-            problems = getattr(self.agent, "last_metrics", {}).get("tool_problems", [])
+            metrics = getattr(self.agent, "last_metrics", {})
+            problems = metrics.get("tool_problems", []) if isinstance(metrics, dict) else []
             if problems:
                 step["status"] = "blocked"
                 step["problems"] = problems
