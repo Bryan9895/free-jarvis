@@ -70,6 +70,16 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(result["steps"][1]["status"], "pending")
         self.assertEqual(agent.ask.call_count, 1)
 
+    def test_tool_rejection_stops_following_steps(self):
+        planner, _, agent = self.make_planner()
+        agent.last_metrics = {"tool_problems": [{"tool": "write_file", "reason": "rejected"}]}
+        planner.prepare("Analise meu projeto")
+        result = planner.execute(lambda _: True, report=lambda _: None)
+        self.assertEqual(result["status"], "stopped")
+        self.assertEqual(result["steps"][0]["status"], "blocked")
+        self.assertEqual(result["steps"][1]["status"], "pending")
+        self.assertEqual(agent.ask.call_count, 1)
+
     def test_cancel_invalidates_plan_and_new_plan_replaces_old(self):
         planner, _, agent = self.make_planner()
         planner.prepare("Tarefa antiga")
