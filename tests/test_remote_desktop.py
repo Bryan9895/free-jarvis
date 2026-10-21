@@ -2,7 +2,7 @@
 import asyncio
 import unittest
 from unittest.mock import patch
-from jarvis.remote_desktop import RemoteDesktop, POINTER, KEYBOARD, LEFT_BUTTON, PRESSED, RELEASED, test_remote_pointer as run_demo, test_remote_pointer_async, test_input
+from jarvis.remote_desktop import RemoteDesktop, POINTER, KEYBOARD, LEFT_BUTTON, PRESSED, RELEASED, test_remote_pointer as run_demo, test_remote_pointer_async, test_input, agent_step
 from jarvis.wayland import WaylandError
 
 class RemoteDesktopTests(unittest.TestCase):
@@ -101,6 +101,58 @@ class RemoteDesktopTests(unittest.TestCase):
     def test_disallows_other_input_kinds(self):
         with self.assertRaises(WaylandError):
             test_input(lambda _: True, "arbitrary")
+
+    def test_agent_step_disabled_by_default(self):
+        import os
+        with patch.dict(os.environ, {"XDG_SESSION_TYPE":"wayland"}, clear=True):
+            with self.assertRaises(WaylandError):
+                agent_step(lambda _: True, "move", dx=1)
+
+    def test_agent_step_rejects_invalid_actions_before_approval(self):
+        import os
+        with patch.dict(os.environ, {"XDG_SESSION_TYPE":"wayland", "JARVIS_ENABLE_DESKTOP_INPUT":"1"}):
+            for action, kwargs in (("delete", {}), ("move", {"dx":100}), ("type", {"text":"sudo rm -rf /"}), ("type", {"text":"Olá"}), ("click", {"dx":1})):
+                with self.subTest(action=action, kwargs=kwargs):
+                    with self.assertRaises(WaylandError):
+                        agent_step(lambda _: True, action, **kwargs)
+
+    def test_agent_step_rejects_without_starting_portal(self):
+        import os
+        with patch.dict(os.environ, {"XDG_SESSION_TYPE":"wayland", "JARVIS_ENABLE_DESKTOP_INPUT":"1"}), patch("jarvis.remote_desktop.asyncio.run", side_effect=AssertionError("must not run")):
+            self.assertEqual(agent_step(lambda _: False, "move", dx=10)["status"], "rejected")
+            self.assertEqual(agent_step(lambda _: False, "click")["status"], "rejected")
+            self.assertEqual(agent_step(lambda _: False, "type", text="ola")["status"], "rejected")
+
+    def test_safe_text_key_events(self):
+        async def run():
+            d=RemoteDesktop()
+            d.session="/session/mock"
+            d.devices=KEYBOARD
+            calls=[]
+            async def fake_call(interface, member, signature="", body=None, path=None):
+                calls.append((member, body))
+            async def fake_sleep(_): pass
+            d._call=fake_call
+            with patch("jarvis.remote_desktop.asyncio.sleep", side_effect=fake_sleep):
+                result=await d.type_safe_text("ja 1")
+            self.assertEqual(result["characters"], 4)
+            self.assertEqual(len(calls), 8)
+            self.assertEqual(calls[0][1][-2:], [ord("j"), PRESSED])
+            self.assertEqual(calls[1][1][-2:], [ord("j"), RELEASED])
+        asyncio.run(run())
+
+    def test_safe_text_requires_keyboard_and_valid_chars(self):
+        async def run():
+            d=RemoteDesktop()
+            d.session="/session/mock"
+            d.devices=POINTER
+            with self.assertRaises(WaylandError):
+                await d.type_safe_text("ola")
+            d.devices=KEYBOARD
+            for text in ("", "A", "x"*41, "a\\nb", "á"):
+                with self.assertRaises(WaylandError):
+                    await d.type_safe_text(text)
+        asyncio.run(run())
 
     def test_notification_signature(self):
         async def exercise():
