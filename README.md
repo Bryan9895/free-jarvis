@@ -316,3 +316,17 @@ ollama run qwen3.5:2b "Responda apenas OK"
 Se a execução direta do Ollama funcionar, mas `jarvis-fcc --check-fcc` não, o problema é provavelmente na integração/servidor FCC, e não necessariamente nos pesos do modelo. Se ambos falharem, investigue Ollama, carregamento do modelo e recursos disponíveis. Evite iniciar múltiplas gerações simultâneas em um computador com RAM limitada.
 
 **Wayland validado em dispositivo real:** o usuário confirmou que o movimento do ponteiro funcionou após autorizar interação remota no GNOME. Não foram testados ainda cliques nem digitação via portal.
+
+### Qwen via FCC retornando response.incomplete
+
+Em teste real, o Ollama respondeu normalmente com `qwen3.5:2b`, mas a JARVIS recebeu `response.incomplete` do FCC. No diagnóstico anterior, o limite era apenas **48 tokens** e o modelo consumiu parte desse limite em seu raciocínio. O endpoint FCC aceita `max_output_tokens` e `reasoning`; o diagnóstico foi ajustado para `max_output_tokens=768` e `reasoning={"effort":"none"}`. Esta opção tenta reduzir o raciocínio, mas o provedor/modelo pode não obedecê-la. Falhas `response.incomplete` agora mostram a razão sem imprimir todo o conteúdo de raciocínio.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+export FCC_MODEL='ollama/qwen3.5:2b'
+unset FCC_FALLBACK_MODELS FCC_ALLOW_CROSS_PROVIDER
+jarvis-fcc --check-fcc
+```
+
+Se persistir `response.incomplete`, será necessário inspecionar a razão devolvida pelo FCC e o mapeamento do seu modelo, não assumir que a conexão HTTP falhou. O teste automatizado exercita as condições de saída, mas a confirmação com seu Ollama/FCC permanece necessária.
