@@ -67,3 +67,16 @@ Assistente pessoal open-source em português, com FCC como gateway de modelos, e
 - O assistente não acessa as abas/cookies do Firefox pessoal; screenshots ficam no workspace.
 - Testes unitários sem rede em `tests/test_browser.py`; testes reais com Chromium e FCC ainda precisam ser validados em Linux Wayland.
 - **Limitações de segurança:** DNS pode mudar entre validação e requisição (DNS rebinding); não utilizar o navegador automatizado com contas ou segredos sensíveis nesta versão. Clique pode desencadear ações externas apesar da aprovação; mantenha uma sessão de demonstração. Página pública não é uma fonte de instruções confiáveis.
+
+## Registro — etapa 3 validada no CI (2026-10-21)
+- Execução GitHub Actions: https://github.com/Bryan9895/free-jarvis/actions/runs/39665012635
+- Jobs `test` e `browser-e2e` concluídos com **success**; o Chromium foi instalado e o teste em HTML local verificou inspeção, preenchimento, clique e screenshot.
+- O teste **não** cobre servidor FCC real, navegador pessoal, login ou Wayland gráfico nativo. Bloqueio de DNS rebinding e política de novos pop-ups ainda exigem endurecimento.
+
+## Etapa 4 — primeira entrega (2026-10-21)
+- `src/jarvis/voice.py`: gravação local temporária com sounddevice, transcrição faster-whisper int8 na CPU e síntese com Piper CLI.
+- `jarvis --voice`: solicitação de gravação ao pressionar Enter, janela de 6 segundos; mantém entrada de texto e confirmações da etapa 2.
+- Padrão seguro: nenhuma gravação contínua; sem Piper configurado, apenas texto; arquivos WAV temporários são excluídos.
+- `tests/test_voice.py`: testes simulados de transcrição, TTS e limpeza, sem acesso a microfone real.
+- Dependências opcionais em `pip install -e '.[voice]'`.
+- **Ainda pendente nesta etapa**: instalação/teste físico no Ubuntu do usuário, dispositivo de entrada selecionável, palavra de ativação local, detecção de silêncio e ajustes de latência. Não confundir o protótipo com reconhecimento de voz finalizado.
