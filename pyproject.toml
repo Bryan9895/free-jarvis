@@ -13,6 +13,7 @@ dependencies = []
 browser = ["playwright>=1.48"]
 voice = ["sounddevice>=0.4.6", "numpy>=1.24", "faster-whisper>=1.1"]
 desktop = ["dbus-next>=0.2.3"]
+vision = ["Pillow>=10.0"]
 
 [project.scripts]
 jarvis-fcc = "jarvis.cli:main"
