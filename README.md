@@ -132,3 +132,12 @@ jarvis
 Utilize o ID .desktop realmente instalado no seu sistema (por exemplo, confirme com `ls /usr/share/applications`). Essas ações são implementações iniciais: não controlam o mouse ou teclado do desktop. Isso requer uma sessão `RemoteDesktop` autorizada pelo compositor e será integrado após validação específica no GNOME/Wayland.
 
 **Segurança e limitações:** a API Wayland será usada somente com consentimento explícito; não há acesso via `/dev/uinput`, `sudo` ou bypass de permissões. Screenshots podem conter informações privadas; mantenha o workspace protegido. A captura real depende da implementação do portal no seu Linux, ainda não testada nesse desktop. Testes do CI apenas simulam respostas do portal.
+
+### Diagnóstico do Wayland independentemente do FCC
+
+```bash
+jarvis --desktop-info
+jarvis --desktop-screenshot
+```
+
+O primeiro imprime o compositor e os portais detectados; o segundo pede confirmação e abre o diálogo de captura de tela do GNOME/KDE. Execute esses comandos dentro da sessão gráfica do seu Ubuntu, e não via SSH sem encaminhamento DBus/desktop.
