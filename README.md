@@ -93,3 +93,42 @@ Substitua o caminho de exemplo pelo nome real do modelo baixado. Sem `JARVIS_PIP
 **Privacidade:** microfone inativo fora das gravações; WAV temporário apagado após transcrição. Transcrição e TTS são locais, porém o texto reconhecido é enviado ao modelo configurado no FCC, que pode usar provedor remoto. Não há escuta constante nem ativação por palavra-chave nesta primeira versão.
 
 **Limitações:** a gravação ainda tem duração fixa (não é push-to-talk contínuo); a seleção do dispositivo depende da configuração padrão do sistema. Testes de microfone real e Piper real precisam ser feitos no Ubuntu do usuário.
+
+## API FCC — autodescoberta e troca automática de modelo
+
+O cliente usa `/v1/models?view=responses` para identificar IDs compatíveis com o endpoint `/v1/responses`. **A variável `FCC_MODEL` agora é opcional.** Se não estiver definida, o sistema utiliza o modelo padrão anunciado pelo FCC; em falhas transitórias HTTP 429/500/502/503/504, tenta outros modelos anunciados pelo servidor.
+
+Configure opcionalmente preferências para prioridades explícitas:
+```bash
+export FCC_URL=http://127.0.0.1:8082
+# export FCC_TOKEN=...   # somente se o proxy exigir autenticação
+# export FCC_MODEL='id-preferido'
+# export FCC_FALLBACK_MODELS='id-secundario,id-terciario'
+jarvis --models
+jarvis --check-fcc
+jarvis
+```
+O comando `--check-fcc` faz três verificações: saúde do servidor, modelos retornados pela API e **geração real** da resposta para a mensagem "Responda somente: OK". Essa última operação utiliza os créditos/quota do provedor selecionado. `--health` isoladamente não comprova inferência. O failover não contorna credenciais inválidas (HTTP 401/403) nem garante que um modelo do catálogo esteja utilizável; ele só confirma um modelo quando responde de verdade.
+
+O FCC pode oferecer seus próprios `MODEL_FALLBACKS`, em sua configuração. A camada do JARVIS complementa esse mecanismo, mudando o **ID requisitado pelo cliente** quando necessário. Evite listar modelos caros caso não queira consumir créditos ao alternar.
+
+## Etapa 5 — diagnóstico e integração inicial com Wayland
+
+Acesse a sessão GNOME/Wayland e instale as dependências opcionais:
+```bash
+sudo apt install -y xdg-desktop-portal xdg-desktop-portal-gnome libgtk-3-bin
+pip install -e '.[desktop]'
+```
+O pacote `xdg-desktop-portal-gnome` é específico do GNOME; para KDE, use o backend correspondente da sua distribuição. A JARVIS oferece:
+- `desktop_info`: informa sessão gráfica, desktop e disponibilidade dos portais;
+- `desktop_screenshot`: solicita uma captura pela interface `org.freedesktop.portal.Screenshot`, com **confirmação no terminal e no diálogo do sistema**. O arquivo PNG é salvo em `jarvis_desktop_screenshot.png` no workspace e **não é enviado automaticamente à IA**;
+- `desktop_open_app`: abre por `gtk-launch` apenas aplicativos cujos IDs estejam em `JARVIS_ALLOWED_APPS`, sempre com confirmação.
+
+Exemplo:
+```bash
+export JARVIS_ALLOWED_APPS='org.gnome.Nautilus,firefox'
+jarvis
+```
+Utilize o ID .desktop realmente instalado no seu sistema (por exemplo, confirme com `ls /usr/share/applications`). Essas ações são implementações iniciais: não controlam o mouse ou teclado do desktop. Isso requer uma sessão `RemoteDesktop` autorizada pelo compositor e será integrado após validação específica no GNOME/Wayland.
+
+**Segurança e limitações:** a API Wayland será usada somente com consentimento explícito; não há acesso via `/dev/uinput`, `sudo` ou bypass de permissões. Screenshots podem conter informações privadas; mantenha o workspace protegido. A captura real depende da implementação do portal no seu Linux, ainda não testada nesse desktop. Testes do CI apenas simulam respostas do portal.
