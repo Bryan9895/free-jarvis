@@ -1,5 +1,8 @@
 """Testa socket HTTP real usando uma simulação local do FCC, sem credenciais."""
 import json
+import io
+from unittest.mock import patch
+from jarvis.fcc import FCCError
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -42,6 +45,21 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(output)
 
 class HTTPIntegrationTests(unittest.TestCase):
+    def test_incomplete_sse_reports_reason_not_model_thoughts(self):
+        class FakeHTTPResponse:
+            def __enter__(self):
+                payload = {"type":"response.incomplete","response":{
+                    "incomplete_details":{"reason":"max_output_tokens"},
+                    "output":[{"type":"reasoning","content":[{"text":"private analysis"}]}]}}
+                return io.BytesIO(("event: response.incomplete\\ndata: " + json.dumps(payload) + "\\n\\n").encode())
+            def __exit__(self, *_):
+                return False
+        with patch("jarvis.fcc.urlopen", return_value=FakeHTTPResponse()):
+            with self.assertRaises(FCCError) as err:
+                FCCClient("http://127.0.0.1:8082").responses({"model":"x","input":"hi"})
+        self.assertIn("max_output_tokens", str(err.exception))
+        self.assertNotIn("private analysis", str(err.exception))
+
     def test_socket_catalog_and_automatic_switch(self):
         Handler.calls = []
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
