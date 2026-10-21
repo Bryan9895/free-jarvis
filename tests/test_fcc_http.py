@@ -29,10 +29,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(404, {"error":"unknown"})
         length = int(self.headers["Content-Length"])
         payload = json.loads(self.rfile.read(length))
-        type(self).calls.append({"model":payload["model"], "authorization":self.headers.get("Authorization")})
+        type(self).calls.append({"model":payload["model"], "stream":payload.get("stream"), "authorization":self.headers.get("Authorization")})
         if payload["model"] == "primary":
             return self.reply(503, {"error":"temporarily unavailable"})
-        return self.reply(200, {"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]})
+        data = {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}}
+        output = ("event: response.created\\ndata: " + json.dumps({"type":"response.created","response":{"output":[]}}) + "\\n\\n"
+                  + "event: response.completed\\ndata: " + json.dumps(data) + "\\n\\n").encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Content-Length", str(len(output)))
+        self.end_headers()
+        self.wfile.write(output)
 
 class HTTPIntegrationTests(unittest.TestCase):
     def test_socket_catalog_and_automatic_switch(self):
@@ -47,6 +54,7 @@ class HTTPIntegrationTests(unittest.TestCase):
             self.assertEqual(auto.diagnostic()["model"], "backup")
             self.assertEqual([entry["model"] for entry in Handler.calls], ["primary","backup"])
             self.assertTrue(all(entry["authorization"] == "Bearer example-token" for entry in Handler.calls))
+            self.assertTrue(all(entry["stream"] is True for entry in Handler.calls))
         finally:
             server.shutdown()
             server.server_close()
