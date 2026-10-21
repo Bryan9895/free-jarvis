@@ -5,6 +5,7 @@ Não utiliza xdotool, /dev/uinput ou bypass do compositor.
 from __future__ import annotations
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -96,3 +97,23 @@ def screenshot(workspace: Path, approve, timeout=60):
     if src != dest:
         shutil.copyfile(src, dest)
     return {"status": "saved", "path": str(dest), "requires_user_portal_consent": True}
+
+def open_app(app_id, approve):
+    """Abre somente IDs .desktop explicitamente permitidos em JARVIS_ALLOWED_APPS."""
+    allowed = {item.strip() for item in os.getenv("JARVIS_ALLOWED_APPS", "").split(",") if item.strip()}
+    if not isinstance(app_id, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,120}", app_id):
+        raise WaylandError("Identificador de aplicativo inválido")
+    if app_id not in allowed:
+        raise WaylandError("Aplicativo não está em JARVIS_ALLOWED_APPS")
+    launcher = shutil.which("gtk-launch")
+    if not launcher:
+        raise WaylandError("gtk-launch não está instalado (pacote libgtk-3-bin)")
+    if not approve(f"ABRIR aplicativo gráfico autorizado: {app_id}"):
+        return {"status": "rejected"}
+    try:
+        process = subprocess.Popen([launcher, app_id], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   start_new_session=True)
+    except OSError as exc:
+        raise WaylandError(f"Falha ao abrir aplicativo: {exc}") from exc
+    return {"status": "launched_unverified", "app_id": app_id, "pid": process.pid}
