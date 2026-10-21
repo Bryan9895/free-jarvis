@@ -51,7 +51,7 @@ class HTTPIntegrationTests(unittest.TestCase):
                 payload = {"type":"response.incomplete","response":{
                     "incomplete_details":{"reason":"max_output_tokens"},
                     "output":[{"type":"reasoning","content":[{"text":"private analysis"}]}]}}
-                return io.BytesIO(("event: response.incomplete\\ndata: " + json.dumps(payload) + "\\n\\n").encode())
+                return io.BytesIO(("event: response.incomplete\ndata: " + json.dumps(payload) + "\n\n").encode())
             def __exit__(self, *_):
                 return False
         with patch("jarvis.fcc.urlopen", return_value=FakeHTTPResponse()):
