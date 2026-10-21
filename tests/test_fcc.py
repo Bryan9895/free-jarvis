@@ -81,6 +81,21 @@ class FCCTests(unittest.TestCase):
             model.responses({"input":"hi"})
         self.assertEqual(backend.seen, ["ollama/qwen3.5:2b"])
 
+    def test_diagnostic_reduces_reasoning_and_increases_budget(self):
+        backend = FakeClient()
+        auto = AutoModelClient(backend)
+        auto.diagnostic()
+        # FakeClient records only model IDs: add a capturing variant for payload.
+        class Capture(FakeClient):
+            def responses(self, payload):
+                self.last_payload = payload
+                return super().responses(payload)
+        capture = Capture()
+        AutoModelClient(capture).diagnostic()
+        self.assertEqual(capture.last_payload["reasoning"], {"effort": "none"})
+        self.assertGreaterEqual(capture.last_payload["max_output_tokens"], 512)
+        self.assertTrue(capture.last_payload["stream"])
+
     def test_default_model_automatic(self):
         a=AutoModelClient(FakeClient())
         self.assertEqual(a.initialize(), "first")
