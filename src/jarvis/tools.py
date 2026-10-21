@@ -125,6 +125,10 @@ class Toolkit:
         from .wayland import screenshot
         return screenshot(self.workspace, self.approve)
 
+    def desktop_open_app(self, app_id):
+        from .wayland import open_app
+        return open_app(app_id, self.approve)
+
     def execute(self, name, arguments):
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
@@ -134,6 +138,7 @@ class Toolkit:
             "browser_click": self.browser_click, "browser_fill": self.browser_fill,
             "browser_screenshot": self.browser_screenshot,
             "desktop_info": self.desktop_info, "desktop_screenshot": self.desktop_screenshot,
+            "desktop_open_app": self.desktop_open_app,
         }
         if name not in operations:
             return {"error": "Ferramenta desconhecida"}
@@ -145,6 +150,7 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"desktop_open_app","description":"Abre aplicativo Linux pelo ID do arquivo .desktop, apenas se permitido em JARVIS_ALLOWED_APPS e confirmado pelo usuário. Não promete foco de janela.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"desktop_info","description":"Diagnostica sessão Wayland, compositor, Screenshot e RemoteDesktop portals; não controla o computador.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"desktop_screenshot","description":"Solicita captura da área de trabalho via portal XDG, com dupla aprovação do usuário. Salva imagem no workspace. A imagem não é transmitida ao modelo automaticamente.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"browser_navigate","description":"Navega em endereço público HTTP/HTTPS com navegador Chromium isolado; exige aprovação.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"],"additionalProperties":False}},
