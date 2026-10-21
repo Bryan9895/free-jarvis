@@ -129,6 +129,10 @@ class Toolkit:
         from .wayland import open_app
         return open_app(app_id, self.approve)
 
+    def desktop_input(self, action, dx=0, dy=0, text=""):
+        from .remote_desktop import agent_step
+        return agent_step(self.approve, action, dx=dx, dy=dy, text=text)
+
     def execute(self, name, arguments):
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
@@ -139,6 +143,7 @@ class Toolkit:
             "browser_screenshot": self.browser_screenshot,
             "desktop_info": self.desktop_info, "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
+            "desktop_input": self.desktop_input,
         }
         if name not in operations:
             return {"error": "Ferramenta desconhecida"}
@@ -150,6 +155,7 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"desktop_input","description":"EXPERIMENTAL, desativado por padrão: executa UMA ação gráfica autorizada por sessão GNOME/Wayland: move o cursor no máximo 50px por eixo, um clique esquerdo na posição atual, ou digita até 40 caracteres minúsculos/dígitos/espaço. Não percebe a tela nem sabe onde está o foco. Requer JARVIS_ENABLE_DESKTOP_INPUT=1, aprovação do usuário e diálogo RemoteDesktop do GNOME. Não usar para compras, senhas, terminais ou operações irreversíveis.","parameters":{"type":"object","properties":{"action":{"type":"string","enum":["move","click","type"]},"dx":{"type":"number"},"dy":{"type":"number"},"text":{"type":"string"}},"required":["action"],"additionalProperties":False}},
     {"type":"function","name":"desktop_open_app","description":"Abre aplicativo Linux pelo ID do arquivo .desktop, apenas se permitido em JARVIS_ALLOWED_APPS e confirmado pelo usuário. Não promete foco de janela.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"desktop_info","description":"Diagnostica sessão Wayland, compositor, Screenshot e RemoteDesktop portals; não controla o computador.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"desktop_screenshot","description":"Solicita captura da área de trabalho via portal XDG, com dupla aprovação do usuário. Salva imagem no workspace. A imagem não é transmitida ao modelo automaticamente.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
