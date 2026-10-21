@@ -144,6 +144,19 @@ def main():
                     break
                 if not msg:
                     continue
+                if msg.lower() == "/tela" or msg.lower().startswith("/tela "):
+                    from .vision import analyze_screen
+                    from .wayland import WaylandError
+                    if not c.model:
+                        print("Configure FCC_MODEL para um modelo com visão.", file=sys.stderr)
+                        continue
+                    question = msg[6:].strip() or "Descreva o conteúdo visível nesta tela."
+                    try:
+                        observation = analyze_screen(client, c.model, c.workspace, confirm, question)
+                        print("JARVIS (visão) >", observation.get("answer", observation), "\\n")
+                    except (FCCError, WaylandError) as exc:
+                        print("Erro na análise da tela:", exc, file=sys.stderr)
+                    continue
                 try:
                     answer = agent.ask(msg)
                     print("JARVIS >", answer, "\n")
