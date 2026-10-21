@@ -148,6 +148,20 @@ class AutoModelClient:
         self.active_model = self.candidates[0]
         return self.active_model
 
+    def available_models(self):
+        if not self.candidates:
+            self.initialize()
+        catalog = self.client.models()
+        return [m["id"] for m in catalog.get("data", [])
+                if isinstance(m, dict) and isinstance(m.get("id"), str)]
+
+    def select_model(self, name):
+        if not isinstance(name, str) or name not in self.available_models():
+            raise FCCError("Modelo não encontrado no catálogo Responses")
+        self.active_model = name
+        self.candidates = [name]
+        return name
+
     def responses(self, payload):
         if not self.candidates:
             self.initialize()
