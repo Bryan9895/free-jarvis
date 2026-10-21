@@ -168,6 +168,31 @@ def main():
                     break
                 if not msg:
                     continue
+                if msg.lower() in ("/modelos", "/models"):
+                    try:
+                        for model_id in auto.available_models():
+                            print(("* " if model_id == auto.active_model else "  ") + model_id)
+                    except FCCError as exc:
+                        print("Erro no catálogo FCC:", exc, file=sys.stderr)
+                    continue
+                if msg.lower() == "/modelo atual":
+                    print("Modelo atual:", auto.active_model)
+                    continue
+                if msg.lower() == "/modelo auto":
+                    auto.preferred = ""
+                    auto.initialize()
+                    agent.model = auto.active_model
+                    print("Modo seleção automática:", auto.active_model)
+                    continue
+                if msg.lower().startswith("/modelo "):
+                    selected = msg[8:].strip()
+                    try:
+                        auto.select_model(selected)
+                        agent.model = selected
+                        print("Modelo atual:", selected)
+                    except FCCError as exc:
+                        print("Modelo não selecionado:", exc, file=sys.stderr)
+                    continue
                 if msg.lower().startswith("/localizar "):
                     from .targeting import locate_target
                     from .wayland import WaylandError
