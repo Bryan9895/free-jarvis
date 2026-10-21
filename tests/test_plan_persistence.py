@@ -43,10 +43,12 @@ class PersistentPlansTests(unittest.TestCase):
             planner, agent = self._create(store)
             planner.prepare("Analisar workspace")
             def inspect(_):
-                # Checkpoints visible even during execution.
-                self.assertEqual(store.latest()["status"], "running")
+                # A aprovação acontece ANTES da transição para running.
+                self.assertEqual(store.latest()["status"], "ready")
                 return True
-            result = planner.execute(inspect, report=lambda _: None)
+            def report(_):
+                self.assertEqual(store.latest()["status"], "running")
+            result = planner.execute(inspect, report=report)
             self.assertEqual(result["status"], "completed_unverified")
             self.assertEqual(store.latest()["steps"][0]["status"], "reported_unverified")
             self.assertEqual(agent.ask.call_count, 2)
