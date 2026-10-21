@@ -135,7 +135,10 @@ def main():
         toolkit = Toolkit(c.workspace, approve=confirm)
         agent = Agent(auto, toolkit, mem, auto.active_model)
         from .planner import TaskPlanner
-        planner = TaskPlanner(auto, agent)
+        from .plan_store import PlanStore
+        from .plan_view import format_plan, format_history
+        plan_store = PlanStore(c.db)
+        planner = TaskPlanner(auto, agent, store=plan_store)
         voice = None
         if args.voice:
             from .voice import VoiceIO
@@ -146,7 +149,7 @@ def main():
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
-        print("Tarefas: /planejar OBJETIVO, /plano, /executar-plano, /cancelar-plano")
+        print("Tarefas: /planejar OBJETIVO, /plano, /historico-planos, /executar-plano, /cancelar-plano")
         try:
             while True:
                 try:
@@ -176,22 +179,25 @@ def main():
                 if msg.lower().startswith("/planejar "):
                     try:
                         prepared = planner.prepare(msg[len("/planejar "):].strip())
-                        print("JARVIS (plano) >", json.dumps(prepared, ensure_ascii=False, indent=2))
+                        print(format_plan(prepared, show_results=False))
                     except (FCCError, ValueError) as exc:
                         print("Erro ao planejar:", exc, file=sys.stderr)
                     continue
                 if msg.lower() == "/plano":
-                    print(json.dumps(planner.snapshot(), ensure_ascii=False, indent=2))
+                    print(format_plan(planner.snapshot()))
                     continue
                 if msg.lower() == "/cancelar-plano":
-                    print(json.dumps(planner.cancel(), ensure_ascii=False, indent=2))
+                    print(format_plan(planner.cancel()))
                     continue
                 if msg.lower() == "/executar-plano":
                     try:
                         result = planner.execute(confirm)
-                        print("JARVIS (execução) >", json.dumps(result, ensure_ascii=False, indent=2))
+                        print(format_plan(result))
                     except (FCCError, ValueError) as exc:
                         print("Erro na execução:", exc, file=sys.stderr)
+                    continue
+                if msg.lower() == "/historico-planos":
+                    print(format_history(planner.history()))
                     continue
                 if msg.lower() == "/rapido":
                     agent.mode = "fast"
@@ -284,6 +290,7 @@ def main():
                     print("Erro de modelo/protocolo:", exc, file=sys.stderr)
         finally:
             toolkit.close()
+            plan_store.close()
             mem.close()
     except FCCError as exc:
         print("Erro:", exc, file=sys.stderr)
