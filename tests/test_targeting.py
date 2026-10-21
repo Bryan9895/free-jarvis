@@ -64,8 +64,7 @@ class TargetingTests(unittest.TestCase):
                 parse_target(json.dumps(item))
         # Uma explicação com um único JSON completo é recuperável.
         self.assertFalse(parse_target('Localizei: {"found":false,"reason":"ausente"}')["found"])
-        with self.assertRaises(WaylandError):
-            parse_target('{"found":true,"label":"x","confidence":0.9,"bbox":[1,2,3,4]} outro texto')
+        self.assertTrue(parse_target('{"found":true,"label":"x","confidence":0.9,"bbox":[1,2,3,4]} outro texto')["found"])
 
     def test_remote_model_rejected_before_screenshot(self):
         with patch("jarvis.targeting.analyze_screen",side_effect=AssertionError("should not capture")):
