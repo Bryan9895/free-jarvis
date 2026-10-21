@@ -79,6 +79,27 @@ class FCCTests(unittest.TestCase):
             client.responses({"input":"olá"})
         self.assertFalse(may_fallback(FCCError("404 não encontrado", 404)))
 
+    def test_gemini_interactions_only_switches(self):
+        class GeminiOnlyClient(FakeClient):
+            def responses(self, payload):
+                self.seen.append(payload["model"])
+                if payload["model"] == "first":
+                    raise FCCError(
+                        'HTTP 400 em /v1/responses: Upstream provider GEMINI returned HTTP 400. '
+                        'Category: invalid_request. This model only supports Interactions API.', 400)
+                return {"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}
+        fake = GeminiOnlyClient()
+        a = AutoModelClient(fake)
+        self.assertEqual(a.diagnostic()["model"], "second")
+        self.assertEqual(fake.seen, ["first", "second"])
+
+    def test_generic_400_remains_failure(self):
+        a = AutoModelClient(FakeClient([400]))
+        a.initialize()
+        with self.assertRaises(FCCError):
+            a.responses({"input": "teste"})
+        self.assertFalse(may_fallback(FCCError("invalid JSON arguments", 400)))
+
     def test_permanent_auth_failure_no_fallback(self):
         fake=FakeClient([401])
         a=AutoModelClient(fake)
