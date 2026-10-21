@@ -410,3 +410,20 @@ Também disponível dentro do chat via `/clicar-guiado <descrição do alvo>`.
 O fluxo usa SOMENTE `ollama/` explicitamente escolhido; captura a tela com confirmação do terminal e GNOME, pede aprovação de envio ao modelo, apresenta a explicação visual (pode alucinar), então **o usuário posiciona o cursor manualmente**, confirma `CLICAR`, autoriza o clique e o portal GNOME. Uma captura posterior e o envio de duas imagens para comparação são opcionais e exigem novas aprovações. O modelo apenas avalia diferenças visíveis; o resultado continua `sent_unverified`, nunca `success` automático.
 
 **Use somente em uma janela descartável com área vazia ou aplicativo de demonstração**, nunca em botões que enviam mensagens, compram, apagam, instalam ou alteram arquivos. A IA ainda não conhece coordenadas reais do mouse, nem tem validação robusta para operar sozinha. Este experimento é separadamente acionado, não acrescenta ferramentas autônomas ao agente e não executa passos encadeados sem autorização.
+
+### Localização de alvos visuais com imagem anotada (experimental)
+
+A JARVIS pode receber uma meta visual e solicitar ao Qwen uma região **normalizada de 0 a 1000**. O retorno da IA deve ser JSON válido e a área precisa ser geometricamente consistente. A JARVIS cria uma cópia da captura com retângulo vermelho e centro amarelo, permitindo **inspeção humana antes de qualquer clique**.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+python -m pip install -e '.[desktop,vision]'
+export FCC_MODEL='ollama/qwen3.5:2b'
+jarvis-fcc --locate-target "Ícone do gerenciador de arquivos"
+```
+
+Dentro do chat, use `/localizar Ícone do gerenciador de arquivos`. Após as autorizações de captura e envio ao Ollama, abra `~/Projetos/jarvis_target_preview.png` para conferir a sugestão. O modelo pode errar a região, especialmente em interfaces compactas, escalonadas ou em múltiplos monitores. O status `proposal_only` **não representa identificação validada**. Se `found=false` ou os dados forem inválidos, a ação é interrompida.
+
+**Nenhum clique, digitação, movimento do cursor ou execução de comandos ocorre nesse modo.** Não habilita automação coordenada e não assume que o modelo sabe a posição real do mouse. A próxima integração precisará da API de movimento absoluto vinculada a uma stream ScreenCast e de confirmação humana de alvo, antes de enviar qualquer evento.
