@@ -43,6 +43,44 @@ class FCCTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith("/v1/models?view=responses"))
         self.assertEqual(req.get_header("Authorization"), "Bearer fake")
 
+    def test_explicit_local_model_stays_local(self):
+        class MixedCatalog(FakeClient):
+            def models(self):
+                return {"default_model_id":"nvidia_nim/super", "data":[
+                    {"id":"gemini/preview"},{"id":"ollama/qwen3.5:2b"},
+                    {"id":"nvidia_nim/super"},{"id":"ollama/qwen3.5:4b"}]}
+        model=AutoModelClient(MixedCatalog(), preferred="ollama/qwen3.5:2b")
+        model.initialize()
+        self.assertEqual(model.candidates, ["ollama/qwen3.5:2b"])
+
+    def test_auto_uses_same_provider_but_not_others(self):
+        class MixedCatalog(FakeClient):
+            def models(self):
+                return {"default_model_id":"ollama/a", "data":[
+                    {"id":"gemini/preview"},{"id":"ollama/a"},{"id":"ollama/b"}]}
+        model=AutoModelClient(MixedCatalog())
+        model.initialize()
+        self.assertEqual(model.candidates, ["ollama/a", "ollama/b"])
+        opted=AutoModelClient(MixedCatalog(), preferred="ollama/a", backups=["gemini/preview"])
+        opted.initialize()
+        self.assertEqual(opted.candidates, ["ollama/a", "gemini/preview"])
+
+    def test_explicit_local_timeout_no_cross_provider(self):
+        class BrokenCatalog(FakeClient):
+            def models(self):
+                return {"default_model_id":"gemini/preview", "data":[
+                    {"id":"gemini/preview"},{"id":"ollama/qwen3.5:2b"}]}
+        backend=BrokenCatalog([None])
+        def fail(payload):
+            backend.seen.append(payload["model"])
+            raise FCCError("timed out")
+        backend.responses=fail
+        model=AutoModelClient(backend, preferred="ollama/qwen3.5:2b")
+        model.initialize()
+        with self.assertRaises(FCCError):
+            model.responses({"input":"hi"})
+        self.assertEqual(backend.seen, ["ollama/qwen3.5:2b"])
+
     def test_default_model_automatic(self):
         a=AutoModelClient(FakeClient())
         self.assertEqual(a.initialize(), "first")
