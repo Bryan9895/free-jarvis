@@ -473,3 +473,36 @@ O chat da JARVIS agora permite usar **qualquer ID anunciado** em `/v1/models?vie
 O modelo de `/tela`, `/localizar` e `/clicar-guiado` segue a seleção atual no chat, mas esses comandos podem recusar modelos sem visão ou fora da política local. A lista do FCC **não prova** que o modelo está operacional ou que suporta function calling, `input_image` ou a rota Responses. `/modelo todos` só tenta outro modelo diante de erros de fallback reconhecidos: um erro permanente de protocolo, permissão ou argumentos ainda interrompe a execução. Como o catálogo pode conter modelos remotos, esse comando pode encaminhar o texto enviado ao modelo a outro provedor; não use com dados privados se não confia nesses provedores.
 
 **Controle do computador:** nesta versão, a JARVIS continua usando autorização por ação e os diálogos nativos RemoteDesktop/Screenshot do GNOME. A seleção de modelos não altera as permissões de execução. Uma sessão de controle não deve contornar permissões do sistema operacional.
+
+### Desempenho: respostas rápidas e executor revisado (outubro de 2026)
+
+O agente anteriormente enviava 14 ferramentas para **toda** pergunta, inclusive perguntas como `O que é Python?`, sem configurar o esforço de raciocínio nem um limite de saída. Modelos pequenos com geração de raciocínio (como Qwen 3.5 2B) podem gastar muito tempo antes de mostrar a resposta.
+
+A implementação atual adota um roteador local conservador, que **não chama outro modelo** para classificar. Perguntas curtas puramente informativas passam por um turno sem ferramentas, com até 4 mensagens recentes, `reasoning={"effort":"none"}` e `max_output_tokens=512`. Pedidos de ações/desktop/arquivos/navegador continuam no modo de ferramentas, com contexto usual, orçamento de 1536 tokens e até seis rodadas de execução. O executor evita executar a **mesma ferramenta com os mesmos argumentos mais de uma vez dentro do turno**, reutilizando o resultado anterior (mecanismo inspirado no pipeline do Mark-LVI). Em nenhum caso isso significa que uma ação tenha sido verificada no sistema operacional.
+
+Comandos no chat:
+- `/rapido`: força respostas sem ferramentas; não use para pedidos de ações.
+- `/normal`: restaura seleção automática (padrão).
+- `/acoes`: oferece ferramentas mesmo para perguntas simples.
+- `/metricas`: mostra duração total da última resposta, tempo de cada geração FCC, quantidade de chamadas de ferramenta e rota escolhida.
+
+Para exibir a métrica após **toda** resposta, configure `export JARVIS_SHOW_TIMING=1` antes de executar `jarvis-fcc`.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+export FCC_MODEL="ollama/qwen3.5:2b"
+export JARVIS_SHOW_TIMING=1
+jarvis-fcc
+# Dentro do chat:
+# O que é Python?
+# /metricas
+# /acoes
+# Liste os arquivos do workspace
+# /normal
+```
+
+**Como interpretar:** se `model_s` já for alto mesmo com zero ferramentas, a lentidão está sobretudo na geração pelo modelo/provedor, no carregamento do Ollama ou no hardware; não é causada por chamadas de ferramentas. Compare a primeira pergunta (carregamento a frio) com a segunda, de comprimento equivalente. Em outro terminal, use `ollama ps` para ver se o modelo está carregado e se executa em CPU/GPU. O comando `ollama run qwen3.5:2b "Responda só OK"` serve como comparação sem FCC. Um modelo maior não é necessariamente mais rápido em um notebook com 8 GB de RAM.
+
+A seleção de todos os modelos FCC permanece disponível, mas nenhum ajuste garante que um modelo externo seja mais rápido ou compatível com ferramentas. O modo rápido não recebe ferramentas, então não pode executar ações. O roteador faz classificação simples e pode errar; `/acoes` força a rota de ferramentas, sem eliminar aprovações e permissões nativas.
