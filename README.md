@@ -234,3 +234,27 @@ jarvis-fcc --desktop-screenshot
 ```
 
 O teste de streaming HTTP contra o servidor simulado passou no CI; confirmação do modelo/provedor real e do portal de captura em GNOME ainda depende de teste no computador. O portal solicita confirmação do usuário; não houve tentativa de contornar permissões.
+
+## Validação real GNOME e problema NVIDIA NIM (outubro de 2026)
+
+O teste `jarvis-fcc --desktop-screenshot` foi confirmado **funcionando no GNOME/Wayland** do usuário. A imagem é gerada no workspace mediante autorização. Essa confirmação diz respeito a capturas, não ao controle de teclado e mouse.
+
+O erro `HTTP 404 em /v1/responses` com texto **"Upstream provider NIM returned HTTP 404"** e **"Category: upstream"** indica um erro da rota do fornecedor NIM, não do servidor HTTP local. Agora o failover tenta outro modelo listado no catálogo **somente para essa classe de 404**; um 404 comum continua sendo erro fatal. O teste automatizado cobre essa distinção, mas o resultado real depende de haver outro provedor funcional no FCC.
+
+Teste com prioridade manual em caso de falha de provedores:
+```bash
+git pull origin main
+unset FCC_MODEL
+jarvis-fcc --check-fcc
+```
+Caso queira evitar o modelo NIM primeiro, configure um modelo da lista obtida com `jarvis-fcc --models`, como `openai/gpt-6-luna` **apenas se tiver autorização e desejar usar esse provedor**. Fallback pode enviar prompts a outro provedor e consumir cota.
+
+### Experimento controlado de RemoteDesktop no GNOME/Wayland
+
+A próxima etapa da integração gráfica tem um teste separado, **não ligado ao agente de IA**:
+```bash
+jarvis-fcc --desktop-remote-test
+```
+O comando solicita duas permissões: confirmação no terminal e diálogo do GNOME para um dispositivo ponteiro. Se ambos forem aceitos, tenta mover o cursor **25 pixels para a direita**, informa `sent_unverified` (envio não implica movimento confirmado) e **fecha a sessão imediatamente**. Nenhuma tecla ou clique é enviado. O teste não ativa uma sessão persistente e não obtém direitos de superusuário.
+
+O controle gráfico pleno, captura contínua PipeWire, sessão EIS/libei e interpretação visual ainda não foram implementados. Teste o experimento somente na sua sessão gráfica pessoal, sem tarefas sensíveis abertas. Em caso de erro, copie a saída para diagnosticarmos.
