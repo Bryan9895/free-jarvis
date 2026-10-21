@@ -272,3 +272,19 @@ jarvis-fcc --check-fcc
 **Nota de privacidade e custos:** modelos diferentes podem usar provedores remotos distintos; não execute o teste com conteúdo sensível. Para determinar os próximos provedores, use `jarvis-fcc --models`; configure explicitamente `FCC_FALLBACK_MODELS` quando precisar de prioridade previsível. O teste usa uma mensagem curta, mas pode consumir cota.
 
 **Wayland:** `jarvis-fcc --desktop-remote-test` retornou `sent_unverified` em sessão GNOME real, demonstrando que a solicitação e o envio do evento não falharam. A confirmação visual de deslocamento do cursor ainda não foi reportada.
+
+### Diagnóstico de lentidão no FCC e cursor não observado — 21/10/2026
+
+Um usuário interrompeu `jarvis-fcc --check-fcc` com Ctrl+C após aguardar uma resposta do servidor HTTP; isso gerou `KeyboardInterrupt` enquanto a leitura da resposta upstream estava pendente. Não implica necessariamente bug no cliente: algum modelo/provedor estava demorando para responder. O diagnóstico foi limitado a **três modelos** e timeout de **15 segundos por leitura HTTP** e agora mostra os modelos em teste no stderr. O timeout vale por operação de leitura de rede e **não é um limite global rígido de execução**.
+
+No GNOME, o diálogo RemoteDesktop inclui uma chave **"Permitir interação remota"**; ela precisa estar habilitada e a sessão autorizada através do botão **Compartilhar**. Mesmo assim, o retorno `sent_unverified` só comprova que o evento foi submetido pelo D-Bus, não que o cursor se moveu. O experimento agora espera o diálogo desaparecer, envia **3 movimentos de 25 pixels**, dá tempo para o compositor processá-los e encerra a sessão. Nenhum clique ou digitação é enviado.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+unset FCC_MODEL
+jarvis-fcc --check-fcc
+jarvis-fcc --desktop-remote-test
+```
+
+Para evitar esperar por provedores remotos no diagnóstico, selecione explicitamente um modelo local anunciado pelo FCC, por exemplo `export FCC_MODEL='ollama/qwen3.5:2b'` **se disponível e carregado no Ollama**; confirmar um modelo listado não basta para garantir que sua inferência funcione.
