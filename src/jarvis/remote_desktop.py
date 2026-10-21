@@ -153,6 +153,28 @@ class RemoteDesktop:
                              [self.session, {}, key, RELEASED])
         return {"status": "sent_unverified", "action": "type_letter_j"}
 
+    async def type_safe_text(self, text):
+        """Digita somente letras latinas minúsculas, dígitos e espaços.
+
+        Não oferece teclas especiais, atalhos ou envio de comandos.
+        """
+        if not self.session or not self.devices & KEYBOARD:
+            raise WaylandError("Sessão sem permissão de teclado")
+        if not isinstance(text, str) or not (1 <= len(text) <= 40):
+            raise WaylandError("Texto deve ter entre 1 e 40 caracteres")
+        if any(c not in "abcdefghijklmnopqrstuvwxyz0123456789 " for c in text):
+            raise WaylandError("Somente letras minúsculas sem acentos, dígitos e espaço")
+        for character in text:
+            key = ord(character)
+            try:
+                await self._call(INTERFACE, "NotifyKeyboardKeysym", "oa{sv}iu",
+                                 [self.session, {}, key, PRESSED])
+            finally:
+                await self._call(INTERFACE, "NotifyKeyboardKeysym", "oa{sv}iu",
+                                 [self.session, {}, key, RELEASED])
+            await asyncio.sleep(0.02)
+        return {"status": "sent_unverified", "action": "type_text", "characters": len(text)}
+
     async def close(self):
         if self.bus is not None:
             try:
@@ -217,3 +239,50 @@ def test_input(approve, kind):
     if not approve("AUTORIZAR " + description + "?"):
         return {"status": "rejected"}
     return asyncio.run(_test_input_async(kind))
+
+async def _agent_step_async(action, dx=0, dy=0, text=""):
+    desktop = RemoteDesktop()
+    try:
+        await desktop.start(KEYBOARD if action == "type" else POINTER)
+        # Dar tempo ao GNOME para fechar o diálogo do portal.
+        await asyncio.sleep(1.5)
+        if action == "move":
+            outcome = await desktop.move(dx, dy)
+        elif action == "click":
+            outcome = await desktop.click_left()
+        else:
+            outcome = await desktop.type_safe_text(text)
+        await asyncio.sleep(0.7)
+        return outcome
+    finally:
+        await desktop.close()
+
+
+def agent_step(approve, action, dx=0, dy=0, text=""):
+    """Uma ação de interface por autorização e por sessão portal transitória."""
+    import os
+    if os.getenv("JARVIS_ENABLE_DESKTOP_INPUT") != "1":
+        raise WaylandError("Controle gráfico do agente desativado: defina JARVIS_ENABLE_DESKTOP_INPUT=1")
+    if os.getenv("XDG_SESSION_TYPE", "").lower() != "wayland":
+        raise WaylandError("Controle gráfico exige sessão Wayland")
+    if action not in ("move", "click", "type"):
+        raise WaylandError("Ação gráfica não permitida")
+    if action == "move":
+        if type(dx) not in (int, float) or type(dy) not in (int, float):
+            raise WaylandError("Deslocamento inválido")
+        if not (-50 <= dx <= 50 and -50 <= dy <= 50):
+            raise WaylandError("Movimento limitado a 50 pixels por eixo")
+        description = f"MOVER ponteiro em dx={dx}, dy={dy} pixels"
+    elif action == "click":
+        if dx != 0 or dy != 0 or text:
+            raise WaylandError("Clique não admite texto ou deslocamento")
+        description = "CLICAR com botão esquerdo na posição ATUAL do ponteiro; pode acionar comandos ou alterar dados"
+    else:
+        if dx != 0 or dy != 0 or not isinstance(text, str):
+            raise WaylandError("Argumentos inválidos para digitação")
+        if not (1 <= len(text) <= 40) or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789 " for c in text):
+            raise WaylandError("Texto restrito a 40 caracteres minúsculos, dígitos ou espaço")
+        description = f"DIGITAR no campo focado o texto EXATO {text!r}; não use em campos de senha"
+    if not approve("AÇÃO GRÁFICA SOLICITADA PELA IA: " + description):
+        return {"status": "rejected"}
+    return asyncio.run(_agent_step_async(action, dx, dy, text))
