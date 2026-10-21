@@ -66,3 +66,30 @@ Ferramentas disponíveis: `browser_navigate` (abre URL), `browser_inspect` (lê 
 Testes sem navegador: `python -m unittest discover -s tests -v`.
 
 **Próximos passos:** testes E2E de navegação em site de demonstração, verificação de resposta FCC real e melhorias de auditoria/isolamento.
+
+## Etapa 4 — entrada e saída de voz local (MVP)
+
+O modo de voz é **opcional**. O chat tradicional continua disponível.
+
+No Ubuntu/Debian, instale os dispositivos de áudio e a síntese:
+```bash
+sudo apt install -y libportaudio2 alsa-utils
+python3 -m pip install -e '.[voice]'
+python3 -m pip install piper-tts
+```
+O `faster-whisper` usa CPU com quantização int8. Na primeira utilização, o modelo de transcrição precisa ser baixado; depois ele fica em cache. Selecione `tiny` para um computador com RAM limitada.
+
+Para ouvir as respostas, obtenha de uma fonte confiável um modelo de voz **Piper compatível com português**, incluindo seu arquivo `.onnx.json` ao lado do `.onnx`:
+```bash
+export JARVIS_WHISPER_MODEL=tiny
+export JARVIS_LANGUAGE=pt
+export JARVIS_PIPER_MODEL="$HOME/Modelos/piper/pt_BR-voz.onnx"
+jarvis --voice
+```
+Substitua o caminho de exemplo pelo nome real do modelo baixado. Sem `JARVIS_PIPER_MODEL`, a transcrição e o chat continuam funcionando e a resposta aparece apenas em texto.
+
+**Como usar:** pressione **Enter** na CLI para gravar 6 segundos, aguarde a transcrição e a resposta. Também é possível digitar uma mensagem diretamente. Digite `sair` para encerrar.
+
+**Privacidade:** microfone inativo fora das gravações; WAV temporário apagado após transcrição. Transcrição e TTS são locais, porém o texto reconhecido é enviado ao modelo configurado no FCC, que pode usar provedor remoto. Não há escuta constante nem ativação por palavra-chave nesta primeira versão.
+
+**Limitações:** a gravação ainda tem duração fixa (não é push-to-talk contínuo); a seleção do dispositivo depende da configuração padrão do sistema. Testes de microfone real e Piper real precisam ser feitos no Ubuntu do usuário.
