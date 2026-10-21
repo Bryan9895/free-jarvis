@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from .config import Config
-from .fcc import FCCClient, FCCError
+from .fcc import FCCClient, FCCError, AutoModelClient
 from .tools import Toolkit
 from .memory import Memory
 from .agent import Agent
@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
+    parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
     args = parser.parse_args()
     c = Config.from_env()
@@ -31,11 +32,16 @@ def main():
         if args.models:
             print(json.dumps(client.models(), indent=2, ensure_ascii=False))
             return
-        if not c.model:
-            parser.error("Defina FCC_MODEL com ID listado por 'jarvis --models'")
+        auto = AutoModelClient(client, preferred=c.model,
+                               backups=[x.strip() for x in os.getenv("FCC_FALLBACK_MODELS", "").split(",") if x.strip()],
+                               on_switch=lambda model: print(f"⚠️ FCC: modelo alterado automaticamente para {model}"))
+        if args.check_fcc:
+            print(json.dumps({"health": client.health(), "inference": auto.diagnostic()}, ensure_ascii=False, indent=2))
+            return
+        auto.initialize()
         mem = Memory(c.db)
         toolkit = Toolkit(c.workspace, approve=confirm)
-        agent = Agent(client, toolkit, mem, c.model)
+        agent = Agent(auto, toolkit, mem, auto.active_model)
         voice = None
         if args.voice:
             from .voice import VoiceIO
@@ -43,7 +49,7 @@ def main():
                             language=os.getenv("JARVIS_LANGUAGE", "pt"),
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
             print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
-        print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo: {c.model}")
+        print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         try:
             while True:
                 try:
