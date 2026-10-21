@@ -143,6 +143,7 @@ def main():
             print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
+        print("Desempenho: /rapido, /normal, /acoes, /metricas")
         try:
             while True:
                 try:
@@ -168,6 +169,21 @@ def main():
                 if msg.lower() in {"sair", "/quit", "exit"}:
                     break
                 if not msg:
+                    continue
+                if msg.lower() == "/rapido":
+                    agent.mode = "fast"
+                    print("Modo rápido: sem ferramentas e com geração curta.")
+                    continue
+                if msg.lower() == "/normal":
+                    agent.mode = "auto"
+                    print("Modo automático: ferramentas quando necessárias.")
+                    continue
+                if msg.lower() == "/acoes":
+                    agent.mode = "tools"
+                    print("Modo ações: sempre oferece ferramentas ao modelo.")
+                    continue
+                if msg.lower() in ("/metricas", "/metrics"):
+                    print(json.dumps(agent.last_metrics or {"status":"sem execução ainda"}, ensure_ascii=False, indent=2))
                     continue
                 if msg.lower() in ("/modelos", "/models"):
                     try:
@@ -232,6 +248,8 @@ def main():
                 try:
                     answer = agent.ask(msg)
                     print("JARVIS >", answer, "\n")
+                    if os.getenv("JARVIS_SHOW_TIMING") == "1":
+                        print("Tempo:", agent.last_metrics, "\n")
                     if voice:
                         try:
                             status = voice.speak(answer)
