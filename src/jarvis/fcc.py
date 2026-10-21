@@ -1,6 +1,7 @@
 """Cliente FCC com diagnóstico e failover de modelos retornados por /v1/models."""
 import json
 import sys
+import os
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -109,10 +110,11 @@ class AutoModelClient:
     Não marca todas as entradas do catálogo como saudáveis: somente uma geração real
     comprova disponibilidade. Não reenvia operações locais, somente requisições ao FCC.
     """
-    def __init__(self, client, preferred="", backups=(), on_switch=None):
+    def __init__(self, client, preferred="", backups=(), on_switch=None, allow_cross_provider=False):
         self.client = client
         self.preferred = preferred
         self.backups = tuple(backups)
+        self.allow_cross_provider = allow_cross_provider
         self.on_switch = on_switch
         self.candidates = []
         self.active_model = ""
@@ -129,8 +131,15 @@ class AutoModelClient:
         for model in self.backups:
             if model not in available:
                 raise FCCError(f"Modelo de fallback desconhecido: {model}")
-        configured = [self.preferred, *self.backups] if self.preferred else [default, *self.backups]
-        self.candidates = list(dict.fromkeys(m for m in [*configured, *available] if m in available))
+        primary = self.preferred or (default if default in available else available[0])
+        provider = primary.split("/", 1)[0] if "/" in primary else ""
+        same_provider = [m for m in available if (m.split("/", 1)[0] if "/" in m else "") == provider]
+        # Modelo explicitamente selecionado jamais migra de provedor sem um
+        # fallback igualmente explícito, exceto se usuário habilitar a opção.
+        implicit = [] if self.preferred else same_provider
+        if self.allow_cross_provider:
+            implicit = available
+        self.candidates = list(dict.fromkeys([primary, *self.backups, *implicit]))
         self.active_model = self.candidates[0]
         return self.active_model
 
@@ -161,10 +170,12 @@ class AutoModelClient:
     def diagnostic(self):
         self.initialize()
         # Diagnóstico intencionalmente curto; não varrer todo o catálogo de provedores.
+        saved_candidates = self.candidates
         self.candidates = self.candidates[:3]
         previous_timeout = getattr(self.client, "timeout", None)
         if previous_timeout is not None:
-            self.client.timeout = min(previous_timeout, 15)
+            default_timeout = 120 if self.active_model.startswith('ollama/') else 30
+            self.client.timeout = max(1, int(os.getenv('FCC_DIAGNOSTIC_TIMEOUT', default_timeout)))
         previous_switch = self.on_switch
         def report_switch(model):
             if previous_switch:
@@ -179,6 +190,7 @@ class AutoModelClient:
             })
         finally:
             self._diagnosing = False
+            self.candidates = saved_candidates
             self.on_switch = previous_switch
             if previous_timeout is not None:
                 self.client.timeout = previous_timeout
