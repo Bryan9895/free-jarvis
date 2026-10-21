@@ -330,3 +330,24 @@ jarvis-fcc --check-fcc
 ```
 
 Se persistir `response.incomplete`, será necessário inspecionar a razão devolvida pelo FCC e o mapeamento do seu modelo, não assumir que a conexão HTTP falhou. O teste automatizado exercita as condições de saída, mas a confirmação com seu Ollama/FCC permanece necessária.
+
+### Etapa 5: testes de clique e teclado no GNOME/Wayland
+
+Os testes de movimento do ponteiro e de captura de tela já foram **confirmados no Ubuntu GNOME do usuário**. Esta entrega acrescenta dois testes novos, independentes do FCC e **não disponíveis como ações autônomas da IA**. Consulte o padrão [XDG RemoteDesktop Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html) para as permissões e interfaces.
+
+**Teste de clique:**
+1. Antes de executar, posicione o cursor numa área vazia da área de trabalho, sem botões, links, janelas com conteúdo sensível ou ações que possam alterar arquivos.
+2. Execute `jarvis-fcc --desktop-click-test`.
+3. Digite `sim`; habilite *Permitir interação remota* e selecione *Compartilhar* na janela GNOME.
+4. O teste enviará um único clique esquerdo no local do cursor após o diálogo sair da tela. Ele devolve `sent_unverified`, que não prova efeito visual.
+
+**Teste do teclado:**
+1. Abra um editor de texto com documento **vazio**, por exemplo Gedit/GNOME Text Editor. Não use terminal nem campos que possam executar comandos.
+2. Execute `jarvis-fcc --desktop-keyboard-test` em outro terminal, mantendo o editor preparado para receber foco depois da autorização.
+3. Digite `sim`, habilite *Permitir interação remota* e clique em *Compartilhar* no diálogo GNOME.
+4. O teste enviará **uma única letra minúscula `j`** ao aplicativo atualmente focado. Se o editor não receber a letra, o foco pode ter ficado na janela do terminal.
+5. Feche o documento sem salvar e informe se a letra apareceu.
+
+A autorização de teclado e a de ponteiro são solicitadas **separadamente**, nunca juntas. As ações enviam pares pressionar/liberar usando `NotifyPointerButton` ou `NotifyKeyboardKeysym`, sem bypass de Wayland. O campo `status=sent_unverified` indica apenas que a chamada D-Bus foi aceita; a confirmação visual depende do usuário. **Não execute esses testes sobre interfaces que façam compras, exclusões, envios ou outras ações irreversíveis.**
+
+A automação de cliques e digitação a partir de comandos de linguagem natural continua bloqueada até validarmos os testes físicos e adicionarmos salvaguardas e verificação do contexto visual.
