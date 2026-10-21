@@ -370,3 +370,24 @@ Teste com um aplicativo de texto vazio ou área de trabalho sem ações sensíve
 **Limites e privacidade:** confirmação `SIM` pode autorizar um clique com efeitos reais, como excluir um arquivo ou confirmar uma ação; por isso mantenha janelas sensíveis fechadas. O recurso não verifica foco da janela nem conteúdo da tela, não envia capturas ao modelo e não deve ser usado para fluxos irreversíveis. Mesmo que o retorno indique `sent_unverified`, confirme o resultado visualmente. **Para desativar novamente**, interrompa o chat e execute `unset JARVIS_ENABLE_DESKTOP_INPUT`. Não use `sudo`, uinput ou mecanismos de bypass do portal. Não há controle persistente ou automatização ilimitada; cada chamada solicita autorização novamente.
 
 A documentação e os testes confirmam as proteções de software. **A integração completa entre FCC, ferramenta e entrada desktop solicitada pelo modelo precisa de validação física no GNOME**.
+
+### Etapa 5: descrever e diagnosticar a tela (visão experimental)
+
+Após o teste bem-sucedido de ações gráficas enviadas pela IA, a JARVIS passou a aceitar **análise visual pontual**, separada do controle do mouse. O FCC aceita `input_image` no formato Responses; o modelo Ollama configurado **também precisa oferecer visão**. Ter Qwen funcionando para texto não comprova suporte à imagem.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+python -m pip install -e '.[desktop,vision]'
+export FCC_MODEL='ollama/qwen3.5:2b'
+jarvis-fcc --see-screen "Descreva o que aparece nesta tela sem executar ações."
+```
+
+Dentro de uma sessão `jarvis-fcc`, o comando especial `/tela` (ou `/tela Por que esta janela mostra um erro?`) executa o mesmo procedimento. A descrição é mostrada no terminal, **sem ser adicionada automaticamente ao histórico de conversa**.
+
+**Permissões:** primeiro, a JARVIS pede captura e o GNOME exibe seu diálogo. Depois, comprime a imagem em JPEG de no máximo 1280×900 e solicita uma **segunda aprovação antes de enviá-la**. O comando chama o cliente FCC diretamente, com **modelo fixo, sem failover e sem ferramentas**, para evitar mudanças de provedores e cliques automáticos durante a observação. A imagem original salva no workspace permanece em `jarvis_desktop_screenshot.png`: mantenha esse diretório protegido, apague quando não precisar e feche janelas sensíveis antes de capturar.
+
+Por padrão, somente IDs `ollama/` são aceitos. Se seu FCC estiver apontando Ollama para um servidor remoto, os dados ainda podem deixar a máquina: verifique sua configuração. Para analisar usando outro provedor, seria necessário habilitar explicitamente `JARVIS_ALLOW_REMOTE_VISION=1`; isso pode enviar o conteúdo da tela a terceiros e consumir cota. Não recomendamos enquanto houver documentos, mensagens, credenciais ou dados privados visíveis.
+
+**Limitações:** não há captura contínua, detecção de alvo clicável, coordenadas inferidas automaticamente nem execução de ações com base em observações. O modelo pode interpretar imagens incorretamente. Se o Qwen 3.5 2B não aceitar `input_image` via FCC, o comando informa erro; será preciso investigar o suporte visual específico da combinação modelo/provedor, não assumir que o recurso funciona.
