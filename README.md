@@ -258,3 +258,17 @@ jarvis-fcc --desktop-remote-test
 O comando solicita duas permissões: confirmação no terminal e diálogo do GNOME para um dispositivo ponteiro. Se ambos forem aceitos, tenta mover o cursor **25 pixels para a direita**, informa `sent_unverified` (envio não implica movimento confirmado) e **fecha a sessão imediatamente**. Nenhuma tecla ou clique é enviado. O teste não ativa uma sessão persistente e não obtém direitos de superusuário.
 
 O controle gráfico pleno, captura contínua PipeWire, sessão EIS/libei e interpretação visual ainda não foram implementados. Teste o experimento somente na sua sessão gráfica pessoal, sem tarefas sensíveis abertas. Em caso de erro, copie a saída para diagnosticarmos.
+
+### FCC: erro Gemini Interactions API e continuidade automática
+
+Em alguns modelos Gemini, o FCC pode responder `HTTP 400` com `This model only supports Interactions API`. Isso significa que aquele **modelo/rota** não atende ao contrato `/v1/responses`; não significa que o servidor local inteiro esteja inoperante. A JARVIS agora trata **somente essa assinatura específica** como incompatibilidade de modelo e tenta outro anunciado pelo FCC. Um `400` comum continua interrompendo a requisição.
+
+```bash
+git pull origin main
+unset FCC_MODEL
+jarvis-fcc --check-fcc
+```
+
+**Nota de privacidade e custos:** modelos diferentes podem usar provedores remotos distintos; não execute o teste com conteúdo sensível. Para determinar os próximos provedores, use `jarvis-fcc --models`; configure explicitamente `FCC_FALLBACK_MODELS` quando precisar de prioridade previsível. O teste usa uma mensagem curta, mas pode consumir cota.
+
+**Wayland:** `jarvis-fcc --desktop-remote-test` retornou `sent_unverified` em sessão GNOME real, demonstrando que a solicitação e o envio do evento não falharam. A confirmação visual de deslocamento do cursor ainda não foi reportada.
