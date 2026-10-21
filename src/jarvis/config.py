@@ -15,7 +15,7 @@ class Config:
     def from_env(cls):
         return cls(
             os.getenv("FCC_URL", "http://127.0.0.1:8082").rstrip("/"),
-            os.getenv("FCC_MODEL", ""),
+            (lambda value: "" if value.strip().upper() in {"ID_DO_MODELO", "MODEL_ID", "YOUR_MODEL_ID"} else value.strip())(os.getenv("FCC_MODEL", "")),
             os.getenv("FCC_TOKEN", ""),
             Path(os.getenv("JARVIS_WORKSPACE", "~/Projetos")).expanduser().resolve(),
             Path(os.getenv("JARVIS_DB", "~/.local/share/jarvis-fcc/memory.sqlite3")).expanduser(),
