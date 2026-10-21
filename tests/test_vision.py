@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from jarvis.vision import analyze_screen, prepare_image, MAX_IMAGE_BYTES
+from jarvis.fcc import FCCError
 from jarvis.wayland import WaylandError
 
 
@@ -55,6 +56,47 @@ class VisionTests(unittest.TestCase):
         with patch.dict(os.environ, {"JARVIS_ALLOW_REMOTE_VISION":"1"}), patch("jarvis.vision.screenshot", return_value={"status":"saved","path":"/mock/image.png"}), patch("jarvis.vision.prepare_image", return_value="data:image/jpeg;base64,AA=="):
             result=analyze_screen(client, "provider/vision", ".", lambda _: True, "Descreva")
         self.assertEqual(result["uploaded_to"], "PROVEDOR REMOTO")
+
+    def test_targeting_incomplete_is_retried_once_without_new_permissions(self):
+        client = Mock()
+        client.responses.side_effect = [
+            FCCError("FCC retornou response.incomplete (motivo: max_output_tokens)"),
+            {"output_text": '{"found":false,"reason":"Não visível"}'},
+        ]
+        approvals=[]
+        def approve(action):
+            approvals.append(action)
+            return True
+        with patch("jarvis.vision.screenshot", return_value={"status":"saved","path":"/fake/screenshot.png"}) as capture, patch("jarvis.vision.prepare_image", return_value="data:image/jpeg;base64,AA==") as prepare:
+            result = analyze_screen(client,"ollama/qwen3.5:2b",".",approve,
+                "Localize um botão", max_output_tokens=2048,
+                reasoning_effort="none", retry_incomplete=True)
+        self.assertEqual(result["status"],"analyzed")
+        self.assertEqual(client.responses.call_count,2)
+        self.assertEqual(client.responses.call_args_list[0].args[0]["max_output_tokens"],2048)
+        self.assertEqual(client.responses.call_args_list[1].args[0]["max_output_tokens"],4096)
+        self.assertEqual(client.responses.call_args_list[0].args[0]["reasoning"],{"effort":"none"})
+        self.assertEqual(len(approvals),2)
+        capture.assert_called_once()
+        prepare.assert_called_once()
+
+    def test_retry_is_bounded_even_if_model_stays_incomplete(self):
+        client=Mock()
+        client.responses.side_effect=FCCError("FCC retornou response.incomplete (motivo: max_output_tokens)")
+        with patch("jarvis.vision.screenshot",return_value={"status":"saved","path":"/fake/screenshot.png"}),patch("jarvis.vision.prepare_image",return_value="data:image/jpeg;base64,AA=="):
+            with self.assertRaises(FCCError):
+                analyze_screen(client,"ollama/qwen3.5:2b",".",lambda _:True,
+                    "Localize",max_output_tokens=2048,reasoning_effort="none",retry_incomplete=True)
+        self.assertEqual(client.responses.call_count,2)
+
+    def test_no_retry_for_other_provider_failures(self):
+        client=Mock()
+        client.responses.side_effect=FCCError("HTTP 400: invalid request",400)
+        with patch("jarvis.vision.screenshot",return_value={"status":"saved","path":"/fake/screenshot.png"}),patch("jarvis.vision.prepare_image",return_value="data:image/jpeg;base64,AA=="):
+            with self.assertRaises(FCCError):
+                analyze_screen(client,"ollama/qwen3.5:2b",".",lambda _:True,
+                    "Localize",max_output_tokens=2048,retry_incomplete=True)
+        client.responses.assert_called_once()
 
     def test_actual_image_is_compressed_without_network(self):
         from PIL import Image
