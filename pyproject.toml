@@ -12,6 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 browser = ["playwright>=1.48"]
 voice = ["sounddevice>=0.4.6", "numpy>=1.24", "faster-whisper>=1.1"]
+desktop = ["dbus-next>=0.2.3"]
 
 [project.scripts]
 jarvis = "jarvis.cli:main"
