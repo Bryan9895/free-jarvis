@@ -49,40 +49,68 @@ def _source_path(uri):
     return path
 
 async def _request_screenshot(timeout=60):
+    """Portal Screenshot sem introspecção XML de outras interfaces do GNOME.
+
+    GNOME pode anunciar propriedades fora do padrão aceito pelo parser
+    dbus-next (por exemplo power-saver-enabled). Usamos chamadas D-Bus diretas.
+    """
     try:
         from dbus_next.aio import MessageBus
-        from dbus_next import Variant
+        from dbus_next import Message, MessageType, Variant
     except ImportError as exc:
         raise WaylandError("Instale: pip install -e '.[desktop]'") from exc
+    import secrets
     bus = await MessageBus().connect()
+    loop = asyncio.get_running_loop()
+    pending = loop.create_future()
+    expected_path = None
+
+    def on_message(message):
+        if (message.message_type == MessageType.SIGNAL
+                and message.interface == "org.freedesktop.portal.Request"
+                and message.member == "Response"
+                and len(message.body) == 2):
+            if not pending.done():
+                pending.set_result((message.path, message.body[0], message.body[1]))
+
+    bus.add_message_handler(on_message)
+    match_rule = "type='signal',interface='org.freedesktop.portal.Request',member='Response'"
     try:
-        node = await bus.introspect(PORTAL_NAME, PORTAL_PATH)
-        obj = bus.get_proxy_object(PORTAL_NAME, PORTAL_PATH, node)
-        interface = obj.get_interface("org.freedesktop.portal.Screenshot")
-        # Subscribe as soon as request handle exists. A future signal is awaited
-        # through DBus instead of reading the terminal or scraping screen pixels.
-        handle = await interface.call_screenshot("", {"interactive": Variant("b", True)})
-        request_node = await bus.introspect(PORTAL_NAME, handle)
-        request_obj = bus.get_proxy_object(PORTAL_NAME, handle, request_node)
-        request = request_obj.get_interface("org.freedesktop.portal.Request")
-        loop = asyncio.get_running_loop()
-        response = loop.create_future()
-        def callback(code, results):
-            if not response.done():
-                response.set_result((code, results))
-        request.on_response(callback)
+        result = await bus.call(Message(
+            destination="org.freedesktop.DBus",
+            path="/org/freedesktop/DBus", interface="org.freedesktop.DBus",
+            member="AddMatch", signature="s", body=[match_rule]))
+        if result.message_type == MessageType.ERROR:
+            raise WaylandError("Não foi possível acompanhar resposta do portal: " + str(result.body))
+        token = "jarvis_" + secrets.token_hex(8)
+        call = await bus.call(Message(
+            destination=PORTAL_NAME, path=PORTAL_PATH,
+            interface="org.freedesktop.portal.Screenshot", member="Screenshot",
+            signature="sa{sv}", body=["", {"interactive": Variant("b", True),
+                                          "handle_token": Variant("s", token)}]))
+        if call.message_type == MessageType.ERROR:
+            raise WaylandError("Falha ao solicitar captura: " + str(call.body))
+        expected_path = call.body[0]
         try:
-            code, results = await asyncio.wait_for(response, timeout=timeout)
-        finally:
-            request.off_response(callback)
+            path, code, result = await asyncio.wait_for(pending, timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            raise WaylandError("Tempo limite aguardando autorização do GNOME") from exc
+        if path != expected_path:
+            raise WaylandError("Resposta do portal não corresponde à solicitação")
         if code != 0:
             raise WaylandError("Captura cancelada ou negada pelo usuário")
-        uri = results.get("uri")
+        uri = result.get("uri")
         if uri is None:
             raise WaylandError("O portal não retornou imagem")
         return uri.value
     finally:
-        bus.disconnect()
+        bus.remove_message_handler(on_message)
+        try:
+            await bus.call(Message(destination="org.freedesktop.DBus",
+                                   path="/org/freedesktop/DBus", interface="org.freedesktop.DBus",
+                                   member="RemoveMatch", signature="s", body=[match_rule]))
+        finally:
+            bus.disconnect()
 
 def screenshot(workspace: Path, approve, timeout=60):
     if os.getenv("XDG_SESSION_TYPE", "").lower() != "wayland":
