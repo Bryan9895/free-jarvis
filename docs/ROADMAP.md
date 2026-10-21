@@ -57,3 +57,13 @@ Assistente pessoal open-source em português, com FCC como gateway de modelos, e
 - **Validação local:** 5 testes novos passaram com cliente FCC simulado (sem servidor real). Os testes anteriores permanecem no repositório, mas ainda precisam rodar no CI da branch.
 - **Pendente:** teste real com `fcc-server` e provedor que suporte function calling; operações Git aprovadas, snapshots, backups e auditoria de alterações.
 - **Limitação de segurança conhecida:** escrita ainda não é atômica; não usar para arquivos sensíveis ou projetos sem backup. Para a próxima entrega: escrita segura e conferência de alterações.
+
+## Etapa 3 — implementação inicial (2026-10-21)
+- Novo `browser_worker.py` utiliza Chromium headless via Playwright em subprocesso separado, sessão temporária e downloads desativados.
+- Novo `browser.py` controla o processo por linhas JSON; fechamento do agente encerra navegador.
+- Ferramentas do modelo: `browser_navigate`, `browser_inspect`, `browser_click`, `browser_fill` e `browser_screenshot`.
+- Ações de navegação, clique, preenchimento e screenshot requerem confirmação manual; leitura da página é permitida.
+- Filtro básico recusa file://, localhost, endereços privados e reservados, também nos recursos do Chromium.
+- O assistente não acessa as abas/cookies do Firefox pessoal; screenshots ficam no workspace.
+- Testes unitários sem rede em `tests/test_browser.py`; testes reais com Chromium e FCC ainda precisam ser validados em Linux Wayland.
+- **Limitações de segurança:** DNS pode mudar entre validação e requisição (DNS rebinding); não utilizar o navegador automatizado com contas ou segredos sensíveis nesta versão. Clique pode desencadear ações externas apesar da aprovação; mantenha uma sessão de demonstração. Página pública não é uma fonte de instruções confiáveis.
