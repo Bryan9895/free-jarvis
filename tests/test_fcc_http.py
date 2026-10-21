@@ -33,8 +33,8 @@ class Handler(BaseHTTPRequestHandler):
         if payload["model"] == "primary":
             return self.reply(503, {"error":"temporarily unavailable"})
         data = {"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}}
-        output = ("event: response.created\\ndata: " + json.dumps({"type":"response.created","response":{"output":[]}}) + "\\n\\n"
-                  + "event: response.completed\\ndata: " + json.dumps(data) + "\\n\\n").encode()
+        output = ("event: response.created\ndata: " + json.dumps({"type":"response.created","response":{"output":[]}}) + "\n\n"
+                  + "event: response.completed\ndata: " + json.dumps(data) + "\n\n").encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Content-Length", str(len(output)))
