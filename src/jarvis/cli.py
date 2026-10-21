@@ -32,7 +32,8 @@ def main():
         if not c.model:
             parser.error("Defina FCC_MODEL com um ID retornado por 'jarvis --models'")
         mem = Memory(c.db)
-        agent = Agent(client, Toolkit(c.workspace, approve=confirm), mem, c.model)
+        toolkit = Toolkit(c.workspace, approve=confirm)
+        agent = Agent(client, toolkit, mem, c.model)
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo: {c.model}\nDigite 'sair' para encerrar.")
         while True:
             try:
@@ -48,6 +49,7 @@ def main():
                 print("JARVIS >", agent.ask(msg), "\n")
             except FCCError as exc:
                 print("Erro de conexão:", exc, file=sys.stderr)
+        toolkit.close()
         mem.close()
     except FCCError as exc:
         print("Erro:", exc, file=sys.stderr)
