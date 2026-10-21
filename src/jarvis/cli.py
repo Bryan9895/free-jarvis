@@ -1,6 +1,7 @@
-"""Interface de terminal para primeira fase da JARVIS."""
+"""CLI de texto e modo de voz opcional e acionado pelo usuário."""
 import argparse
 import json
+import os
 import sys
 from .config import Config
 from .fcc import FCCClient, FCCError
@@ -19,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
+    parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
     args = parser.parse_args()
     c = Config.from_env()
     client = FCCClient(c.url, c.token)
@@ -30,27 +32,59 @@ def main():
             print(json.dumps(client.models(), indent=2, ensure_ascii=False))
             return
         if not c.model:
-            parser.error("Defina FCC_MODEL com um ID retornado por 'jarvis --models'")
+            parser.error("Defina FCC_MODEL com ID listado por 'jarvis --models'")
         mem = Memory(c.db)
         toolkit = Toolkit(c.workspace, approve=confirm)
         agent = Agent(client, toolkit, mem, c.model)
-        print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo: {c.model}\nDigite 'sair' para encerrar.")
-        while True:
-            try:
-                msg = input("Você > ").strip()
-            except (KeyboardInterrupt, EOFError):
-                print("\nEncerrando.")
-                break
-            if msg.lower() in {"sair", "/quit", "exit"}:
-                break
-            if not msg:
-                continue
-            try:
-                print("JARVIS >", agent.ask(msg), "\n")
-            except FCCError as exc:
-                print("Erro de conexão:", exc, file=sys.stderr)
-        toolkit.close()
-        mem.close()
+        voice = None
+        if args.voice:
+            from .voice import VoiceIO
+            voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL", "tiny"),
+                            language=os.getenv("JARVIS_LANGUAGE", "pt"),
+                            piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
+            print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
+        print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo: {c.model}")
+        try:
+            while True:
+                try:
+                    if voice is not None:
+                        command = input("Você [Enter = falar / sair] > ").strip()
+                        if command.lower() in {"sair", "/quit", "exit"}:
+                            break
+                        if command:
+                            msg = command
+                        else:
+                            print("🎙️ Gravando por 6 segundos...")
+                            try:
+                                msg = voice.listen_once(6)
+                            except Exception as exc:
+                                print(f"Falha de gravação/transcrição: {exc}", file=sys.stderr)
+                                continue
+                            print("Você (voz) >", msg or "[nenhuma fala reconhecida]")
+                    else:
+                        msg = input("Você > ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    print("\nEncerrando.")
+                    break
+                if msg.lower() in {"sair", "/quit", "exit"}:
+                    break
+                if not msg:
+                    continue
+                try:
+                    answer = agent.ask(msg)
+                    print("JARVIS >", answer, "\n")
+                    if voice:
+                        try:
+                            status = voice.speak(answer)
+                            if status == "disabled":
+                                print("Para ouvir respostas, configure JARVIS_PIPER_MODEL.")
+                        except Exception as exc:
+                            print(f"Falha ao falar resposta: {exc}", file=sys.stderr)
+                except (FCCError, ValueError) as exc:
+                    print("Erro de modelo/protocolo:", exc, file=sys.stderr)
+        finally:
+            toolkit.close()
+            mem.close()
     except FCCError as exc:
         print("Erro:", exc, file=sys.stderr)
         sys.exit(1)
