@@ -93,8 +93,13 @@ class FCCClient:
                         lines.append(line[5:].lstrip())
                 process()
                 if failed is not None:
-                    detail = failed.get("response", {}).get("error") if isinstance(failed.get("response"), dict) else failed.get("error")
-                    raise FCCError("FCC não concluiu a resposta: " + str(detail or failed)[:600])
+                    result = failed.get("response")
+                    if failed.get("type") == "response.incomplete" and isinstance(result, dict):
+                        details = result.get("incomplete_details") or {}
+                        reason = details.get("reason", "não informado") if isinstance(details, dict) else "não informado"
+                        raise FCCError("FCC retornou response.incomplete (motivo: " + str(reason) + "). Verifique limite de saída/raciocínio do modelo.")
+                    detail = result.get("error") if isinstance(result, dict) else failed.get("error")
+                    raise FCCError("FCC não concluiu a resposta: " + str(detail or failed.get("type"))[:300])
                 if not isinstance(final, dict) or not isinstance(final.get("output"), list):
                     raise FCCError("Streaming encerrado sem evento response.completed válido")
                 return final
@@ -186,7 +191,7 @@ class AutoModelClient:
             print("Diagnóstico: modelos candidatos: " + ", ".join(self.candidates), file=sys.stderr, flush=True)
             response = self.responses({
             "model": self.active_model, "input": "Responda somente: OK",
-            "max_output_tokens": 48, "stream": True
+            "max_output_tokens": 768, "reasoning": {"effort": "none"}, "stream": True
             })
         finally:
             self._diagnosing = False
