@@ -457,3 +457,19 @@ jarvis-fcc --locate-target 'Ícone do gerenciador de arquivos'
 ```
 
 Caso receba `unstructured`, compartilhe `model_excerpt` **após verificar que não contém dados privados**. Um modelo que descreve bem a tela pode não conseguir estimar caixas espaciais confiáveis. A pré-visualização só é gerada quando `found=true` e a caixa está formalmente válida; ainda será necessária conferência humana.
+
+### Seleção dinâmica de modelos do FCC (inspirada no sistema modular do Mark-LVI)
+
+O chat da JARVIS agora permite usar **qualquer ID anunciado** em `/v1/models?view=responses`, sem reiniciar o processo:
+
+```text
+/modelos                  # lista modelos expostos no FCC
+/modelo atual             # mostra o selecionado
+/modelo ollama/qwen3.5:4b # troca explicitamente para qualquer ID listado
+/modelo auto              # volta ao modelo padrão e fallback configurado
+/modelo todos             # considera todo o catálogo como possíveis fallbacks
+```
+
+O modelo de `/tela`, `/localizar` e `/clicar-guiado` segue a seleção atual no chat, mas esses comandos podem recusar modelos sem visão ou fora da política local. A lista do FCC **não prova** que o modelo está operacional ou que suporta function calling, `input_image` ou a rota Responses. `/modelo todos` só tenta outro modelo diante de erros de fallback reconhecidos: um erro permanente de protocolo, permissão ou argumentos ainda interrompe a execução. Como o catálogo pode conter modelos remotos, esse comando pode encaminhar o texto enviado ao modelo a outro provedor; não use com dados privados se não confia nesses provedores.
+
+**Controle do computador:** nesta versão, a JARVIS continua usando autorização por ação e os diálogos nativos RemoteDesktop/Screenshot do GNOME. A seleção de modelos não altera as permissões de execução. Uma sessão de controle não deve contornar permissões do sistema operacional.
