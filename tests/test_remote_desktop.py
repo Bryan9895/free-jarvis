@@ -33,6 +33,29 @@ class RemoteDesktopTests(unittest.TestCase):
                 await desktop.move(0, -90)
         asyncio.run(exercise())
 
+    def test_demo_keeps_session_open_for_motion(self):
+        async def exercise():
+            events=[]
+            async def start(_):
+                events.append("start")
+                _.devices=POINTER
+                return {"pointer": True}
+            async def move(_, dx, dy):
+                events.append("move")
+                return {"status": "sent_unverified"}
+            async def close(_):
+                events.append("close")
+            async def pause(duration):
+                events.append("pause")
+            with patch.object(RemoteDesktop,"start",start), patch.object(RemoteDesktop,"move",move), patch.object(RemoteDesktop,"close",close), patch("jarvis.remote_desktop.asyncio.sleep",side_effect=pause):
+                result=await test_remote_pointer_async()
+            self.assertEqual(result["total_dx"],75)
+            self.assertEqual(result["events_sent"],3)
+            self.assertEqual(events[-1],"close")
+            self.assertEqual(events.count("move"),3)
+            self.assertIn("pause",events)
+        asyncio.run(exercise())
+
     def test_notification_signature(self):
         async def exercise():
             desktop=RemoteDesktop()
