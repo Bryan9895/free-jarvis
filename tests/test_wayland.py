@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from jarvis.wayland import desktop_info, screenshot, _source_path, WaylandError
+from jarvis.wayland import desktop_info, screenshot, _source_path, WaylandError, open_app
 from jarvis.tools import Toolkit
 
 class WaylandTests(unittest.TestCase):
@@ -38,6 +38,24 @@ class WaylandTests(unittest.TestCase):
                 value=screenshot(workspace, lambda _: True)
             self.assertEqual(value["status"], "saved")
             self.assertEqual((workspace/"jarvis_desktop_screenshot.png").read_bytes(), b"fake-image")
+
+    def test_app_launch_requires_allowlist(self):
+        with patch.dict("os.environ", {"JARVIS_ALLOWED_APPS":"org.gnome.Nautilus"}, clear=True):
+            with self.assertRaises(WaylandError):
+                open_app("org.gnome.Terminal", lambda _: True)
+
+    def test_app_launch_needs_approval(self):
+        with patch.dict("os.environ", {"JARVIS_ALLOWED_APPS":"org.gnome.Nautilus"}, clear=True), patch("jarvis.wayland.shutil.which", return_value="/usr/bin/gtk-launch"):
+            with patch("jarvis.wayland.subprocess.Popen", side_effect=AssertionError("Should not launch")):
+                self.assertEqual(open_app("org.gnome.Nautilus", lambda _: False)["status"], "rejected")
+
+    def test_app_launch_approved(self):
+        from unittest.mock import Mock
+        with patch.dict("os.environ", {"JARVIS_ALLOWED_APPS":"org.gnome.Nautilus"}, clear=True), patch("jarvis.wayland.shutil.which", return_value="/usr/bin/gtk-launch"), patch("jarvis.wayland.subprocess.Popen", return_value=Mock(pid=1234)) as run:
+            result = open_app("org.gnome.Nautilus", lambda _: True)
+            self.assertEqual(result["status"], "launched_unverified")
+            run.assert_called_once()
+            self.assertEqual(run.call_args.args[0], ["/usr/bin/gtk-launch", "org.gnome.Nautilus"])
 
     def test_tool_registry(self):
         with tempfile.TemporaryDirectory() as td:
