@@ -47,6 +47,7 @@ class Agent:
         available = tool_catalog(message, available) if chosen == "tools" else []
         timings = []
         calls_executed = 0
+        tool_problems = []
         seen = {}
         try:
             rounds = 1 if chosen == "fast" else MAX_TOOL_ROUNDS + 1
@@ -107,6 +108,16 @@ class Agent:
                             calls_executed += 1
                     except (KeyError, ValueError, TypeError) as exc:
                         outcome = {"error": "Argumentos inválidos: " + str(exc)}
+                    # Preserve operational failures for the supervising planner.
+                    # Model narrative alone must not overwrite a rejected action.
+                    if isinstance(outcome, dict):
+                        issue = outcome.get("error")
+                        if issue is None and isinstance(outcome.get("result"), dict):
+                            if outcome["result"].get("status") in ("rejected", "failed"):
+                                issue = outcome["result"]["status"]
+                        if issue is not None:
+                            tool_problems.append({"tool": call.get("name", "?"),
+                                                  "reason": str(issue)[:240]})
                     messages.append({
                         "type": "function_call_output",
                         "call_id": call_id,
@@ -121,4 +132,5 @@ class Agent:
                 "model_rounds": len(timings),
                 "model_s": timings,
                 "tools_executed": calls_executed,
+                "tool_problems": tool_problems,
             }
