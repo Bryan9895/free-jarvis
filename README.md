@@ -215,3 +215,22 @@ jarvis --desktop-screenshot
 ```
 
 O primeiro imprime o compositor e os portais detectados; o segundo pede confirmação e abre o diálogo de captura de tela do GNOME/KDE. Execute esses comandos dentro da sessão gráfica do seu Ubuntu, e não via SSH sem encaminhamento DBus/desktop.
+
+## Correções após teste em GNOME/Ubuntu (2026-10-21)
+
+O teste real identificou que FCC `/v1/responses` **só aceita streaming**. A JARVIS agora força `stream=true`, processa o SSE e utiliza o objeto final de `response.completed` para o agente, inclusive quando o modelo pede chamadas de ferramentas.
+
+O teste também encontrou incompatibilidade na introspecção de propriedades do GNOME com `dbus-next` (`power-saver-enabled`). A captura de tela foi alterada para chamadas D-Bus diretas às interfaces Screenshot e Request, **sem introspecção das propriedades do desktop**.
+
+`jarvis-fcc --models` agora apresenta somente IDs e modelo padrão, em vez de todo o JSON de metadados. As aprovações aceitam `sim` ou `SIM`.
+
+Para testar após atualizar:
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+unset FCC_MODEL
+jarvis-fcc --check-fcc
+jarvis-fcc --desktop-screenshot
+```
+
+O teste de streaming HTTP contra o servidor simulado passou no CI; confirmação do modelo/provedor real e do portal de captura em GNOME ainda depende de teste no computador. O portal solicita confirmação do usuário; não houve tentativa de contornar permissões.
