@@ -525,3 +525,21 @@ Durante a execução, cada etapa é enviada ao agente existente no modo `tools`,
 Estados do plano: `ready`, `running`, `completed_unverified`, `stopped`, `cancelled`. Estados das etapas incluem `pending`, `reported_unverified`, `blocked`, `failed`. Uma conclusão narrada pelo modelo nunca conta como confirmação externa do resultado; essa etapa ainda precisará de verificadores de estado independentes.
 
 O planejamento acrescenta uma inferência antes das etapas, então é destinado a **tarefas com várias ações**, não a perguntas simples. Para perguntas, mantenha `/normal` ou `/rapido`. Na sessão atual, a rota rápida com `openai/gpt-5.6-luna` foi medida pelo usuário em cerca de 2,4 a 4,0 segundos; não extrapole esses números para Qwen local ou para tarefas com ferramentas.
+
+### Planos persistentes e visualização amigável no terminal
+
+O planejador agora salva tarefas, estados e checkpoints na tabela `task_plans` do SQLite configurado por `JARVIS_DB`. A recuperação ocorre automaticamente quando o chat inicia. Uma execução que estava com estado `running` ao reiniciar é marcada como `interrupted`, sem repetir nenhuma operação, pois não é possível comprovar que a ação anterior terminou.
+
+Os comandos passam a ser:
+
+```text
+/planejar Liste os arquivos do workspace e analise a estrutura do projeto
+/plano
+/historico-planos
+/executar-plano
+/cancelar-plano
+```
+
+`/plano` agora mostra um painel de texto com objetivo, modelo, estado, etapas e barra de progresso em vez de JSON. `/historico-planos` mostra as últimas dez tarefas, mesmo após reiniciar. O painel diferencia explicitamente **etapa processada** de **resultado verificado**; não infere êxito externo com base apenas na resposta do modelo.
+
+O histórico fica em `~/.local/share/jarvis-fcc/memory.sqlite3` por padrão e pode conter objetivos e resultados sensíveis em texto puro. Proteja a conta local e evite armazenar segredos nas tarefas. A retomada automática e a reexecução de etapas interrompidas **não** estão habilitadas: antes de executar novamente, crie um novo plano ou confira manualmente o estado.
