@@ -59,9 +59,13 @@ class Agent:
                     "tools": tools,
                     "stream": True,
                     "parallel_tool_calls": False,
-                    "reasoning": {"effort": "none"},
                     "max_output_tokens": 512 if chosen == "fast" else 1536,
                 }
+                active_model = getattr(self.client, "active_model", self.model)
+                # A opção reasoning.effort=none já foi testada com Ollama via FCC.
+                # Outros provedores podem rejeitar esse campo.
+                if isinstance(active_model, str) and active_model.startswith("ollama/"):
+                    payload["reasoning"] = {"effort": "none"}
                 t0 = time.monotonic()
                 result = self.client.responses(payload)
                 timings.append(round(time.monotonic() - t0, 3))
