@@ -17,7 +17,7 @@ class Agent:
         for round_index in range(MAX_TOOL_ROUNDS + 1):
             payload = {"model": self.model, "instructions": SYSTEM, "input": messages,
                        "tools": TOOL_SPECS if round_index < MAX_TOOL_ROUNDS else [],
-                       "stream": False, "parallel_tool_calls": False}
+                       "stream": True, "parallel_tool_calls": False}
             result = self.client.responses(payload)
             if not isinstance(result, dict) or not isinstance(result.get("output"), list):
                 raise ValueError("Resposta do FCC inválida: campo output ausente")
