@@ -18,6 +18,7 @@ def confirm(action):
 
 def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
+    parser.add_argument("--guided-click", metavar="ALVO", help="Clique visual supervisionado com cursor posicionado pelo usuário e verificação posterior")
     parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e dupla confirmação")
     parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
@@ -77,6 +78,18 @@ def main():
             sys.exit(1)
         return
     client = FCCClient(c.url, c.token)
+    if args.guided_click is not None:
+        from .guided_desktop import guided_click
+        from .wayland import WaylandError
+        if not c.model:
+            parser.error("Defina FCC_MODEL=ollama/<modelo> para usar clique guiado.")
+        try:
+            result = guided_click(client, c.model, c.workspace, confirm, args.guided_click)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        except (FCCError, WaylandError, OSError) as exc:
+            print("Erro no clique guiado:", exc, file=sys.stderr)
+            sys.exit(1)
+        return
     if args.see_screen is not None:
         from .vision import analyze_screen
         from .wayland import WaylandError
@@ -143,6 +156,15 @@ def main():
                 if msg.lower() in {"sair", "/quit", "exit"}:
                     break
                 if not msg:
+                    continue
+                if msg.lower().startswith("/clicar-guiado "):
+                    from .guided_desktop import guided_click
+                    from .wayland import WaylandError
+                    try:
+                        result = guided_click(client, c.model, c.workspace, confirm, msg[len("/clicar-guiado "):])
+                        print("JARVIS (clique guiado) >", json.dumps(result, ensure_ascii=False), "\\n")
+                    except (FCCError, WaylandError, OSError) as exc:
+                        print("Erro no clique guiado:", exc, file=sys.stderr)
                     continue
                 if msg.lower() == "/tela" or msg.lower().startswith("/tela "):
                     from .vision import analyze_screen
