@@ -1,10 +1,12 @@
 """FCC simulated API tests: catalog view, request auth and automated failover."""
 import io
+import os
 import json
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 from jarvis.fcc import FCCClient, FCCError, AutoModelClient
+from jarvis.config import Config
 
 class HTTPResponse:
     def __init__(self, payload):
@@ -27,6 +29,12 @@ class FakeClient:
         return {"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}
 
 class FCCTests(unittest.TestCase):
+    def test_documentation_placeholder_uses_default_model(self):
+        with patch.dict(os.environ, {"FCC_MODEL": "ID_DO_MODELO"}):
+            self.assertEqual(Config.from_env().model, "")
+        with patch.dict(os.environ, {"FCC_MODEL": "my-real-model"}):
+            self.assertEqual(Config.from_env().model, "my-real-model")
+
     def test_responses_view_not_claude_aliases(self):
         c=FCCClient("http://127.0.0.1:8082", token="fake")
         with patch("jarvis.fcc.urlopen", return_value=HTTPResponse({"data":[{"id":"first"}]})) as mock:
