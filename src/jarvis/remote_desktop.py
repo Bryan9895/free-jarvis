@@ -12,6 +12,10 @@ from .wayland import PORTAL_NAME, PORTAL_PATH, WaylandError
 
 INTERFACE = "org.freedesktop.portal.RemoteDesktop"
 POINTER = 2
+KEYBOARD = 1
+LEFT_BUTTON = 0x110
+RELEASED = 0
+PRESSED = 1
 
 
 def _result_value(results, key):
@@ -24,6 +28,7 @@ class RemoteDesktop:
         self.bus = None
         self.session = None
         self.devices = 0
+        self.requested_types = POINTER
 
     async def connect(self):
         try:
@@ -49,7 +54,7 @@ class RemoteDesktop:
         if member == "CreateSession":
             options["session_handle_token"] = Variant("s", "session_" + secrets.token_hex(8))
         if member == "SelectDevices":
-            options["types"] = Variant("u", POINTER)
+            options["types"] = Variant("u", self.requested_types)
             options["persist_mode"] = Variant("u", 0)
         params = ([options] if member == "CreateSession" else [self.session, options]
                   if member == "SelectDevices" else [self.session, "", options])
@@ -93,7 +98,10 @@ class RemoteDesktop:
             except Exception:
                 pass
 
-    async def start(self):
+    async def start(self, requested_types=POINTER):
+        if requested_types not in (POINTER, KEYBOARD):
+            raise WaylandError("Tipo de dispositivo inválido")
+        self.requested_types = requested_types
         if self.bus is None:
             await self.connect()
         try:
@@ -104,9 +112,9 @@ class RemoteDesktop:
             await self._request("SelectDevices", "oa{sv}", [])
             result = await self._request("Start", "osa{sv}", [])
             self.devices = int(_result_value(result, "devices") or 0)
-            if not self.devices & POINTER:
-                raise WaylandError("Permissão de ponteiro não foi concedida")
-            return {"status": "authorized", "pointer": True}
+            if not self.devices & requested_types:
+                raise WaylandError("Permissão do dispositivo não concedida")
+            return {"status": "authorized", "pointer": bool(self.devices & POINTER), "keyboard": bool(self.devices & KEYBOARD)}
         except Exception:
             await self.close()
             raise
@@ -119,6 +127,31 @@ class RemoteDesktop:
         await self._call(INTERFACE, "NotifyPointerMotion", "oa{sv}dd",
                          [self.session, {}, float(dx), float(dy)])
         return {"status": "sent_unverified", "dx": dx, "dy": dy}
+
+    async def click_left(self):
+        """Um clique esquerdo no cursor atual, somente com permissão do portal."""
+        if not self.session or not self.devices & POINTER:
+            raise WaylandError("Sessão sem permissão de ponteiro")
+        try:
+            await self._call(INTERFACE, "NotifyPointerButton", "oa{sv}iu",
+                             [self.session, {}, LEFT_BUTTON, PRESSED])
+        finally:
+            await self._call(INTERFACE, "NotifyPointerButton", "oa{sv}iu",
+                             [self.session, {}, LEFT_BUTTON, RELEASED])
+        return {"status": "sent_unverified", "action": "left_click"}
+
+    async def type_test_letter(self):
+        """Envia somente a tecla minúscula j, sem comandos arbitrários."""
+        if not self.session or not self.devices & KEYBOARD:
+            raise WaylandError("Sessão sem permissão de teclado")
+        key = ord("j")
+        try:
+            await self._call(INTERFACE, "NotifyKeyboardKeysym", "oa{sv}iu",
+                             [self.session, {}, key, PRESSED])
+        finally:
+            await self._call(INTERFACE, "NotifyKeyboardKeysym", "oa{sv}iu",
+                             [self.session, {}, key, RELEASED])
+        return {"status": "sent_unverified", "action": "type_letter_j"}
 
     async def close(self):
         if self.bus is not None:
@@ -159,3 +192,28 @@ def test_remote_pointer(approve):
     if not approve("ABRIR sessão RemoteDesktop e MOVER o ponteiro 75 pixels à direita (3 eventos), encerrando em seguida?"):
         return {"status": "rejected"}
     return asyncio.run(test_remote_pointer_async())
+
+async def _test_input_async(kind):
+    desktop = RemoteDesktop()
+    try:
+        await desktop.start(KEYBOARD if kind == "keyboard" else POINTER)
+        await asyncio.sleep(1.5)
+        result = await (desktop.type_test_letter() if kind == "keyboard" else desktop.click_left())
+        await asyncio.sleep(1.0)
+        return result
+    finally:
+        await desktop.close()
+
+def test_input(approve, kind):
+    """Teste de CLI isolado; não registrado como ferramenta do agente."""
+    import os
+    if kind not in ("click", "keyboard"):
+        raise WaylandError("Tipo de teste inválido")
+    if os.getenv("XDG_SESSION_TYPE", "").lower() != "wayland":
+        raise WaylandError("Exige sessão Wayland")
+    description = ("UM clique esquerdo na posição atual (coloque o cursor numa área vazia)"
+                   if kind == "click" else
+                   "digitar somente a letra j num editor de texto vazio (não em terminal)")
+    if not approve("AUTORIZAR " + description + "?"):
+        return {"status": "rejected"}
+    return asyncio.run(_test_input_async(kind))
