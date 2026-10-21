@@ -2,7 +2,7 @@
 import asyncio
 import unittest
 from unittest.mock import patch
-from jarvis.remote_desktop import RemoteDesktop, POINTER, test_remote_pointer as run_demo
+from jarvis.remote_desktop import RemoteDesktop, POINTER, test_remote_pointer as run_demo, test_remote_pointer_async
 from jarvis.wayland import WaylandError
 
 class RemoteDesktopTests(unittest.TestCase):
