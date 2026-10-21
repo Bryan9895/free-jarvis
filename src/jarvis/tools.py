@@ -15,6 +15,7 @@ class Toolkit:
         self.workspace = workspace.expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.approve = approve or (lambda _action: False)
+        self._browser = None
 
     def path(self, requested: str) -> Path:
         if not isinstance(requested, str):
@@ -80,20 +81,64 @@ class Toolkit:
         webbrowser.open(url)
         return {"status": "opened_unverified", "url": url}
 
+    def _browser_client(self):
+        if self._browser is None:
+            from .browser import BrowserController
+            self._browser = BrowserController(self.workspace)
+        return self._browser
+
+    def browser_navigate(self, url):
+        from .browser_worker import validate_url
+        validate_url(url)
+        if not self.approve(f"NAVEGAR no navegador isolado para {url}"):
+            return {"status": "rejected"}
+        return self._browser_client().perform("navigate", url=url)
+
+    def browser_inspect(self):
+        return self._browser_client().perform("inspect")
+
+    def browser_click(self, selector):
+        if not self.approve(f"CLICAR no elemento {selector!r} (pode enviar formulários ou alterar dados)"):
+            return {"status": "rejected"}
+        return self._browser_client().perform("click", selector=selector)
+
+    def browser_fill(self, selector, text):
+        if not self.approve(f"PREENCHER elemento {selector!r} com {len(text)} caracteres (conteúdo pode ser sensível)"):
+            return {"status": "rejected"}
+        return self._browser_client().perform("fill", selector=selector, text=text)
+
+    def browser_screenshot(self):
+        if not self.approve("SALVAR captura de tela do navegador isolado no workspace"):
+            return {"status": "rejected"}
+        return self._browser_client().perform("screenshot")
+
+    def close(self):
+        if self._browser is not None:
+            self._browser.close()
+            self._browser = None
+
     def execute(self, name, arguments):
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
             "write_file": self.write_file, "run_command": self.run_command,
             "browser_open": self.browser_open,
+            "browser_navigate": self.browser_navigate, "browser_inspect": self.browser_inspect,
+            "browser_click": self.browser_click, "browser_fill": self.browser_fill,
+            "browser_screenshot": self.browser_screenshot,
         }
         if name not in operations:
             return {"error": "Ferramenta desconhecida"}
         try:
             return {"result": operations[name](**arguments)}
-        except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError) as exc:
+        except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError, ValueError) as exc:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"browser_navigate","description":"Navega em endereço público HTTP/HTTPS com navegador Chromium isolado; exige aprovação.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"],"additionalProperties":False}},
+    {"type":"function","name":"browser_inspect","description":"Lê título, URL, texto e elementos interativos da página atual sem executar JavaScript fornecido pelo modelo.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+    {"type":"function","name":"browser_click","description":"Clica exatamente em um elemento CSS, após aprovação; pode enviar formulário.","parameters":{"type":"object","properties":{"selector":{"type":"string"}},"required":["selector"],"additionalProperties":False}},
+    {"type":"function","name":"browser_fill","description":"Preenche exatamente um campo por seletor CSS, após aprovação; não envia automaticamente.","parameters":{"type":"object","properties":{"selector":{"type":"string"},"text":{"type":"string"}},"required":["selector","text"],"additionalProperties":False}},
+    {"type":"function","name":"browser_screenshot","description":"Salva screenshot do navegador isolado em jarvis_screenshot.png no workspace mediante aprovação.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"list_files","description":"Lista arquivos e pastas dentro do workspace autorizado.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"additionalProperties":False}},
     {"type":"function","name":"read_file","description":"Lê arquivo de texto até 100 KB no workspace autorizado.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"write_file","description":"Escreve arquivo de texto dentro do workspace, após confirmação humana.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":False}},
