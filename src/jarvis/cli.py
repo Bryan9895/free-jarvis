@@ -205,7 +205,7 @@ def main():
                     from .targeting import locate_target
                     from .wayland import WaylandError
                     try:
-                        result = locate_target(client, c.model, c.workspace, confirm, msg[len("/localizar "):])
+                        result = locate_target(client, auto.active_model, c.workspace, confirm, msg[len("/localizar "):])
                         print("JARVIS (localização) >", json.dumps(result, ensure_ascii=False), "\\n")
                     except (FCCError, WaylandError, OSError) as exc:
                         print("Erro ao localizar alvo:", exc, file=sys.stderr)
@@ -214,7 +214,7 @@ def main():
                     from .guided_desktop import guided_click
                     from .wayland import WaylandError
                     try:
-                        result = guided_click(client, c.model, c.workspace, confirm, msg[len("/clicar-guiado "):])
+                        result = guided_click(client, auto.active_model, c.workspace, confirm, msg[len("/clicar-guiado "):])
                         print("JARVIS (clique guiado) >", json.dumps(result, ensure_ascii=False), "\\n")
                     except (FCCError, WaylandError, OSError) as exc:
                         print("Erro no clique guiado:", exc, file=sys.stderr)
@@ -222,12 +222,9 @@ def main():
                 if msg.lower() == "/tela" or msg.lower().startswith("/tela "):
                     from .vision import analyze_screen
                     from .wayland import WaylandError
-                    if not c.model:
-                        print("Configure FCC_MODEL para um modelo com visão.", file=sys.stderr)
-                        continue
                     question = msg[6:].strip() or "Descreva o conteúdo visível nesta tela."
                     try:
-                        observation = analyze_screen(client, c.model, c.workspace, confirm, question)
+                        observation = analyze_screen(client, auto.active_model, c.workspace, confirm, question)
                         print("JARVIS (visão) >", observation.get("answer", observation), "\\n")
                     except (FCCError, WaylandError) as exc:
                         print("Erro na análise da tela:", exc, file=sys.stderr)
