@@ -18,6 +18,7 @@ def confirm(action):
 
 def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
+    parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
     parser.add_argument("--desktop-info", action="store_true", help="Inspeciona portais e compositor Wayland sem iniciar FCC")
@@ -26,6 +27,20 @@ def main():
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
     args = parser.parse_args()
     c = Config.from_env()
+    if args.doctor:
+        from pathlib import Path
+        import importlib.util
+        print(json.dumps({
+            "application": "jarvis-fcc",
+            "module": str(Path(__file__).resolve()),
+            "python": sys.executable,
+            "workspace": str(c.workspace),
+            "fcc_url": c.url,
+            "browser_package_installed": importlib.util.find_spec("playwright") is not None,
+            "voice_package_installed": importlib.util.find_spec("faster_whisper") is not None,
+            "desktop_package_installed": importlib.util.find_spec("dbus_next") is not None,
+        }, ensure_ascii=False, indent=2))
+        return
     if args.desktop_info:
         from .wayland import desktop_info
         print(json.dumps(desktop_info(), indent=2, ensure_ascii=False))
