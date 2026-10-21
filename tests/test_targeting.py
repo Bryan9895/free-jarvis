@@ -18,6 +18,30 @@ class TargetingTests(unittest.TestCase):
         result=parse_target('```json\n{"found":false,"reason":"sem botão"}\n```')
         self.assertFalse(result["found"])
 
+    def test_explanatory_text_and_fenced_json(self):
+        payload = '{"found":true,"label":"Arquivos","confidence":0.6,"bbox":[10,20,40,80]}'
+        result=parse_target("Resposta do modelo:\\n" + payload + "\\nEssa é a região.")
+        self.assertEqual(result["label"], "Arquivos")
+        result=parse_target("Segue:\\n```json\\n"+payload+"\\n```")
+        self.assertEqual(result["bbox"], [10,20,40,80])
+
+    def test_multiple_objects_and_partial_json_rejected(self):
+        good='{"found":false,"reason":"não localizado"}'
+        with self.assertRaises(WaylandError):
+            parse_target("Primeiro: "+good+" Segundo: "+good)
+        with self.assertRaises(WaylandError):
+            parse_target('{"found":true,"label":"x","bbox":')
+
+    def test_unstructured_response_does_not_draw_or_act(self):
+        answer="O ícone de arquivos parece estar na lateral."
+        with patch("jarvis.targeting.analyze_screen",return_value={
+            "status":"analyzed","answer":answer,"screenshot":"/mock/screen.png"
+        }), patch("jarvis.targeting.save_preview",side_effect=AssertionError("must not draw")):
+            result=locate_target(Mock(),"ollama/qwen3.5:2b",".",lambda _:True,"Ícone")
+        self.assertEqual(result["status"],"unstructured")
+        self.assertFalse(result["action_executed"])
+        self.assertIn("ícone", result["model_excerpt"])
+
     def test_invalid_regions_rejected(self):
         regions = [
             [100, 200, 100, 400],
@@ -38,8 +62,8 @@ class TargetingTests(unittest.TestCase):
             item={"found":True,"label":"Alvo","confidence":value,"bbox":[0,0,10,10]}
             with self.assertRaises(WaylandError):
                 parse_target(json.dumps(item))
-        with self.assertRaises(WaylandError):
-            parse_target('Localizei: {"found":true}')
+        # Uma explicação com um único JSON completo é recuperável.
+        self.assertFalse(parse_target('Localizei: {"found":false,"reason":"ausente"}')["found"])
         with self.assertRaises(WaylandError):
             parse_target('{"found":true,"label":"x","confidence":0.9,"bbox":[1,2,3,4]} outro texto')
 
