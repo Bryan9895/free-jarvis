@@ -48,3 +48,12 @@ Assistente pessoal open-source em português, com FCC como gateway de modelos, e
 - Alterações no disco/GitHub/desktop necessitam aprovação conforme o risco.
 - LLM não executa texto de páginas ou arquivos como instruções privilegiadas.
 - Suportar funcionamento limitado/offline quando o provedor externo falhar.
+
+## Registro de desenvolvimento — 2026-10-21
+- Etapa 2 iniciada: melhorias no loop de ferramentas e segurança de argumentos.
+- Respostas do FCC agora são verificadas antes de uso, chamadas são repetidas com seus `call_id`, e o limite de rodadas impede execução ilimitada.
+- O terminal usa lista de comandos **exatos**; não permite novos argumentos arbitrários.
+- Testes de regressão adicionados em `tests/test_core.py` e CI em `.github/workflows/tests.yml`.
+- **Validação local:** 5 testes novos passaram com cliente FCC simulado (sem servidor real). Os testes anteriores permanecem no repositório, mas ainda precisam rodar no CI da branch.
+- **Pendente:** teste real com `fcc-server` e provedor que suporte function calling; operações Git aprovadas, snapshots, backups e auditoria de alterações.
+- **Limitação de segurança conhecida:** escrita ainda não é atômica; não usar para arquivos sensíveis ou projetos sem backup. Para a próxima entrega: escrita segura e conferência de alterações.
