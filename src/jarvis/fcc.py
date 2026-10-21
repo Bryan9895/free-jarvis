@@ -1,5 +1,6 @@
 """Cliente FCC com diagnóstico e failover de modelos retornados por /v1/models."""
 import json
+import sys
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
