@@ -39,3 +39,30 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 ## Segurança
 
 Comandos arbitrários e `sudo` não estão habilitados. Escritas requerem confirmação. O histórico SQLite não é criptografado; não envie segredos nas conversas. O projeto não foi testado de ponta a ponta com um servidor FCC real.
+
+## Etapa 3 — Navegador automatizado (Playwright)
+
+A JARVIS controla um **Chromium isolado e headless**, sem utilizar as sessões ou os cookies do Firefox pessoal. Isso funciona no Ubuntu com Wayland porque o navegador automatizado não depende de controlar as janelas do desktop.
+
+Instalação opcional do navegador:
+
+```bash
+git pull origin main
+source .venv/bin/activate
+pip install -e '.[browser]'
+python -m playwright install chromium
+```
+
+Em algumas instalações Linux, o Chromium requer pacotes do sistema adicionais; consulte `python -m playwright install --with-deps chromium` (o comando pode solicitar instalação de dependências via apt).
+
+Execute `jarvis` com `fcc-server` ativo e `FCC_MODEL` configurado. Exemplo:
+
+> "Abra https://example.com no navegador isolado, leia o título e descreva a página."
+
+Ferramentas disponíveis: `browser_navigate` (abre URL), `browser_inspect` (lê DOM e elementos), `browser_click` (clica por seletor CSS), `browser_fill` (preenche campos) e `browser_screenshot` (salva PNG no workspace).
+
+**Aprovações:** navegar, clicar, digitar e capturar a tela requerem digitar `SIM` no terminal. A inspeção de páginas já abertas não solicita confirmação. Não use a automação com contas pessoais ou informações sigilosas até concluirmos o endurecimento da segurança de rede; o filtro de IP não elimina todos os riscos de DNS rebinding. Não há execução de JavaScript arbitrário solicitado pela IA, download de arquivos ou perfil persistente.
+
+Testes sem navegador: `python -m unittest discover -s tests -v`.
+
+**Próximos passos:** testes E2E de navegação em site de demonstração, verificação de resposta FCC real e melhorias de auditoria/isolamento.
