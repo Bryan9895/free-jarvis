@@ -139,6 +139,8 @@ class AutoModelClient:
         candidates = [self.active_model] + [m for m in self.candidates if m != self.active_model]
         last_error = None
         for index, model in enumerate(candidates):
+            if getattr(self, "_diagnosing", False):
+                print(f"FCC: testando {model} ...", file=sys.stderr, flush=True)
             try:
                 response = self.client.responses({**payload, "model": model})
                 if index and self.on_switch:
@@ -147,6 +149,8 @@ class AutoModelClient:
                 return response
             except FCCError as exc:
                 last_error = exc
+                if getattr(self, "_diagnosing", False):
+                    print(f"FCC: modelo {model} falhou: {str(exc)[:160]}", file=sys.stderr, flush=True)
                 if not may_fallback(exc):
                     raise
                 # Erros de transporte podem significar que o servidor está desligado,
@@ -155,10 +159,28 @@ class AutoModelClient:
 
     def diagnostic(self):
         self.initialize()
-        response = self.responses({
+        # Diagnóstico intencionalmente curto; não varrer todo o catálogo de provedores.
+        self.candidates = self.candidates[:3]
+        previous_timeout = getattr(self.client, "timeout", None)
+        if previous_timeout is not None:
+            self.client.timeout = min(previous_timeout, 15)
+        previous_switch = self.on_switch
+        def report_switch(model):
+            if previous_switch:
+                previous_switch(model)
+        self.on_switch = report_switch
+        self._diagnosing = True
+        try:
+            print("Diagnóstico: modelos candidatos: " + ", ".join(self.candidates), file=sys.stderr, flush=True)
+            response = self.responses({
             "model": self.active_model, "input": "Responda somente: OK",
             "max_output_tokens": 48, "stream": True
-        })
+            })
+        finally:
+            self._diagnosing = False
+            self.on_switch = previous_switch
+            if previous_timeout is not None:
+                self.client.timeout = previous_timeout
         output = response.get("output", [])
         text = response.get("output_text") or " ".join(
             p.get("text", "") for i in output if i.get("type") == "message"
