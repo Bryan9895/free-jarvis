@@ -18,6 +18,7 @@ def confirm(action):
 
 def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
+    parser.add_argument("--locate-target", metavar="ALVO", help="Localiza visualmente alvo e salva imagem anotada; nunca clica")
     parser.add_argument("--guided-click", metavar="ALVO", help="Clique visual supervisionado com cursor posicionado pelo usuário e verificação posterior")
     parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e dupla confirmação")
     parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
@@ -78,6 +79,16 @@ def main():
             sys.exit(1)
         return
     client = FCCClient(c.url, c.token)
+    if args.locate_target is not None:
+        from .targeting import locate_target
+        from .wayland import WaylandError
+        try:
+            result = locate_target(client, c.model, c.workspace, confirm, args.locate_target)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        except (FCCError, WaylandError, OSError) as exc:
+            print("Erro ao localizar alvo:", exc, file=sys.stderr)
+            sys.exit(1)
+        return
     if args.guided_click is not None:
         from .guided_desktop import guided_click
         from .wayland import WaylandError
@@ -156,6 +167,15 @@ def main():
                 if msg.lower() in {"sair", "/quit", "exit"}:
                     break
                 if not msg:
+                    continue
+                if msg.lower().startswith("/localizar "):
+                    from .targeting import locate_target
+                    from .wayland import WaylandError
+                    try:
+                        result = locate_target(client, c.model, c.workspace, confirm, msg[len("/localizar "):])
+                        print("JARVIS (localização) >", json.dumps(result, ensure_ascii=False), "\\n")
+                    except (FCCError, WaylandError, OSError) as exc:
+                        print("Erro ao localizar alvo:", exc, file=sys.stderr)
                     continue
                 if msg.lower().startswith("/clicar-guiado "):
                     from .guided_desktop import guided_click
