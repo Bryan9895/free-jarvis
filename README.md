@@ -506,3 +506,22 @@ jarvis-fcc
 **Como interpretar:** se `model_s` já for alto mesmo com zero ferramentas, a lentidão está sobretudo na geração pelo modelo/provedor, no carregamento do Ollama ou no hardware; não é causada por chamadas de ferramentas. Compare a primeira pergunta (carregamento a frio) com a segunda, de comprimento equivalente. Em outro terminal, use `ollama ps` para ver se o modelo está carregado e se executa em CPU/GPU. O comando `ollama run qwen3.5:2b "Responda só OK"` serve como comparação sem FCC. Um modelo maior não é necessariamente mais rápido em um notebook com 8 GB de RAM.
 
 A seleção de todos os modelos FCC permanece disponível, mas nenhum ajuste garante que um modelo externo seja mais rápido ou compatível com ferramentas. O modo rápido não recebe ferramentas, então não pode executar ações. O roteador faz classificação simples e pode errar; `/acoes` força a rota de ferramentas, sem eliminar aprovações e permissões nativas.
+
+### Planejador multietapas supervisionado — próxima fase após otimização do tempo de resposta
+
+A JARVIS agora pode pedir ao modelo FCC um **plano de até cinco etapas** e apresentá-lo para inspeção **sem executar ferramentas enquanto planeja**. O planejador aceita somente um objeto JSON com lista de etapas curtas. O usuário decide se deseja executar o plano; operações que já exigiam autorização (desktop, escrita, navegador) continuam exigindo as permissões anteriores. O GNOME Wayland continua controlando os diálogos do portal.
+
+Comandos dentro de `jarvis-fcc`:
+
+```text
+/planejar Liste os arquivos Python do meu projeto e resuma o conteúdo deles
+/plano
+/executar-plano
+/cancelar-plano
+```
+
+Durante a execução, cada etapa é enviada ao agente existente no modo `tools`, que registra duração, evita repetir chamadas idênticas no turno e detecta recusas e falhas reportadas por ferramentas. Se o agente registrar erro ou recusa de ferramenta, a execução para e as próximas etapas ficam pendentes. **O planejamento não amplia o conjunto de ferramentas nem contorna permissões.** O plano não é persistido entre reinicializações.
+
+Estados do plano: `ready`, `running`, `completed_unverified`, `stopped`, `cancelled`. Estados das etapas incluem `pending`, `reported_unverified`, `blocked`, `failed`. Uma conclusão narrada pelo modelo nunca conta como confirmação externa do resultado; essa etapa ainda precisará de verificadores de estado independentes.
+
+O planejamento acrescenta uma inferência antes das etapas, então é destinado a **tarefas com várias ações**, não a perguntas simples. Para perguntas, mantenha `/normal` ou `/rapido`. Na sessão atual, a rota rápida com `openai/gpt-5.6-luna` foi medida pelo usuário em cerca de 2,4 a 4,0 segundos; não extrapole esses números para Qwen local ou para tarefas com ferramentas.
