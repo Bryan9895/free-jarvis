@@ -5,6 +5,7 @@
 - Ferramenta `desktop_spaces` para consultar monitores, áreas úteis e áreas de trabalho GNOME com resposta D-Bus validada; roteamento direto de pedidos informativos.
 - Consulta confirmada no Ubuntu GNOME Wayland real com um monitor e duas áreas de trabalho.
 - Alternância de área e movimento de janela por número humano (a partir de 1), com revalidação, verificação do compositor e histórico sanitizado; fluxo de ida e volta confirmado no GNOME real com XTerm descartável.
+- Movimento de uma janela entre monitores por número ou destino único, com topologia revalidada e confirmação do monitor final. Teste físico de destino inexistente/atual passou com monitor único; movimento físico com dois monitores segue pendente.
 
 ## Em desenvolvimento — v0.5.0
 

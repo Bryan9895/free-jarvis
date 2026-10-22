@@ -40,6 +40,8 @@ SYSTEM = (
     "Para trocar de área use activate_workspace; para mover uma janela use "
     "move_window_to_workspace. workspace_number começa em 1 e só declare sucesso "
     "com workspace_verified ou window_workspace_verified. "
+    "Para outro monitor use move_window_to_monitor; monitor_number começa em 1 "
+    "e é opcional somente quando há um único outro monitor possível. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
     "Para fechar uma janela use close_window; closed_verified exige ausência no inventário. "
@@ -172,7 +174,7 @@ def _local_layout_reply(calls, outcomes):
     if name not in ("place_window", "arrange_windows", "arrange_window_grid",
                     "save_window_layout", "restore_window_layout", "list_window_layouts",
                     "window_action_history", "desktop_spaces", "activate_workspace",
-                    "move_window_to_workspace"):
+                    "move_window_to_workspace", "move_window_to_monitor"):
         return None
     payload = outcomes[0]
     if not isinstance(payload, dict):
@@ -183,6 +185,24 @@ def _local_layout_reply(calls, outcomes):
     if not isinstance(state, dict):
         return None
     status = state.get("status")
+    if name == "move_window_to_monitor":
+        number = state.get("monitor_number")
+        if status == "window_monitor_verified":
+            return f"Janela movida para o monitor {number}, confirmado pelo GNOME."
+        if status == "already_in_state":
+            return f"A janela já estava no monitor {number}."
+        failures = {
+            "unavailable": "Controle de monitores indisponível no GNOME.",
+            "not_found": "Monitor de destino não encontrado.",
+            "not_observed": "Não encontrei a janela solicitada.",
+            "ambiguous": "Há vários destinos ou janelas possíveis; informe monitor e título.",
+            "refused": "O GNOME recusou mover a janela.",
+            "rejected": "Movimento de janela cancelado.",
+            "changed": "Monitor ou janela mudou antes da operação; tente novamente.",
+            "unverified": "A extensão não confirmou a solicitação.",
+            "window_monitor_unverified": "Movimento solicitado, mas o monitor final da janela não foi confirmado.",
+        }
+        return failures.get(status, "Não consegui confirmar o monitor da janela.")
     if name in ("activate_workspace", "move_window_to_workspace"):
         number = state.get("workspace_number")
         if status == "workspace_verified":

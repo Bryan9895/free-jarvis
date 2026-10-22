@@ -12,7 +12,7 @@ WINDOW_MUTATIONS = {
     "focus_window", "manage_window", "close_window", "place_window",
     "arrange_windows", "arrange_window_grid", "save_window_layout",
     "restore_window_layout",
-    "activate_workspace", "move_window_to_workspace",
+    "activate_workspace", "move_window_to_workspace", "move_window_to_monitor",
 }
 
 
@@ -42,6 +42,9 @@ def record_window_action(db_path, tool, arguments, outcome):
         workspace_number = arguments.get("workspace_number")
         if type(workspace_number) is int and 1 <= workspace_number <= 64:
             details["workspace_number"] = workspace_number
+        monitor_number = arguments.get("monitor_number")
+        if type(monitor_number) is int and 1 <= monitor_number <= 65:
+            details["monitor_number"] = monitor_number
     result = outcome.get("result") if isinstance(outcome, dict) else None
     status = result.get("status") if isinstance(result, dict) else None
     if not isinstance(status, str):

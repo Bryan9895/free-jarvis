@@ -60,6 +60,15 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
     if len(normalized) > 180 or "\n" in normalized:
         return available
+    monitor_destination = re.search(
+        r"\b(?:(?:outro|segundo|terceiro|externo|\d+) monitor|"
+        r"monitor (?:\d+|externo))\b", normalized)
+    if (monitor_destination
+            and re.search(r"\b(?:mova|mover|coloque|colocar|envie|enviar)\b", normalized)
+            and re.search(r"\b(?:janela|firefox|chrome|vscode|vs code|"
+                          r"terminal|ptyxis|code)\b", normalized)
+            and not re.search(r"\b(?:depois|em seguida|tambem|por fim)\b", normalized)):
+        return [t for t in available if t.get("name") == "move_window_to_monitor"]
     workspace_target = re.search(r"\b(?:area(?:s)? de trabalho|workspace(?:s)?)\b", normalized)
     if workspace_target and not re.search(r"\b(?:e depois|em seguida|tambem|por fim)\b", normalized):
         if (re.search(r"\b(?:mova|mover|coloque|colocar|envie|enviar)\b", normalized)

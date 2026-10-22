@@ -384,6 +384,10 @@ class Toolkit:
         from .workspace_control import move_window_to_workspace
         return move_window_to_workspace(app, workspace_number, self.approve, title)
 
+    def move_window_to_monitor(self, app, monitor_number=None, title=""):
+        from .monitor_control import move_window_to_monitor
+        return move_window_to_monitor(app, self.approve, monitor_number, title)
+
     def arrange_windows(self, left_app, right_app, left_title="", right_title=""):
         from .window_layout import arrange_windows
         return arrange_windows(left_app, right_app, self.approve,
@@ -444,6 +448,7 @@ class Toolkit:
             "desktop_spaces": self.desktop_spaces,
             "activate_workspace": self.activate_workspace,
             "move_window_to_workspace": self.move_window_to_workspace,
+            "move_window_to_monitor": self.move_window_to_monitor,
             "place_window": self.place_window, "arrange_windows": self.arrange_windows,
             "arrange_window_grid": self.arrange_window_grid,
             "save_window_layout": self.save_window_layout,
@@ -488,6 +493,7 @@ TOOL_SPECS = [
     {"type":"function","name":"desktop_spaces","description":"Lista monitores conectados, dimensões, áreas úteis e áreas de trabalho GNOME, indicando qual está ativa. Usa Window Control por D-Bus, somente leitura; não move janelas nem troca de área.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"activate_workspace","description":"Ativa uma área de trabalho GNOME existente pelo número humano começando em 1. Revalida a área após autorização e só confirma sucesso se ListWorkspaces mostrar a área ativa.","parameters":{"type":"object","properties":{"workspace_number":{"type":"integer"}},"required":["workspace_number"],"additionalProperties":False}},
     {"type":"function","name":"move_window_to_workspace","description":"Move UMA janela inequívoca para uma área de trabalho GNOME existente. Use número humano começando em 1; título opcional desambigua janelas do mesmo aplicativo. Revalida identidade e workspace_index antes/depois.","parameters":{"type":"object","properties":{"app":{"type":"string"},"workspace_number":{"type":"integer"},"title":{"type":"string"}},"required":["app","workspace_number"],"additionalProperties":False}},
+    {"type":"function","name":"move_window_to_monitor","description":"Move UMA janela inequívoca para outro monitor GNOME e verifica monitor_index. monitor_number opcional começa em 1; sem número só funciona se houver exatamente um outro monitor. Título opcional desambigua janelas do mesmo aplicativo.","parameters":{"type":"object","properties":{"app":{"type":"string"},"monitor_number":{"type":"integer"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"arrange_windows","description":"Organiza DUAS janelas GNOME no mesmo monitor, uma à esquerda e outra à direita. Só prossegue se ambas forem inequívocas. Informe left_app e right_app e títulos opcionais. Retorna layout_verified apenas se ambas as posições forem observadas.","parameters":{"type":"object","properties":{"left_app":{"type":"string"},"right_app":{"type":"string"},"left_title":{"type":"string"},"right_title":{"type":"string"}},"required":["left_app","right_app"],"additionalProperties":False}},
     {"type":"function","name":"arrange_window_grid","description":"Organiza exatamente três ou quatro janelas já abertas no mesmo monitor. Informe windows em ordem de leitura, cada uma com app e título opcional. Três: metade esquerda e duas à direita; quatro: grade 2x2. Recusa ambiguidades e verifica geometria de cada janela.","parameters":{"type":"object","properties":{"windows":{"type":"array","minItems":3,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["windows"],"additionalProperties":False}},
     {"type":"function","name":"save_window_layout","description":"Salva um perfil nomeado com a geometria atual de duas a quatro janelas já abertas no mesmo monitor. Informe seletores de app e título opcional, sem IDs inventados. Persiste em SQLite local.","parameters":{"type":"object","properties":{"name":{"type":"string"},"windows":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["name","windows"],"additionalProperties":False}},
