@@ -13,6 +13,7 @@ _LABELS = {
     "reported_unverified": "Processada; resultado não verificado",
     "blocked": "Bloqueada",
     "failed": "Falhou",
+    "skipped_unverified": "Ignorada manualmente (resultado desconhecido)",
 }
 
 
@@ -37,7 +38,8 @@ def format_plan(plan, *, show_results=True):
         "  " + "─" * 55,
     ]
     symbols = {"pending": "○", "running": "◌", "reported_unverified": "✓",
-               "failed": "✕", "blocked": "!", "interrupted": "!",}
+               "failed": "✕", "blocked": "!", "interrupted": "!",
+               "skipped_unverified": "↷",}
     for step in steps:
         status = step.get("status", "pending")
         lines.append(f"  {symbols.get(status, '·')} {step.get('id','?')}. {step.get('description','—')}")
@@ -51,6 +53,7 @@ def format_plan(plan, *, show_results=True):
     lines.extend([
         "  " + "─" * 55,
         "  /executar-plano • /cancelar-plano • /historico-planos",
+        "  /selecionar-plano ID • /resolver-etapa skip|retry • /retomar-plano",
         "  ✓ significa etapa processada; não é confirmação externa de êxito.",
         "╚" + "═" * 62,
     ])
