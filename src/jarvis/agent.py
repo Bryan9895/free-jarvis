@@ -1,5 +1,6 @@
 """Agente FCC: resposta rápida, execução com deduplicação e métricas locais."""
 import json
+import hashlib
 import os
 import time
 
@@ -111,7 +112,20 @@ class Agent:
                             outcome = self.toolkit.execute(call["name"], args)
                             seen[signature] = outcome
                             calls_executed += 1
-                            tool_outcomes.append({"name": call["name"], "outcome": {"result": {"status": outcome.get("result", {}).get("status")} if isinstance(outcome.get("result"), dict) else {}, "error": outcome.get("error")} if isinstance(outcome, dict) else {}})
+                            # Metadados para verificação; nunca registrar texto do arquivo.
+                            detail = outcome.get("result") if isinstance(outcome, dict) else None
+                            safe = {}
+                            if isinstance(detail, dict):
+                                safe = {key: detail[key] for key in
+                                        ("status", "path", "trash_path", "previous_path")
+                                        if isinstance(detail.get(key), str)}
+                            record = {"name": call["name"],
+                                      "outcome": {"result": safe,
+                                                  "error": outcome.get("error") if isinstance(outcome, dict) else None}}
+                            if call["name"] == "write_file" and isinstance(args.get("content"), str):
+                                record["expected_sha256"] = hashlib.sha256(
+                                    args["content"].encode("utf-8")).hexdigest()
+                            tool_outcomes.append(record)
                     except (KeyError, ValueError, TypeError) as exc:
                         outcome = {"error": "Argumentos inválidos: " + str(exc)}
                     # Preserve operational failures for the supervising planner.
