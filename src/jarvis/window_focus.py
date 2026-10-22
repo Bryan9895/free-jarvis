@@ -23,6 +23,10 @@ def _visible_windows():
 
 def _match(windows, app, title):
     a = app.casefold().strip()
+    aliases = {"mozilla firefox": "firefox", "firefox": "firefox",
+               "visual studio code": "code", "vs code": "code",
+               "vscode": "code"}
+    a = aliases.get(a, a)
     t = title.casefold().strip()
     return [w for w in windows
             if isinstance(w, dict)
