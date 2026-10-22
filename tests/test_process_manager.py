@@ -14,7 +14,7 @@ class ProcessesTests(unittest.TestCase):
             root = Path(td)
             manager = ProcessManager()
             mock_process = Mock(pid=4321)
-            mock_process.poll.side_effect = [None, 0]
+            mock_process.poll.side_effect = [None, 0, 0]
             with patch("jarvis.process_manager.shutil.which", return_value="/usr/bin/code"), patch(
                 "jarvis.process_manager.subprocess.Popen", return_value=mock_process
             ) as launch:
