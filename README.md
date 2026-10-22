@@ -724,3 +724,25 @@ jarvis-fcc --windows-diagnostic
 Com a extensão ativa, `source` será `gnome_shell_extension`; se não, permanece `atspi_accessibility_partial` e mostra `fallback_reason`. A própria enumeração de janelas do compositor é marcada como `complete: false`, pois não inclui todas as superfícies possíveis. Títulos de janelas e informações de PID podem ser sensíveis e serão fornecidos ao modelo quando a ferramenta for chamada.
 
 A interface expõe apenas **leitura de janelas**. Não envia comandos de gerenciamento, não solicita permissões novas para clique e não garante que o título mostrado corresponda ao arquivo ativo.
+
+### Execução + observação do GNOME Shell
+
+Com a extensão Window Calls Extended habilitada e o `jarvis-fcc --windows-diagnostic` retornando `source: gnome_shell_extension`, a JARVIS agora tira uma amostra do inventário **antes e depois** de abrir aplicativos com `launch_installed_app`, `open_project` e `open_file`. O resultado contém `window_observation` com um destes estados:
+
+- `appeared_after_request`: surgiu uma janela/título correspondente no inventário após a solicitação (pode ser atualização de título de uma janela preexistente, não prova causalidade).
+- `already_observed`: a janela correspondente já constava da amostra anterior.
+- `observed_unknown_origin`: janela observada, mas o estado anterior estava indisponível.
+- `not_observed`: não foi localizada janela correspondente; o lançamento pode ter funcionado.
+- `unavailable`: consulta ao compositor indisponível.
+
+São informações complementares. Uma janela observada **não comprova** que o arquivo solicitado está aberto, nem transforma `launched_unverified` em sucesso confirmado. Os resultados são registrados em `managed_processes` durante a sessão (para aberturas com `open_project` ou `open_file`) e anexados como evidência ao plano, sem declarar `completed_verified` para passos de interface gráfica.
+
+Experimente:
+
+```text
+Jarvis, abra o Firefox.
+Jarvis, crie um projeto Python TesteJanela e abra no VS Code.
+Jarvis, mostre os programas que você iniciou nesta sessão.
+```
+
+A consulta só ocorre **após autorização de abertura**, não executa comandos de clique ou foco e pode adicionar alguns segundos aos pedidos de lançamento. Perguntas simples não pagam esse custo de observação. O sistema não força fechamento de aplicativos e não acessa a interface insegura `Shell.Eval`.
