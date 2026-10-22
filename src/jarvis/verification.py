@@ -38,6 +38,7 @@ def verify_step(toolkit, outcomes):
                 details = {
                     "appeared_after_request": "Janela apareceu após o pedido; causalidade não comprovada",
                     "already_observed": "Janela já existia antes da solicitação",
+                    "window_changed_after_request": "Janela existente mudou após o pedido; não prova novo processo",
                     "observed_unknown_origin": "Janela observada; estado anterior indisponível",
                     "not_observed": "Janela não observada; não significa que abertura falhou",
                     "unavailable": "Inventário de janelas indisponível",
