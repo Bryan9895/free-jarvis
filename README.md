@@ -696,3 +696,15 @@ Jarvis, confira se uma janela do Firefox aparece no GNOME.
 Respostas possíveis: `window_observed` (janela acessível localizada), `not_observed` (nenhuma correspondência na árvore, **não comprova aplicativo fechado**) e `unavailable` (serviço/biblioteca sem resposta). A ferramenta **não verifica foco, conteúdo ou arquivo ativo**; mesmo quando um título contém `main.py`, isso é apenas uma indicação fornecida pelo aplicativo. Executar um programa continua retornando `launched_unverified`, pois localizar uma janela parecida não demonstra que o processo lançado foi a causa de sua aparição.
 
 Se o comando retornar `unavailable`, execute `/usr/bin/python3 -c "import pyatspi; print('AT-SPI OK')"` para conferir a dependência. Os títulos podem conter dados privados; evite encaminhá-los a provedores remotos se não deseja compartilhar essas informações.
+
+### Importante: lista de janelas AT-SPI é parcial
+
+Após teste real do GNOME Wayland, identificamos que o AT-SPI retornava GNOME Shell, Ptyxis e Nautilus, mas omitia aplicativos que poderiam estar abertos. Isso ocorre porque AT-SPI é uma árvore de **acessibilidade**, não uma API de inventário completo de janelas do compositor. A JARVIS não deve dizer `estas são todas as janelas abertas` com base nela.
+
+A consulta agora retorna `complete: false` e `source: atspi_accessibility_partial`, além de diagnósticos de aplicativos acessíveis, nós inspecionados e falhas de consulta. Para obter a saída bruta, sem interpretação do modelo:
+
+```bash
+jarvis-fcc --windows-diagnostic
+```
+
+Essa saída permite comparar as aplicações presentes na árvore AT-SPI com janelas visíveis. `not_observed` significa apenas que a janela não apareceu nos objetos inspecionados, **não** que o aplicativo esteja fechado. Para inventário mais completo será necessária uma integração autorizada e específica com o compositor/ambiente GNOME, mantendo o AT-SPI como fonte complementar.
