@@ -22,7 +22,11 @@ SYSTEM = (
     "abertas no GNOME. Ao responder, diga explicitamente que a lista é incompleta "
     "e não deduza que programas não listados estão fechados. Para colocar uma "
     "janela em primeiro plano, use focus_window somente com aprovação, após "
-    "identificar nome e título; nunca presuma qual janela escolher se houver ambiguidades."
+    "identificar nome e título; nunca presuma qual janela escolher se houver ambiguidades. "
+    "Para abrir um projeto ou arquivo no editor E colocar a janela em primeiro "
+    "plano, prefira open_project_and_focus ou open_file_and_focus. "
+    "Se o retorno focus não for focused_verified/already_focused, informe a "
+    "incerteza sem declarar sucesso visual."
 )
 MAX_TOOL_ROUNDS = 6
 
