@@ -97,7 +97,10 @@ def manage_window(app, title, action, approve, *, retries=3, delay=0.2):
         return {"status": "ambiguous", "matches": len(selected)}
     chosen = selected[0]
     method, flag, target = ACTIONS[action]
-    if chosen.get(flag) is target:
+    # Uma janela pode permanecer maximizada enquanto está MINIMIZADA.
+    # "Maximize" nesse caso significa torná-la visível novamente.
+    needs_restore = action in ("maximize", "restore") and chosen.get("is_minimized") is True
+    if chosen.get(flag) is target and not needs_restore:
         return {"status": "already_in_state", "action": action,
                 "app": chosen["app"], "title": chosen["title"]}
     if not approve(f"{method.upper()} JANELA: {chosen['app']} — {chosen['title']}?"):
@@ -112,14 +115,25 @@ def manage_window(app, title, action, approve, *, retries=3, delay=0.2):
             or current_match[0].get("pid") != chosen.get("pid")
             or len(_match(current, app, title)) != 1):
         return {"status": "changed", "reason": "Janela mudou antes da operação"}
-    proc = _dbus(method, chosen["id"])
-    if proc is None or proc.returncode:
-        return {"status": "unavailable", "reason": "Controle D-Bus não respondeu"}
-    reply = proc.stdout.strip().lower()
-    if reply == "(false,)":
-        return {"status": "not_activated", "action": action}
-    if reply != "(true,)":
-        return {"status": "unverified", "reason": "Resposta desconhecida da extensão"}
+    # Restaurar antes de maximizar: o estado maximized pode continuar true
+    # mesmo quando o Firefox desapareceu por estar minimized.
+    commands = []
+    if needs_restore:
+        commands.extend(["Unminimize", "Activate"])
+    if not (action == "maximize" and chosen.get("is_maximized") is True):
+        if not (action == "restore" and needs_restore):
+            commands.append(method)
+    for command in commands:
+        proc = _dbus(command, chosen["id"])
+        if proc is None or proc.returncode:
+            return {"status": "unavailable", "reason": "Controle D-Bus não respondeu",
+                    "action": action}
+        reply = proc.stdout.strip().lower()
+        if reply == "(false,)":
+            return {"status": "not_activated", "action": action, "command": command}
+        if reply != "(true,)":
+            return {"status": "unverified", "reason": "Resposta desconhecida da extensão",
+                    "action": action}
     for attempt in range(max(1, min(retries, 5))):
         if attempt:
             time.sleep(delay)
@@ -129,7 +143,9 @@ def manage_window(app, title, action, approve, *, retries=3, delay=0.2):
         same = [w for w in after if w["id"] == chosen["id"]
                 and w["app"] == chosen["app"]
                 and w.get("pid") == chosen.get("pid")]
-        if len(same) == 1 and same[0].get(flag) is target:
+        if (len(same) == 1 and same[0].get(flag) is target
+                and (action not in ("restore", "maximize")
+                     or same[0].get("is_minimized") is False)):
             return {"status": "state_verified", "action": action,
                     "app": chosen["app"], "title": chosen["title"]}
     return {"status": "state_unverified", "action": action,
