@@ -328,6 +328,9 @@ def main():
                             print(f"Falha ao falar resposta: {exc}", file=sys.stderr)
                 except (FCCError, ValueError) as exc:
                     print("Erro de modelo/protocolo:", exc, file=sys.stderr)
+                except KeyboardInterrupt:
+                    print("\\nRequisição interrompida. Uma ação local já autorizada pode ter ocorrido; "
+                          "confira o resultado antes de repetir. Use /metricas para ver o tempo parcial.")
         finally:
             toolkit.close()
             plan_store.close()
