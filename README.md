@@ -838,3 +838,20 @@ jarvis-fcc
 ```
 
 Dentro do chat use `/metricas` **depois** de fazer uma pergunta. Compare `model_s` e `total_s`. Se o modelo explícito estiver indisponível, use `jarvis-fcc --models` para escolher outro ID real; não tente contornar erros de 400 repetidamente. A correção foi coberta por testes simulados; comportamento no FCC/NIM do notebook ainda requer validação.
+
+### Resposta atrasada após focar Firefox — correção (22/10/2026)
+
+Teste real confirmado no notebook: a chamada `focus_window` solicitou `SIM`, e o Firefox foi colocado em primeiro plano. Entretanto, após executar a ação, a JARVIS ficou aguardando a **segunda requisição de inferência ao FCC** (para narrar o resultado); o usuário interrompeu o processo com Ctrl+C, gerando `KeyboardInterrupt` dentro de `urllib.request.urlopen`. Portanto, o gargalo registrado não era a execução D-Bus do foco, mas a espera de resposta HTTP após a ferramenta ter concluído. Isso não indica que o FCC esteja definitivamente travado.
+
+Agora, quando a IA solicita **somente** `focus_window` em uma operação explícita de foco, a JARVIS devolve imediatamente um texto determinístico a partir do resultado real da ferramenta, sem executar uma segunda rodada do modelo. Sucesso só é declarado quando o GNOME devolve `focused_verified` ou `already_focused`. Recusas, ambiguidades e falta de confirmação são descritas sem alegar sucesso. Com várias ferramentas na mesma rodada, mantém a interação normal com o modelo. `/metricas` indica `direct_tool_reply: true` e normalmente `model_rounds: 1`.
+
+Se você interromper uma geração com Ctrl+C, a CLI permanece no chat, em vez de encerrar com traceback. A execução pode já ter aplicado ações locais: **verifique o estado real antes de repetir a solicitação**. `/metricas` na mesma sessão exibe o que estava registrado ao interromper; ao iniciar um processo novo, não existem métricas da sessão antiga.
+
+```bash
+cd ~/free-jarvis
+git pull --ff-only origin main
+source .venv/bin/activate
+jarvis-fcc
+```
+
+Diga: `Jarvis, coloque o Firefox em primeiro plano`. Se ele já estiver focado, espere mensagem `already_focused`. Depois solicite `/metricas`. A correção é um caminho curto somente para foco isolado, não uma promessa de eliminar toda a latência de modelos FCC.
