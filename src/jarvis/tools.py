@@ -271,6 +271,10 @@ class Toolkit:
         from .desktop_windows import verify_app_window
         return verify_app_window(app, title)
 
+    def focus_window(self, app, title=""):
+        from .window_focus import focus_window
+        return focus_window(app, title, self.approve)
+
     def desktop_info(self):
         from .wayland import desktop_info
         return desktop_info()
@@ -300,7 +304,8 @@ class Toolkit:
             "browser_screenshot": self.browser_screenshot,
             "desktop_info": self.desktop_info,
             "desktop_windows": self.desktop_windows,
-            "verify_app_window": self.verify_app_window, "desktop_screenshot": self.desktop_screenshot,
+            "verify_app_window": self.verify_app_window,
+            "focus_window": self.focus_window, "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
             "list_installed_apps": self.list_installed_apps,
             "launch_installed_app": self.launch_installed_app,
@@ -319,6 +324,7 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"focus_window","description":"Com autorização explícita, solicita foco de UMA janela do GNOME Wayland usando a extensão opcional Activate Window By Title. Requer Window Calls Extended para identificar janela por app e título único. Confere foco depois; recusa ambiguidades. Não fecha, move ou redimensiona.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"desktop_windows","description":"Consulta somente nomes de aplicativos e títulos de janelas que expõem acessibilidade AT-SPI no GNOME Wayland. Leitura, sem clique. Lista pode ser incompleta.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"verify_app_window","description":"Procura janela acessível de aplicativo por nome e título opcional no GNOME Wayland. window_observed atesta somente janela acessível, não foco ou arquivo aberto. not_observed não prova ausência.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"open_file","description":"Abre um arquivo INDIVIDUAL existente e autorizado no VS Code, VSCodium ou VS Code Insiders. Não abre diretórios; use open_project para pastas. Exige autorização.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
