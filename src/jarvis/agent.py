@@ -25,6 +25,8 @@ SYSTEM = (
     "identificar nome e título; nunca presuma qual janela escolher se houver ambiguidades. "
     "Para abrir um projeto ou arquivo no editor E colocar a janela em primeiro "
     "plano, prefira open_project_and_focus ou open_file_and_focus. "
+    "Para abrir um aplicativo instalado e também colocá-lo em primeiro plano, "
+    "prefira launch_installed_app_and_focus após consultar seu app_id. "
     "Se o retorno focus não for focused_verified/already_focused, informe a "
     "incerteza sem declarar sucesso visual."
 )
