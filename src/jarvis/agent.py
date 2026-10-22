@@ -20,7 +20,9 @@ SYSTEM = (
     "não demonstra que o aplicativo esteja fechado. desktop_windows retorna "
     "SOMENTE amostra PARCIAL de janelas acessíveis AT-SPI, nunca todas as janelas "
     "abertas no GNOME. Ao responder, diga explicitamente que a lista é incompleta "
-    "e não deduza que programas não listados estão fechados."
+    "e não deduza que programas não listados estão fechados. Para colocar uma "
+    "janela em primeiro plano, use focus_window somente com aprovação, após "
+    "identificar nome e título; nunca presuma qual janela escolher se houver ambiguidades."
 )
 MAX_TOOL_ROUNDS = 6
 
