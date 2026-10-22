@@ -656,3 +656,18 @@ com print("hello world") e abra o arquivo no VS Code.
 ```
 
 A pasta `$HOME/Downloads/TestJarvis` será criada se estiver ausente, e o arquivo ficará dentro dela. Se faltar permissão ou ferramenta, a etapa deve ser mostrada como bloqueada, não concluída. O prompt sozinho não impede todo erro de interpretação de linguagem natural; confira as etapas exibidas antes de autorizar execução. A JARVIS ainda não tem inspeção de janelas do GNOME para atestar visualmente que o VS Code exibiu o arquivo.
+
+### Verificação independente de resultados por etapa
+
+A JARVIS agora confere automaticamente operações do sistema de arquivos depois que o modelo chama ferramentas: criação de pastas, estrutura de projeto Python, escrita de arquivos, movimentação e envio para a lixeira interna. A verificação de `write_file` compara SHA-256 do conteúdo esperado com os bytes realmente lidos do arquivo. O hash esperado é usado durante a sessão de execução e o conteúdo privado não é exibido nas métricas. A verificação nunca executa comandos shell.
+
+Estados novos de etapa e plano:
+- `verified`: a operação de arquivo foi conferida no filesystem;
+- `reported_unverified`: ferramenta executada, mas sem verificação independente (por exemplo VS Code e outros lançadores);
+- `completed_verified`: todas as etapas do plano foram verificadas;
+- `completed_unverified`: houve etapas sem confirmação independente;
+- `blocked/stopped`: ocorreu divergência ou falha de verificação.
+
+O painel `/plano` mostra ✓ para efeito verificado e ◇ para execução não verificada. Exemplo de teste: peça para criar uma pasta `TesteVerificacao` em `~/Downloads`, criar um `main.py` dentro dela com `print("hello world")` e depois abrir o arquivo no VS Code. A criação/escrita podem ser verificadas automaticamente; **a janela do VS Code ainda não**. A IA não deve tratar uma saída do lançador como confirmação de que a janela foi aberta.
+
+Limites: verificações são uma fotografia do estado logo após a operação, não garantem que outros processos não alterem o arquivo posteriormente. A abertura de aplicativos e interações com janelas GNOME continuam fora do escopo de verificação independente; esses passos impedem que um plano completo receba `completed_verified`.
