@@ -59,6 +59,9 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
     if len(normalized) > 180 or "\n" in normalized:
         return available
+    if (re.search(r"\b(?:historico|acoes anteriores|operacoes anteriores)\b", normalized)
+            and re.search(r"\b(?:janela|janelas|layout)\b", normalized)):
+        return [t for t in available if t.get("name") == "window_action_history"]
     if re.search(r"\b(?:perfil|layout)\b", normalized):
         if re.search(r"\b(?:restaure|restaurar|recupere|recuperar)\b", normalized):
             return [t for t in available if t.get("name") == "restore_window_layout"]
@@ -74,8 +77,12 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
         return [t for t in available if t.get("name") == "arrange_window_grid"]
     if layout_target and (re.search(r"\b(?:metade|lado a lado|centro|centralize|"
                                     r"esquerda|direita|canto|divida a tela)\b", normalized)
-                          or re.search(r"\b\d{1,3}%", normalized)):
-        if re.search(r"\b(?: e | com | lado a lado| dois | duas )", normalized):
+                          or re.search(r"\b\d{1,3}%", normalized)
+                          or re.search(r"\bx\s*=\s*\d+", normalized)):
+        if ("lado a lado" in normalized or re.search(
+                r"\b(?:firefox|chrome|vscode|vs code|terminal|ptyxis|code)\s+"
+                r"(?:e|com)\s+(?:firefox|chrome|vscode|vs code|terminal|ptyxis|code)\b",
+                normalized)):
             return [t for t in available if t.get("name") == "arrange_windows"]
         if re.search(r"\b(?:coloque|colocar|mova|mover|posicione|"
                      r"posicionar|organize|organizar|centralize|deixe|ocupe)\b", normalized):

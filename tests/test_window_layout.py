@@ -134,6 +134,32 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _rectangle(area, "center", current, 101, None)
 
+    def test_custom_pixels_are_relative_to_workarea_and_bounded(self):
+        area = (1920, 30, 1000, 900)
+        current = window(15, "code", "VS Code")
+        self.assertEqual(_rectangle(area, "custom", current,
+                                    x_px=100, y_px=50, width_px=700, height_px=600),
+                         (2020, 80, 700, 600))
+        for rect in ((900, 0, 200, 200), (-1, 0, 200, 200),
+                     (0, 0, 99, 200), (0, 850, 200, 100)):
+            with self.subTest(rect=rect), self.assertRaises(ValueError):
+                _rectangle(area, "custom", current, x_px=rect[0], y_px=rect[1],
+                           width_px=rect[2], height_px=rect[3])
+        with self.assertRaises(ValueError):
+            _rectangle(area, "left", current, x_px=0)
+
+    def test_custom_position_is_sent_and_verified(self):
+        old = window(15, "code", "VS Code")
+        after = {**old, "x": 250, "y": 100, "width": 500, "height": 400}
+        with patch("jarvis.window_layout._inventory",
+                   side_effect=[[old], [old], [after]]), patch(
+            "jarvis.window_layout._workarea", return_value=(100, 20, 1000, 900)), patch(
+            "jarvis.window_layout._run", return_value=True) as action:
+            result = place_window("code", "custom", lambda _: True,
+                                  x_px=150, y_px=80, width_px=500, height_px=400)
+        self.assertEqual(result["status"], "geometry_verified")
+        action.assert_called_once_with("MoveResize", 15, 250, 100, 500, 400)
+
     def test_center_position_is_sent_and_verified(self):
         old = window(15, "code", "VS Code")
         after = window(15, "code", "VS Code", x=150, width=700)
@@ -223,6 +249,9 @@ class LayoutTests(unittest.TestCase):
             "Centralize o Firefox", TOOL_SPECS)], ["place_window"])
         self.assertEqual([s["name"] for s in tool_catalog(
             "Deixe o VS Code ocupando 70% da tela", TOOL_SPECS)], ["place_window"])
+        self.assertEqual([s["name"] for s in tool_catalog(
+            "Coloque Firefox em x=100, y=50 com 700 por 600 pixels", TOOL_SPECS)],
+            ["place_window"])
         self.assertEqual([s["name"] for s in tool_catalog(
             "Organize três janelas em grade", TOOL_SPECS)], ["arrange_window_grid"])
 

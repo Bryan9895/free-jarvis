@@ -2,6 +2,7 @@
 import os
 import hashlib
 import difflib
+import sqlite3
 from pathlib import Path
 import shlex
 import subprocess
@@ -356,10 +357,12 @@ class Toolkit:
         from .window_manage import manage_window
         return manage_window(app, title, action, self.approve)
 
-    def place_window(self, app, position, title="", width_percent=None, height_percent=None):
+    def place_window(self, app, position, title="", width_percent=None, height_percent=None,
+                     x_px=None, y_px=None, width_px=None, height_px=None):
         from .window_layout import place_window
         return place_window(app, position, self.approve, title=title,
-                            width_percent=width_percent, height_percent=height_percent)
+                            width_percent=width_percent, height_percent=height_percent,
+                            x_px=x_px, y_px=y_px, width_px=width_px, height_px=height_px)
 
     def close_window(self, app, title=""):
         from .window_manage import close_window
@@ -390,6 +393,10 @@ class Toolkit:
         from .layout_profiles import list_window_layouts
         return list_window_layouts(self.layout_db)
 
+    def window_action_history(self, limit=20):
+        from .window_history import window_action_history
+        return window_action_history(self.layout_db, limit)
+
     def desktop_info(self):
         from .wayland import desktop_info
         return desktop_info()
@@ -407,8 +414,6 @@ class Toolkit:
         return agent_step(self.approve, action, dx=dx, dy=dy, text=text)
 
     def execute(self, name, arguments):
-        if getattr(self.approve, "mode", None) == "revoked":
-            return {"result": {"status": "rejected", "reason": "Sessão revogada"}}
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
             "write_file": self.write_file, "make_directory": self.make_directory,
@@ -429,6 +434,7 @@ class Toolkit:
             "save_window_layout": self.save_window_layout,
             "restore_window_layout": self.restore_window_layout,
             "list_window_layouts": self.list_window_layouts,
+            "window_action_history": self.window_action_history,
             "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
             "list_installed_apps": self.list_installed_apps,
@@ -443,15 +449,25 @@ class Toolkit:
         }
         if name not in operations:
             return {"error": "Ferramenta desconhecida"}
-        try:
-            return {"result": operations[name](**arguments)}
-        except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError, ValueError) as exc:
-            return {"error": str(exc)}
-        except RuntimeError as exc:
-            return {"error": str(exc)}
+        if getattr(self.approve, "mode", None) == "revoked":
+            outcome = {"result": {"status": "rejected", "reason": "Sessão revogada"}}
+        else:
+            try:
+                outcome = {"result": operations[name](**arguments)}
+            except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError, ValueError) as exc:
+                outcome = {"error": str(exc)}
+            except RuntimeError as exc:
+                outcome = {"error": str(exc)}
+        from .window_history import WINDOW_MUTATIONS, record_window_action
+        if name in WINDOW_MUTATIONS and self.layout_db is not None:
+            try:
+                outcome["audit_id"] = record_window_action(self.layout_db, name, arguments, outcome)
+            except (OSError, sqlite3.Error):
+                outcome["audit_error"] = "Histórico de janelas indisponível"
+        return outcome
 
 TOOL_SPECS = [
-    {"type":"function","name":"place_window","description":"Posiciona UMA janela na área útil do monitor: left, right, center ou bottom_right. width_percent e height_percent opcionais (10 a 100) definem tamanho relativo. Revalida ID e confirma geometria GNOME após MoveResize.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right","center","bottom_right"]},"title":{"type":"string"},"width_percent":{"type":"integer"},"height_percent":{"type":"integer"}},"required":["app","position"],"additionalProperties":False}},
+    {"type":"function","name":"place_window","description":"Posiciona UMA janela na área útil: left, right, center, bottom_right ou custom. Percentuais opcionais definem tamanho relativo (10 a 100). custom exige x_px, y_px, width_px, height_px em pixels relativos à área útil e dentro dela. Revalida ID e confirma geometria GNOME após MoveResize.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right","center","bottom_right","custom"]},"title":{"type":"string"},"width_percent":{"type":"integer"},"height_percent":{"type":"integer"},"x_px":{"type":"integer"},"y_px":{"type":"integer"},"width_px":{"type":"integer"},"height_px":{"type":"integer"}},"required":["app","position"],"additionalProperties":False}},
     {"type":"function","name":"close_window","description":"Solicita fechamento educado de UMA janela GNOME identificada sem ambiguidade. Sempre exige confirmação específica por risco de dados não salvos; só declara sucesso quando o ID desaparece do inventário.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"focused_window","description":"Consulta a janela atualmente em foco via Window Control GetFocused e confirma ID, classe e título no inventário GNOME. Somente leitura.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"arrange_windows","description":"Organiza DUAS janelas GNOME no mesmo monitor, uma à esquerda e outra à direita. Só prossegue se ambas forem inequívocas. Informe left_app e right_app e títulos opcionais. Retorna layout_verified apenas se ambas as posições forem observadas.","parameters":{"type":"object","properties":{"left_app":{"type":"string"},"right_app":{"type":"string"},"left_title":{"type":"string"},"right_title":{"type":"string"}},"required":["left_app","right_app"],"additionalProperties":False}},
@@ -459,6 +475,7 @@ TOOL_SPECS = [
     {"type":"function","name":"save_window_layout","description":"Salva um perfil nomeado com a geometria atual de duas a quatro janelas já abertas no mesmo monitor. Informe seletores de app e título opcional, sem IDs inventados. Persiste em SQLite local.","parameters":{"type":"object","properties":{"name":{"type":"string"},"windows":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["name","windows"],"additionalProperties":False}},
     {"type":"function","name":"restore_window_layout","description":"Restaura um perfil salvo para janelas já abertas. Redimensiona proporcionalmente à área útil atual, revalida IDs e verifica geometria após cada ação. Não abre aplicativos ausentes.","parameters":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"],"additionalProperties":False}},
     {"type":"function","name":"list_window_layouts","description":"Lista nomes dos perfis de janelas salvos em SQLite local. Não altera janelas.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+    {"type":"function","name":"window_action_history","description":"Lista até 50 ações recentes sobre janelas com estado observado, sem títulos ou conteúdo sensível. Somente leitura.","parameters":{"type":"object","properties":{"limit":{"type":"integer"}},"additionalProperties":False}},
     {"type":"function","name":"manage_window","description":"Minimiza, restaura, maximiza ou desfaz maximização de UMA janela GNOME Wayland identificada unicamente por app e título opcional. Requer extensão opcional Window Control; utiliza ID obtido do compositor, revalida janela e estado após comando, sem Shell.Eval. Não fecha janelas.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"},"action":{"type":"string","enum":["minimize","restore","maximize","unmaximize"]}},"required":["app","action"],"additionalProperties":False}},
     {"type":"function","name":"launch_installed_app_and_focus","description":"Abre aplicativo XDG com autorização e tenta focar UMA janela correspondente com segunda aprovação, somente quando identificação no GNOME é inequívoca. Use o app_id obtido no catálogo; estados separados para abertura e foco.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"open_project_and_focus","description":"Abre projeto existente no editor, depois tenta trazer a janela desse projeto ao primeiro plano. Duas aprovações separadas e verificações GNOME; não afirma sucesso quando título do projeto não é encontrado.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},

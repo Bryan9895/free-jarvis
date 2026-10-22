@@ -46,7 +46,20 @@ def _half(area, side):
     raise ValueError("Posição inválida; escolha left ou right")
 
 
-def _rectangle(area, position, current, width_percent=None, height_percent=None):
+def _rectangle(area, position, current, width_percent=None, height_percent=None,
+               x_px=None, y_px=None, width_px=None, height_px=None):
+    pixels = (x_px, y_px, width_px, height_px)
+    if position == "custom":
+        if (any(type(value) is not int for value in pixels)
+                or width_percent is not None or height_percent is not None):
+            raise ValueError("Posição custom exige x_px, y_px, width_px e height_px inteiros")
+        ax, ay, aw, ah = area
+        if (x_px < 0 or y_px < 0 or width_px < 100 or height_px < 100
+                or x_px + width_px > aw or y_px + height_px > ah):
+            raise ValueError("Retângulo fora da área útil do monitor")
+        return ax + x_px, ay + y_px, width_px, height_px
+    if any(value is not None for value in pixels):
+        raise ValueError("Medidas em pixels exigem posição custom")
     if position in ("left", "right") and width_percent is None and height_percent is None:
         return _half(area, position)
     if position not in ("center", "bottom_right", "left", "right"):
@@ -122,9 +135,10 @@ def _place_one(chosen, rect):
     return _run("MoveResize", wid, *rect)
 
 
-def place_window(app, position, approve, title="", width_percent=None, height_percent=None):
-    if position not in ("left", "right", "center", "bottom_right"):
-        raise ValueError("Posição deve ser left, right, center ou bottom_right")
+def place_window(app, position, approve, title="", width_percent=None, height_percent=None,
+                 x_px=None, y_px=None, width_px=None, height_px=None):
+    if position not in ("left", "right", "center", "bottom_right", "custom"):
+        raise ValueError("Posição deve ser left, right, center, bottom_right ou custom")
     if not isinstance(app, str) or not 2 <= len(app) <= 100:
         raise ValueError("Nome inválido")
     if not isinstance(title, str) or len(title) > 200:
@@ -141,7 +155,8 @@ def place_window(app, position, approve, title="", width_percent=None, height_pe
     area = _workarea(monitor)
     if area is None:
         return {"status": "unavailable", "reason": "Área útil do monitor indisponível"}
-    rect = _rectangle(area, position, chosen, width_percent, height_percent)
+    rect = _rectangle(area, position, chosen, width_percent, height_percent,
+                      x_px, y_px, width_px, height_px)
     if not approve(f"POSICIONAR {chosen['app']} — {chosen['title']} em {position}, "
                    f"geometria {rect}?"):
         return {"status": "rejected"}

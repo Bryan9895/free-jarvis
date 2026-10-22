@@ -89,3 +89,9 @@ Próximo teste no notebook: com Window Control habilitado e janela descartável,
 ## v0.5.0 — grade e perfis locais de janelas
 
 Adicionadas `arrange_window_grid` (três janelas: esquerda + duas à direita; quatro: 2×2) e `save_window_layout`, `list_window_layouts`, `restore_window_layout`. Perfis ficam em tabela própria do SQLite de `JARVIS_DB`, guardando classes/títulos e geometria relativa à área útil. Restauração redimensiona para a área atual e exige que as janelas ainda estejam abertas, inequívocas e no mesmo monitor. Todas as ações de movimento revalidam identidade e medem o resultado; não há declaração de sucesso para aplicação parcial. Testes são simulados; **validação física continua pendente**. Não elevar `pyproject.toml` a v0.5.0 até cumprir os critérios de aceite e testar no Ubuntu.
+
+## Próxima entrega local da v0.5.0 — pixels e histórico
+
+`place_window(position="custom")` recebe `x_px`, `y_px`, `width_px`, `height_px` relativos à área útil do monitor e recusa coordenadas fora dela. A trilha `window_action_history` registra ferramenta, status, aplicativo e geometria sanitizada em tabela própria de `JARVIS_DB`; títulos de janelas não são gravados. Testes automatizados foram adicionados. O teste real de posicionamento por pixels no Ubuntu e a conferência do histórico após ações reais ainda precisam ser feitos pelo usuário.
+
+No ambiente de desenvolvimento desta entrega, `jarvis-fcc --desktop-info` confirmou sessão Ubuntu GNOME Wayland e portais de captura/RemoteDesktop disponíveis. A extensão Window Control respondeu a `GetVersion` com `('4',)` e a `GetCapabilities` com `rules`, `rules-title-affix`, `keybindings`, `no-animation` e `activate-no-animation`. Essas consultas são somente leitura; não comprovam que `MoveResize` tenha aplicado a geometria de uma janela real.

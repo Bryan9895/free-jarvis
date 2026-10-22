@@ -35,7 +35,9 @@ Os testes automatizados existentes simulam parte do desktop e do FCC. Uma funç�
 
 **Prioridade atual:** o roadmap v0.5.0–v1.0.0 fornecido pelo usuário define a sequência de entregas. Iniciar pelo gerenciamento avançado de janelas da v0.5.0; manter as melhorias transversais da Fase 1 abaixo como suporte ao executor. Não declarar v0.5.0 concluída antes de layouts de três ou mais janelas, perfis e validação física no Ubuntu.
 
-**Progresso adicional da v0.5.0:** ferramenta de grade para três/quatro janelas e perfis nomeados em SQLite implementados com seleção sem ambiguidade, revalidação após aprovação e conferência da geometria. A validação real no GNOME, posições em pixels e eventual refinamento dos perfis permanecem pendentes.
+**Progresso adicional da v0.5.0:** ferramenta de grade para três/quatro janelas e perfis nomeados em SQLite implementados com seleção sem ambiguidade, revalidação após aprovação e conferência da geometria. A validação real no GNOME e eventual refinamento dos perfis permanecem pendentes.
+
+**Entrega seguinte:** posição `custom` em pixels relativos à área útil e histórico sanitizado de ações de janelas implementados. A v0.5.0 continua aguardando testes físicos no notebook, inclusive confirmação visual de tamanhos, fechamento com diálogo de salvamento e restauração de perfis.
 
 **Progresso da Fase 1 (22/10/2026):** `write_file` agora mostra um diff limitado na autorização, aceita `expected_sha256` para detectar conteúdo desatualizado, recusa mudanças concorrentes e substitui o arquivo por escrita temporária atômica. `/permissoes revogar` bloqueia novas chamadas de ferramenta até o usuário escolher novamente o modo de autorização. A suíte automatizada passou; auditoria persistente e os demais itens da fase seguem pendentes.
 

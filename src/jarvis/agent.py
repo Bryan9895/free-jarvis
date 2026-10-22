@@ -35,6 +35,7 @@ SYSTEM = (
     "Para três ou quatro janelas no mesmo monitor use arrange_window_grid. "
     "Use save_window_layout, list_window_layouts e restore_window_layout para perfis "
     "de janelas existentes; restauração não abre aplicativos ausentes. "
+    "Use window_action_history para consultar resultados anteriores de ações de janela. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
     "Para fechar uma janela use close_window; closed_verified exige ausência no inventário. "
@@ -165,7 +166,8 @@ def _local_layout_reply(calls, outcomes):
         return None
     name = calls[0].get("name")
     if name not in ("place_window", "arrange_windows", "arrange_window_grid",
-                    "save_window_layout", "restore_window_layout", "list_window_layouts"):
+                    "save_window_layout", "restore_window_layout", "list_window_layouts",
+                    "window_action_history"):
         return None
     payload = outcomes[0]
     if not isinstance(payload, dict):
@@ -176,6 +178,13 @@ def _local_layout_reply(calls, outcomes):
     if not isinstance(state, dict):
         return None
     status = state.get("status")
+    if status == "listed" and name == "window_action_history":
+        actions = state.get("actions", [])
+        if not actions:
+            return "Nenhuma ação de janela registrada."
+        return "Ações recentes de janela: " + "; ".join(
+            f"#{item.get('id')} {item.get('tool')}: {item.get('status')}"
+            for item in actions) + "."
     if status == "saved":
         return f"Perfil de janelas '{state.get('name', '')}' salvo."
     if status == "listed":

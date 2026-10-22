@@ -991,3 +991,11 @@ Jarvis, restaure o perfil "programação".
 ```
 
 Antes de salvar, deixe as janelas nas posições desejadas. Se houver duas janelas do mesmo aplicativo, informe parte única do título. Confirme visualmente cada posição após restaurar e confira `/metricas`. Os testes automatizados cobrem a geometria e persistência, mas ainda não validam o GNOME físico.
+
+### Posicionamento em pixels e histórico local
+
+`place_window` também aceita `position="custom"` com `x_px`, `y_px`, `width_px` e `height_px`. As coordenadas começam no canto superior esquerdo da **área útil** do monitor da janela, descontando painéis e docks; tamanhos mínimos são 100×100 pixels. Retângulos fora dessa área são recusados antes de enviar `MoveResize`. Exemplo de pedido: `Jarvis, coloque o Firefox em x=100, y=50 com 700 por 600 pixels na área útil da tela.`
+
+`window_action_history(limit=20)` consulta ações recentes de janela no SQLite de `JARVIS_DB`. O histórico inclui ferramenta, estado, aplicativo e geometria verificada quando disponível. Não grava títulos de janelas nem conteúdo de arquivos. Consulte com `Jarvis, mostre o histórico de ações das janelas.` Uma falha de gravação do histórico é indicada por `audit_error` no resultado da ferramenta; ela não converte uma ação de desktop em sucesso nem desfaz uma ação já enviada.
+
+O posicionamento em pixels e o histórico passaram por testes automatizados, mas **a v0.5.0 ainda aguarda validação física no Ubuntu GNOME Wayland**. Teste com janelas descartáveis antes de confiar no resultado para seu ambiente diário.
