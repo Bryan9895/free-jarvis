@@ -15,7 +15,9 @@ SYSTEM = (
     "Use list_files, não run_command, para localizar pastas. Ao receber um pedido "
     "de criar, editar ou abrir arquivos, chame as ferramentas disponíveis: não "
     "substitua execução por pedidos de confirmação no texto. Use open_file para "
-    "arquivos individuais e open_project para pastas."
+    "arquivos individuais e open_project para pastas. Para conferir se uma "
+    "janela apareceu, consulte verify_app_window; resultado não observado "
+    "não demonstra que o aplicativo esteja fechado."
 )
 MAX_TOOL_ROUNDS = 6
 
