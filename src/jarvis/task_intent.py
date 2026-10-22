@@ -77,6 +77,12 @@ def classify(message):
             and not re.search(r"\b(?:e depois|em seguida|depois disso|por fim|segundo|terceiro)\b", raw)
             and not re.search(r"\b(?:crie|escreva|salve|apague|edite|instale)\b", raw)):
         return "normal"
+    # Organizar uma ou duas janelas numa disposição de tela é UMA operação
+    # atômica da ferramenta arrange_windows/place_window, não um plano.
+    if (re.search(r"\b(?:lado a lado|metade esquerda|metade direita)\b", raw)
+            and not re.search(r"\b(?:e depois|em seguida|depois disso|por fim|"
+                              r"crie|escreva|salve|apague|edite|instale)\b", raw)):
+        return "normal"
     # Só planejar automaticamente sequências expressas com múltiplas operações
     # sobre recursos locais; frases comuns continuam sendo respondidas pelo agente.
     if _TASK_TARGET.search(raw) and (_MULTI.search(raw) or len(_VERBS.findall(raw)) >= 2
