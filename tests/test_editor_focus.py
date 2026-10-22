@@ -51,6 +51,33 @@ class EditorFocusTests(unittest.TestCase):
             self.assertEqual(focus.call_args.args[0][:2], ("code", "main.py"))
             kit.close()
 
+    def test_app_open_and_focus_separate_outcomes(self):
+        with tempfile.TemporaryDirectory() as root:
+            kit = Toolkit(Path(root))
+            with patch("jarvis.apps.launch_installed_app",
+                       return_value={"status": "launched_unverified"}) as launched, patch(
+                "jarvis.window_focus.focus_window",
+                return_value={"status": "focus_unverified"}) as focused:
+                result = kit.execute("launch_installed_app_and_focus",
+                                     {"app_id": "firefox_firefox"})
+            self.assertEqual(result["result"]["launch"]["status"], "launched_unverified")
+            self.assertEqual(result["result"]["focus"]["status"], "focus_unverified")
+            launched.assert_called_once()
+            self.assertEqual(focused.call_args.args[0][0], "firefox_firefox")
+            kit.close()
+
+    def test_rejected_app_never_focuses(self):
+        with tempfile.TemporaryDirectory() as root:
+            kit = Toolkit(Path(root))
+            with patch("jarvis.apps.launch_installed_app",
+                       return_value={"status": "rejected"}), patch(
+                "jarvis.window_focus.focus_window") as focus:
+                result = kit.execute("launch_installed_app_and_focus",
+                                     {"app_id": "firefox_firefox"})
+            self.assertEqual(result["result"]["focus"]["status"], "not_attempted")
+            focus.assert_not_called()
+            kit.close()
+
     def test_exposed_and_workspace_restricted(self):
         with tempfile.TemporaryDirectory() as root:
             kit = Toolkit(Path(root))
