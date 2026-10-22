@@ -89,6 +89,45 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(second["reused_previous_result"])
             memory.close()
 
+    def test_empty_assistant_message_omitted_before_tool_reply(self):
+        """NIM não aceita mensagens assistant com content vazio."""
+        with tempfile.TemporaryDirectory() as td:
+            call = {"type": "function_call", "name": "desktop_windows",
+                    "call_id": "call-1", "arguments": "{}"}
+            first = {"output": [
+                {"type": "message", "role": "assistant", "content": []},
+                {"type": "message", "role": "assistant",
+                 "content": [{"type": "output_text", "text": "  "}]},
+                call]}
+            second = {"output": [{"type": "message",
+                       "content": [{"type": "output_text", "text": "Encontrei janelas."}]}]}
+            client = FakeClient([first, second])
+            memory = Memory(Path(td) / "memory.db")
+            toolkit = Toolkit(Path(td))
+            with patch.object(toolkit, "execute", return_value={
+                "result": {"status": "observed", "windows": []}}):
+                answer = Agent(client, toolkit, memory, "fake").ask(
+                    "Quais janelas estão abertas?")
+            self.assertEqual(answer, "Encontrei janelas.")
+            following = client.requests[1]["input"]
+            self.assertEqual(sum(i.get("type") == "function_call" for i in following), 1)
+            self.assertEqual(sum(i.get("type") == "function_call_output" for i in following), 1)
+            self.assertFalse(any(i.get("type") == "message" for i in following))
+            memory.close()
+
+    def test_nonempty_assistant_message_preserved(self):
+        from jarvis.agent import _valid_history_output
+        items = [
+            {"type": "message", "content": [
+                {"type": "output_text", "text": "texto"},
+                {"type": "output_text", "text": ""}]},
+            {"type": "function_call", "name": "list_files", "call_id": "x",
+             "arguments": "{}"}]
+        result = _valid_history_output(items)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["content"],
+                         [{"type": "output_text", "text": "texto"}])
+
     def test_fast_mode_never_executes_tools(self):
         with tempfile.TemporaryDirectory() as td:
             call={"type":"function_call","name":"write_file","call_id":"c1",
