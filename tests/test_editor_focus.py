@@ -48,7 +48,7 @@ class EditorFocusTests(unittest.TestCase):
                 return_value={"status": "ambiguous"}) as focus:
                 answer = kit.execute("open_file_and_focus", {"path": "main.py"})
             self.assertEqual(answer["result"]["focus"]["status"], "ambiguous")
-            self.assertEqual(focus.call_args.args[0][:2], ("code", "main.py"))
+            self.assertEqual(focus.call_args.args[:2], ("code", "main.py"))
             kit.close()
 
     def test_app_open_and_focus_separate_outcomes(self):
