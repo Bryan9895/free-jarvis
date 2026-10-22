@@ -28,9 +28,17 @@ def _match(windows, app, title):
                "vscode": "code"}
     a = aliases.get(a, a)
     t = title.casefold().strip()
+    terminal_classes = ("ptyxis", "gnome-terminal", "konsole", "alacritty",
+                        "kitty", "xterm", "tilix", "terminator")
+    def matches_app(window):
+        if not isinstance(window, dict):
+            return False
+        actual = str(window.get("app", "")).casefold()
+        if a in ("terminal", "terminal do ubuntu", "terminal gnome"):
+            return any(name in actual for name in terminal_classes)
+        return a in actual
     return [w for w in windows
-            if isinstance(w, dict)
-            and a in str(w.get("app", "")).casefold()
+            if matches_app(w)
             and (not t or t in str(w.get("title", "")).casefold())]
 
 
