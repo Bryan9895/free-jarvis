@@ -17,7 +17,10 @@ class ProcessesTests(unittest.TestCase):
             mock_process.poll.side_effect = [None, 0, 0]
             with patch("jarvis.process_manager.shutil.which", return_value="/usr/bin/code"), patch(
                 "jarvis.process_manager.subprocess.Popen", return_value=mock_process
-            ) as launch:
+            ) as launch, patch("jarvis.window_tracking.snapshot", return_value=None), patch(
+                "jarvis.window_tracking.observe_launch",
+                side_effect=lambda launched, *_args: {**launched, "window_observation": {"status": "unavailable"}}
+            ):
                 result = manager.open_project(root, "vscode", lambda _: True)
                 self.assertEqual(result["status"], "launched_unverified")
                 self.assertEqual(launch.call_args.args[0],

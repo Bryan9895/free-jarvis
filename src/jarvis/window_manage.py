@@ -162,3 +162,76 @@ def manage_window(app, title, action, approve, *, retries=3, delay=0.2):
                     "app": chosen["app"], "title": chosen["title"]}
     return {"status": "state_unverified", "action": action,
             "reason": "Operação solicitada, estado final não confirmado pelo GNOME"}
+
+
+def close_window(app, title, approve, *, retries=4, delay=0.25):
+    """Pede fechamento educado por ID e só confirma após ausência no inventário."""
+    if not isinstance(app, str) or not 2 <= len(app) <= 100 or any(
+            c in app for c in ("\n", "\r", "\x00")):
+        raise ValueError("Nome de aplicativo inválido")
+    if not isinstance(title, str) or len(title) > 200 or any(
+            c in title for c in ("\n", "\r", "\x00")):
+        raise ValueError("Título inválido")
+    before = _inventory()
+    if before is None:
+        return {"status": "unavailable", "install_url": EXTENSION_URL}
+    candidates = _match(before, app, title)
+    if not candidates:
+        return {"status": "not_observed"}
+    if len(candidates) != 1:
+        return {"status": "ambiguous", "matches": len(candidates)}
+    chosen = candidates[0]
+    confirm = getattr(approve, "confirm_sensitive", approve)
+    if not confirm(f"FECHAR JANELA {chosen['app']} — {chosen['title']}? "
+                   "Arquivos não salvos podem exigir confirmação no aplicativo."):
+        return {"status": "rejected"}
+    current = _inventory()
+    if current is None:
+        return {"status": "unavailable"}
+    matches = _match(current, app, title)
+    if (len(matches) != 1 or matches[0]["id"] != chosen["id"]
+            or matches[0]["app"] != chosen["app"]
+            or matches[0]["title"] != chosen["title"]
+            or matches[0].get("pid") != chosen.get("pid")):
+        return {"status": "changed", "reason": "Janela mudou após a confirmação"}
+    response = _dbus("Close", chosen["id"])
+    if response is None or response.returncode:
+        return {"status": "unavailable", "reason": "Comando de fechamento indisponível"}
+    if response.stdout.strip().lower() != "(true,)":
+        return {"status": "close_unverified", "reason": "A extensão não confirmou a solicitação"}
+    for attempt in range(max(1, min(retries, 8))):
+        if attempt:
+            time.sleep(delay)
+        after = _inventory()
+        if after is not None and not any(w["id"] == chosen["id"] for w in after):
+            return {"status": "closed_verified", "app": chosen["app"],
+                    "title": chosen["title"]}
+    return {"status": "close_unverified", "app": chosen["app"],
+            "title": chosen["title"],
+            "reason": "A janela ainda aparece ou o inventário está indisponível"}
+
+
+def focused_window():
+    """Consulta o foco por ID e o confronta com o inventário do compositor."""
+    response = _dbus("GetFocused")
+    if response is None or response.returncode or len(response.stdout) > 600:
+        return {"status": "unavailable", "install_url": EXTENSION_URL}
+    try:
+        value = ast.literal_eval(response.stdout.strip())
+    except (ValueError, SyntaxError, TypeError, MemoryError):
+        return {"status": "unavailable"}
+    if (not isinstance(value, tuple) or len(value) != 3
+            or type(value[0]) is not int or not 0 <= value[0] < 2**64
+            or not all(isinstance(item, str) for item in value[1:])):
+        return {"status": "unavailable"}
+    ident, title, app = value
+    if ident == 0:
+        return {"status": "not_observed"}
+    rows = _inventory()
+    if rows is None:
+        return {"status": "unverified", "reason": "Inventário indisponível"}
+    matches = [row for row in rows if row["id"] == ident]
+    if len(matches) != 1 or matches[0]["title"] != title or matches[0]["app"] != app:
+        return {"status": "unverified", "reason": "Foco e inventário não coincidem"}
+    return {"status": "focused_verified", "app": app, "title": title,
+            "id": ident, "pid": matches[0].get("pid")}

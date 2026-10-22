@@ -32,8 +32,12 @@ SYSTEM = (
     "Para posicionar uma janela na metade esquerda/direita use place_window; "
     "para duas janelas lado a lado use arrange_windows. Verifique geometry_verified "
     "ou layout_verified antes de declarar sucesso. "
+    "Para três ou quatro janelas no mesmo monitor use arrange_window_grid. "
+    "Use save_window_layout, list_window_layouts e restore_window_layout para perfis "
+    "de janelas existentes; restauração não abre aplicativos ausentes. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
+    "Para fechar uma janela use close_window; closed_verified exige ausência no inventário. "
     "Se o retorno focus não for focused_verified/already_focused, informe a "
     "incerteza sem declarar sucesso visual."
 )
@@ -111,7 +115,7 @@ def _local_focus_reply(calls, outcomes, message):
 def _local_window_state_reply(calls, outcomes):
     """Resposta determinística para uma única ação de estado de janela."""
     if (len(calls) != 1 or len(outcomes) != 1
-            or calls[0].get("name") != "manage_window"):
+            or calls[0].get("name") not in ("manage_window", "close_window")):
         return None
     result = outcomes[0]
     if not isinstance(result, dict):
@@ -124,6 +128,18 @@ def _local_window_state_reply(calls, outcomes):
     status = state.get("status")
     action = state.get("action")
     title = str(state.get("title", "janela solicitada"))[:160]
+    if calls[0].get("name") == "close_window":
+        if status == "closed_verified":
+            return f"Janela fechada, ausência confirmada pelo GNOME: {title}."
+        close_failures = {
+            "rejected": "Fechamento cancelado.",
+            "ambiguous": "Há várias janelas correspondentes. Informe parte do título.",
+            "not_observed": "Não encontrei a janela solicitada.",
+            "changed": "A janela mudou antes do fechamento; nenhuma ação foi enviada.",
+            "unavailable": "Controle de janelas indisponível.",
+            "close_unverified": "Fechamento solicitado, mas a janela ainda aparece ou não foi possível confirmar seu desaparecimento.",
+        }
+        return close_failures.get(status)
     labels = {"minimize": "minimizada", "restore": "restaurada",
               "maximize": "maximizada", "unmaximize": "desmaximizada"}
     if status == "state_verified" and action in labels:
@@ -148,7 +164,8 @@ def _local_layout_reply(calls, outcomes):
     if len(calls) != 1 or len(outcomes) != 1:
         return None
     name = calls[0].get("name")
-    if name not in ("place_window", "arrange_windows"):
+    if name not in ("place_window", "arrange_windows", "arrange_window_grid",
+                    "save_window_layout", "restore_window_layout", "list_window_layouts"):
         return None
     payload = outcomes[0]
     if not isinstance(payload, dict):
@@ -159,10 +176,21 @@ def _local_layout_reply(calls, outcomes):
     if not isinstance(state, dict):
         return None
     status = state.get("status")
+    if status == "saved":
+        return f"Perfil de janelas '{state.get('name', '')}' salvo."
+    if status == "listed":
+        names = [str(item.get("name", "")) for item in state.get("profiles", [])]
+        return "Perfis salvos: " + (", ".join(names) if names else "nenhum") + "."
     if status == "geometry_verified":
-        side = "esquerda" if state.get("position") == "left" else "direita"
-        return f"Janela posicionada na metade {side}, com geometria confirmada pelo GNOME: {state.get('title', '')}."
+        positions = {"left": "à esquerda", "right": "à direita",
+                     "center": "no centro", "bottom_right": "no canto inferior direito"}
+        position = positions.get(state.get("position"), "na posição solicitada")
+        return f"Janela posicionada {position}, com geometria confirmada pelo GNOME: {state.get('title', '')}."
     if status == "layout_verified":
+        if name == "arrange_window_grid":
+            return f"Grade de {len(state.get('windows', []))} janelas confirmada pelo GNOME."
+        if name == "restore_window_layout":
+            return f"Perfil '{state.get('name', '')}' restaurado, geometria confirmada pelo GNOME."
         return ("Janelas organizadas lado a lado, geometria confirmada pelo GNOME: "
                 + str(state.get("left", "")) + " à esquerda; "
                 + str(state.get("right", "")) + " à direita.")
@@ -170,6 +198,7 @@ def _local_layout_reply(calls, outcomes):
         "unavailable": "A extensão Window Control ou a geometria do monitor está indisponível.",
         "ambiguous": "Existem várias janelas possíveis; informe parte dos títulos.",
         "not_observed": "Não encontrei uma das janelas solicitadas.",
+        "not_found": "Perfil de janelas não encontrado.",
         "rejected": "Organização de janelas cancelada.",
         "changed": "Uma janela mudou antes da operação; repita a solicitação.",
         "failed": "O GNOME recusou posicionar a janela.",

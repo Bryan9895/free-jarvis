@@ -46,6 +46,31 @@ def _half(area, side):
     raise ValueError("Posição inválida; escolha left ou right")
 
 
+def _rectangle(area, position, current, width_percent=None, height_percent=None):
+    if position in ("left", "right") and width_percent is None and height_percent is None:
+        return _half(area, position)
+    if position not in ("center", "bottom_right", "left", "right"):
+        raise ValueError("Posição inválida")
+    x, y, area_width, area_height = area
+    for value in (width_percent, height_percent):
+        if value is not None and (type(value) is not int or not 10 <= value <= 100):
+            raise ValueError("Percentual deve ser inteiro entre 10 e 100")
+    width = (area_width * width_percent // 100 if width_percent is not None
+             else current.get("width") if position == "center" else area_width // 2)
+    height = (area_height * height_percent // 100 if height_percent is not None
+              else current.get("height") if position == "center" else area_height // 2)
+    if type(width) is not int or type(height) is not int or width < 100 or height < 100:
+        raise ValueError("Dimensões da janela indisponíveis ou pequenas demais")
+    width, height = min(width, area_width), min(height, area_height)
+    if position == "center":
+        return x + (area_width - width) // 2, y + (area_height - height) // 2, width, height
+    if position == "bottom_right":
+        return x + area_width - width, y + area_height - height, width, height
+    if position == "left":
+        return x, y, width, height
+    return x + area_width - width, y, width, height
+
+
 def _identity_ok(old, new):
     return (old["id"] == new["id"] and old["app"] == new["app"]
             and old.get("pid") == new.get("pid")
@@ -97,9 +122,9 @@ def _place_one(chosen, rect):
     return _run("MoveResize", wid, *rect)
 
 
-def place_window(app, position, approve, title=""):
-    if position not in ("left", "right"):
-        raise ValueError("Posição deve ser left ou right")
+def place_window(app, position, approve, title="", width_percent=None, height_percent=None):
+    if position not in ("left", "right", "center", "bottom_right"):
+        raise ValueError("Posição deve ser left, right, center ou bottom_right")
     if not isinstance(app, str) or not 2 <= len(app) <= 100:
         raise ValueError("Nome inválido")
     if not isinstance(title, str) or len(title) > 200:
@@ -116,8 +141,9 @@ def place_window(app, position, approve, title=""):
     area = _workarea(monitor)
     if area is None:
         return {"status": "unavailable", "reason": "Área útil do monitor indisponível"}
-    rect = _half(area, position)
-    if not approve(f"POSICIONAR {chosen['app']} — {chosen['title']} na metade {position}?"):
+    rect = _rectangle(area, position, chosen, width_percent, height_percent)
+    if not approve(f"POSICIONAR {chosen['app']} — {chosen['title']} em {position}, "
+                   f"geometria {rect}?"):
         return {"status": "rejected"}
     current = _inventory()
     if current is None:
@@ -129,7 +155,7 @@ def place_window(app, position, approve, title=""):
         return {"status": "failed", "reason": "GNOME recusou reposicionar"}
     if _placement_verified(chosen, rect):
         return {"status": "geometry_verified", "position": position,
-                "title": chosen["title"], "app": chosen["app"]}
+                "title": chosen["title"], "app": chosen["app"], "geometry": rect}
     return {"status": "geometry_unverified", "position": position,
             "reason": "Geometria final não confirmada pelo compositor"}
 
@@ -175,5 +201,83 @@ def arrange_windows(left_app, right_app, approve, left_title="", right_title="")
             break
     if outcomes.get("left") == outcomes.get("right") == "geometry_verified":
         return {"status": "layout_verified", "left": left["title"], "right": right["title"]}
+    return {"status": "layout_unverified", "outcomes": outcomes,
+            "reason": "Uma ou mais janelas não tiveram geometria confirmada"}
+
+
+def _grid_rectangles(area, count):
+    """Três janelas: coluna esquerda e duas à direita; quatro: grade 2x2."""
+    if count not in (3, 4):
+        raise ValueError("A grade exige três ou quatro janelas")
+    x, y, width, height = area
+    left_width = width // 2
+    top_height = height // 2
+    if min(left_width, width - left_width, top_height, height - top_height) < 100:
+        raise ValueError("Área útil pequena demais para esta grade")
+    if count == 3:
+        return [(x, y, left_width, height),
+                (x + left_width, y, width - left_width, top_height),
+                (x + left_width, y + top_height, width - left_width, height - top_height)]
+    return [(x, y, left_width, top_height),
+            (x + left_width, y, width - left_width, top_height),
+            (x, y + top_height, left_width, height - top_height),
+            (x + left_width, y + top_height, width - left_width, height - top_height)]
+
+
+def arrange_window_grid(windows, approve):
+    """Organiza 3–4 janelas inequívocas no mesmo monitor com verificação."""
+    if not isinstance(windows, list) or len(windows) not in (3, 4):
+        raise ValueError("Informe três ou quatro janelas")
+    selectors = []
+    for item in windows:
+        if not isinstance(item, dict) or set(item) - {"app", "title"}:
+            raise ValueError("Seletor de janela inválido")
+        app, title = item.get("app"), item.get("title", "")
+        if (not isinstance(app, str) or not 2 <= len(app) <= 100
+                or not isinstance(title, str) or len(title) > 200
+                or any(c in app + title for c in ("\n", "\r", "\x00"))):
+            raise ValueError("Nome ou título inválido")
+        selectors.append((app, title))
+    before = _inventory()
+    if before is None:
+        return {"status": "unavailable", "install_url": EXTENSION_URL}
+    selected = []
+    for app, title in selectors:
+        chosen, error = _select(before, app, title)
+        if error:
+            return {"status": error, "selector": {"app": app, "title": title}}
+        selected.append(chosen)
+    if len({item["id"] for item in selected}) != len(selected):
+        return {"status": "ambiguous", "reason": "Seletores apontam para a mesma janela"}
+    monitor = selected[0].get("monitor")
+    if type(monitor) is not int or monitor < 0 or any(
+            item.get("monitor") != monitor for item in selected):
+        return {"status": "unavailable", "reason": "Janelas precisam estar no mesmo monitor"}
+    area = _workarea(monitor)
+    if area is None:
+        return {"status": "unavailable", "reason": "Área útil do monitor indisponível"}
+    rects = _grid_rectangles(area, len(selected))
+    names = ", ".join(item["title"] for item in selected)
+    if not approve(f"ORGANIZAR {len(selected)} JANELAS em grade no monitor {monitor}: {names}?"):
+        return {"status": "rejected"}
+    current = _inventory()
+    if current is None:
+        return {"status": "unavailable"}
+    for (app, title), old in zip(selectors, selected):
+        now, error = _select(current, app, title)
+        if error or not _identity_ok(old, now) or now.get("monitor") != monitor:
+            return {"status": "changed", "reason": "Uma janela mudou antes da ação"}
+    outcomes = []
+    for chosen, rect in zip(selected, rects):
+        sent = _place_one(chosen, rect)
+        status = ("geometry_verified" if sent and _placement_verified(chosen, rect)
+                  else "geometry_unverified" if sent else "failed")
+        outcomes.append({"app": chosen["app"], "title": chosen["title"],
+                         "status": status, "geometry": rect})
+        if status == "failed":
+            break
+    if len(outcomes) == len(selected) and all(
+            item["status"] == "geometry_verified" for item in outcomes):
+        return {"status": "layout_verified", "windows": outcomes, "monitor": monitor}
     return {"status": "layout_unverified", "outcomes": outcomes,
             "reason": "Uma ou mais janelas não tiveram geometria confirmada"}

@@ -59,17 +59,38 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
     if len(normalized) > 180 or "\n" in normalized:
         return available
+    if re.search(r"\b(?:perfil|layout)\b", normalized):
+        if re.search(r"\b(?:restaure|restaurar|recupere|recuperar)\b", normalized):
+            return [t for t in available if t.get("name") == "restore_window_layout"]
+        if re.search(r"\b(?:salve|salvar|guarde|guardar)\b", normalized):
+            return [t for t in available if t.get("name") == "save_window_layout"]
+        if re.search(r"\b(?:liste|listar|mostre|mostrar|quais)\b", normalized):
+            return [t for t in available if t.get("name") == "list_window_layouts"]
     # Layout declarativo: o posicionamento usa só ferramentas GNOME.
     # Não trata "mova um arquivo" como janela; mantém o catálogo completo.
     layout_target = re.search(r"\b(?:janela|janelas|firefox|chrome|"
                               r"vscode|vs code|terminal|ptyxis|code)\b", normalized)
-    if layout_target and re.search(r"\b(?:metade|lado a lado|"
-                                   r"esquerda|direita|divida a tela)\b", normalized):
+    if layout_target and re.search(r"\b(?:tres|quatro|3|4)\s+janelas\b", normalized):
+        return [t for t in available if t.get("name") == "arrange_window_grid"]
+    if layout_target and (re.search(r"\b(?:metade|lado a lado|centro|centralize|"
+                                    r"esquerda|direita|canto|divida a tela)\b", normalized)
+                          or re.search(r"\b\d{1,3}%", normalized)):
         if re.search(r"\b(?: e | com | lado a lado| dois | duas )", normalized):
             return [t for t in available if t.get("name") == "arrange_windows"]
         if re.search(r"\b(?:coloque|colocar|mova|mover|posicione|"
-                     r"posicionar|organize|organizar)\b", normalized):
+                     r"posicionar|organize|organizar|centralize|deixe|ocupe)\b", normalized):
             return [t for t in available if t.get("name") == "place_window"]
+
+    if (re.search(r"\b(?:feche|fechar)\b", normalized)
+            and re.search(r"\b(?:janela|firefox|chrome|vscode|code|terminal|ptyxis)\b", normalized)
+            and not re.search(r"\b(?: e |depois|em seguida|tambem|todas|todos)\b", normalized)):
+        return [t for t in available if t.get("name") == "close_window"]
+
+    if (re.search(r"\b(?:qual|que|mostre|mostrar|identifique)\b", normalized)
+            and re.search(r"\b(?:janela|aplicativo)\b", normalized)
+            and re.search(r"\b(?:em foco|primeiro plano|ativa)\b", normalized)
+            and not re.search(r"\b(?: e |depois|em seguida|tambem)\b", normalized)):
+        return [t for t in available if t.get("name") == "focused_window"]
 
     # Não escolher só uma ferramenta se houve pedido de arquivo, navegador,
     # abertura de aplicativo, mais de uma ação ou operação composta.

@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from jarvis.window_manage import manage_window, _inventory
+from jarvis.window_manage import manage_window, close_window, focused_window, _inventory
+from jarvis.approval import ApprovalPolicy
 from jarvis.tools import TOOL_SPECS, Toolkit
 from jarvis.router import tool_catalog
 from jarvis.agent import Agent
@@ -19,6 +20,49 @@ def win(id=17, title="Página — Firefox", app="firefox_firefox",
 
 
 class WindowManageTests(unittest.TestCase):
+    def test_focused_window_requires_matching_inventory(self):
+        with patch("jarvis.window_manage._dbus",
+                   return_value=Mock(returncode=0, stdout="(17, 'Página — Firefox', 'firefox_firefox')")), patch(
+            "jarvis.window_manage._inventory", return_value=[win()]):
+            self.assertEqual(focused_window()["status"], "focused_verified")
+        with patch("jarvis.window_manage._dbus",
+                   return_value=Mock(returncode=0, stdout="(17, 'Outro', 'firefox_firefox')")), patch(
+            "jarvis.window_manage._inventory", return_value=[win()]):
+            self.assertEqual(focused_window()["status"], "unverified")
+
+    def test_close_revalidates_identity_and_observes_disappearance(self):
+        before = [win()]
+        with patch("jarvis.window_manage._inventory",
+                   side_effect=[before, before, []]), patch(
+            "jarvis.window_manage._dbus",
+            return_value=Mock(returncode=0, stdout="(true,)")) as dbus:
+            result = close_window("firefox", "", lambda _: True)
+        self.assertEqual(result["status"], "closed_verified")
+        dbus.assert_called_once_with("Close", 17)
+
+    def test_close_requires_specific_confirmation_even_in_auto_mode(self):
+        prompts = []
+        policy = ApprovalPolicy(auto=True, manual_callback=lambda msg: prompts.append(msg) or False,
+                                report=lambda _: None)
+        with patch("jarvis.window_manage._inventory", return_value=[win()]), patch(
+            "jarvis.window_manage._dbus") as dbus:
+            result = close_window("firefox", "", policy)
+        self.assertEqual(result["status"], "rejected")
+        self.assertIn("FECHAR JANELA", prompts[0])
+        self.assertEqual(policy.auto_approved, 0)
+        dbus.assert_not_called()
+
+    def test_close_ambiguity_and_unsaved_dialog_are_not_success(self):
+        with patch("jarvis.window_manage._inventory", return_value=[win(id=17), win(id=18)]), patch(
+            "jarvis.window_manage._dbus") as dbus:
+            self.assertEqual(close_window("firefox", "", lambda _: True)["status"], "ambiguous")
+            dbus.assert_not_called()
+        with patch("jarvis.window_manage._inventory", return_value=[win()]), patch(
+            "jarvis.window_manage._dbus",
+            return_value=Mock(returncode=0, stdout="(true,)")):
+            result = close_window("firefox", "", lambda _: True, retries=1)
+        self.assertEqual(result["status"], "close_unverified")
+
     def test_maximize_requires_identity_and_verifies_new_state(self):
         before = [win()]
         after = [win(maximized=True)]
@@ -140,9 +184,15 @@ class WindowManageTests(unittest.TestCase):
 
     def test_capability_router_and_tool_registration(self):
         self.assertIn("manage_window", {s["name"] for s in TOOL_SPECS})
+        self.assertIn("close_window", {s["name"] for s in TOOL_SPECS})
+        self.assertIn("focused_window", {s["name"] for s in TOOL_SPECS})
         self.assertEqual([s["name"] for s in tool_catalog(
             "Jarvis, maximize a janela do Firefox", TOOL_SPECS)],
             ["manage_window"])
+        self.assertEqual([s["name"] for s in tool_catalog(
+            "Jarvis, feche a janela do Firefox", TOOL_SPECS)], ["close_window"])
+        self.assertEqual([s["name"] for s in tool_catalog(
+            "Qual janela está em foco?", TOOL_SPECS)], ["focused_window"])
         with tempfile.TemporaryDirectory() as directory:
             kit = Toolkit(Path(directory))
             with patch("jarvis.window_manage._inventory", return_value=None):

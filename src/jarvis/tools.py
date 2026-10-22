@@ -1,8 +1,11 @@
 """Ferramentas locais com permissões explícitas, sem shell e workspace restrito."""
 import os
+import hashlib
+import difflib
 from pathlib import Path
 import shlex
 import subprocess
+import tempfile
 import uuid
 import shutil
 from urllib.parse import urlparse
@@ -13,10 +16,11 @@ class ToolError(ValueError):
     pass
 
 class Toolkit:
-    def __init__(self, workspace: Path, approve=None):
+    def __init__(self, workspace: Path, approve=None, layout_db=None):
         self.workspace = workspace.expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.approve = approve or (lambda _action: False)
+        self.layout_db = layout_db
         self._browser = None
         from .process_manager import ProcessManager
         self._processes = ProcessManager()
@@ -70,17 +74,55 @@ class Toolkit:
             raise ToolError("Arquivo muito grande (limite 100 KB)")
         return p.read_text(encoding="utf-8")
 
-    def write_file(self, path, content):
-        p = self.path(path)
+    def write_file(self, path, content, expected_sha256=None):
+        p = self._safe_mutation_path(path)
         if not isinstance(content, str) or len(content.encode()) > MAX_FILE_BYTES:
             raise ToolError("Conteúdo inválido ou arquivo muito grande")
-        if not self.approve(f"ESCREVER {p} ({len(content)} caracteres)"):
+        if p.exists() and not p.is_file():
+            raise ToolError("O destino não é um arquivo regular")
+        if p.exists() and p.stat().st_size > MAX_FILE_BYTES:
+            raise ToolError("Arquivo existente muito grande para edição segura")
+        before = p.read_bytes() if p.exists() else None
+        before_hash = hashlib.sha256(before).hexdigest() if before is not None else None
+        if expected_sha256 is not None and expected_sha256 != before_hash:
+            raise ToolError("Arquivo mudou desde a leitura; conteúdo esperado não confere")
+        try:
+            previous = before.decode("utf-8") if before is not None else ""
+        except UnicodeDecodeError as exc:
+            raise ToolError("Arquivo existente não é texto UTF-8") from exc
+        diff = "".join(difflib.unified_diff(
+            previous.splitlines(keepends=True), content.splitlines(keepends=True),
+            fromfile=str(p) if before is not None else "/dev/null", tofile=str(p),
+        ))
+        summary = diff[:4000] + ("\n[diff truncado]" if len(diff) > 4000 else "")
+        if not self.approve(f"ESCREVER {p} ({len(content)} caracteres)\n{summary}"):
             return {"status": "rejected"}
-        p = self.path(path)
+        p = self._safe_mutation_path(path)
+        if p.exists() and not p.is_file():
+            raise ToolError("O destino mudou desde a autorização")
+        current = p.read_bytes() if p.exists() else None
+        if current != before:
+            raise ToolError("O arquivo mudou durante a autorização; escrita cancelada")
         p.parent.mkdir(parents=True, exist_ok=True)
-        p = self.path(path)
-        p.write_text(content, encoding="utf-8")
-        return {"status": "written", "path": str(p)}
+        p = self._safe_mutation_path(path)
+        if (p.read_bytes() if p.exists() else None) != before:
+            raise ToolError("O arquivo mudou antes da escrita; operação cancelada")
+        fd, temporary = tempfile.mkstemp(prefix=".jarvis-write-", dir=p.parent)
+        try:
+            with os.fdopen(fd, "wb") as output:
+                if before is not None:
+                    os.fchmod(output.fileno(), p.stat().st_mode & 0o777)
+                output.write(content.encode("utf-8"))
+                output.flush()
+                os.fsync(output.fileno())
+            p = self._safe_mutation_path(path)
+            if (p.read_bytes() if p.exists() else None) != before:
+                raise ToolError("O arquivo mudou antes da substituição; operação cancelada")
+            os.replace(temporary, p)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+        return {"status": "written", "path": str(p),
+                "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest()}
 
     def make_directory(self, path):
         destination = self._safe_mutation_path(path)
@@ -314,14 +356,39 @@ class Toolkit:
         from .window_manage import manage_window
         return manage_window(app, title, action, self.approve)
 
-    def place_window(self, app, position, title=""):
+    def place_window(self, app, position, title="", width_percent=None, height_percent=None):
         from .window_layout import place_window
-        return place_window(app, position, self.approve, title=title)
+        return place_window(app, position, self.approve, title=title,
+                            width_percent=width_percent, height_percent=height_percent)
+
+    def close_window(self, app, title=""):
+        from .window_manage import close_window
+        return close_window(app, title, self.approve)
+
+    def focused_window(self):
+        from .window_manage import focused_window
+        return focused_window()
 
     def arrange_windows(self, left_app, right_app, left_title="", right_title=""):
         from .window_layout import arrange_windows
         return arrange_windows(left_app, right_app, self.approve,
                                left_title=left_title, right_title=right_title)
+
+    def arrange_window_grid(self, windows):
+        from .window_layout import arrange_window_grid
+        return arrange_window_grid(windows, self.approve)
+
+    def save_window_layout(self, name, windows):
+        from .layout_profiles import save_window_layout
+        return save_window_layout(self.layout_db, name, windows, self.approve)
+
+    def restore_window_layout(self, name):
+        from .layout_profiles import restore_window_layout
+        return restore_window_layout(self.layout_db, name, self.approve)
+
+    def list_window_layouts(self):
+        from .layout_profiles import list_window_layouts
+        return list_window_layouts(self.layout_db)
 
     def desktop_info(self):
         from .wayland import desktop_info
@@ -340,6 +407,8 @@ class Toolkit:
         return agent_step(self.approve, action, dx=dx, dy=dy, text=text)
 
     def execute(self, name, arguments):
+        if getattr(self.approve, "mode", None) == "revoked":
+            return {"result": {"status": "rejected", "reason": "Sessão revogada"}}
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
             "write_file": self.write_file, "make_directory": self.make_directory,
@@ -354,7 +423,12 @@ class Toolkit:
             "desktop_windows": self.desktop_windows,
             "verify_app_window": self.verify_app_window,
             "focus_window": self.focus_window, "manage_window": self.manage_window,
+            "close_window": self.close_window, "focused_window": self.focused_window,
             "place_window": self.place_window, "arrange_windows": self.arrange_windows,
+            "arrange_window_grid": self.arrange_window_grid,
+            "save_window_layout": self.save_window_layout,
+            "restore_window_layout": self.restore_window_layout,
+            "list_window_layouts": self.list_window_layouts,
             "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
             "list_installed_apps": self.list_installed_apps,
@@ -377,8 +451,14 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
-    {"type":"function","name":"place_window","description":"Posiciona UMA janela existente na metade esquerda (left) ou direita (right) da área útil do mesmo monitor. GNOME Wayland Window Control, revalida ID e confirma geometria após MoveResize. Exige app, posição e título se houver ambiguidade.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right"]},"title":{"type":"string"}},"required":["app","position"],"additionalProperties":False}},
+    {"type":"function","name":"place_window","description":"Posiciona UMA janela na área útil do monitor: left, right, center ou bottom_right. width_percent e height_percent opcionais (10 a 100) definem tamanho relativo. Revalida ID e confirma geometria GNOME após MoveResize.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right","center","bottom_right"]},"title":{"type":"string"},"width_percent":{"type":"integer"},"height_percent":{"type":"integer"}},"required":["app","position"],"additionalProperties":False}},
+    {"type":"function","name":"close_window","description":"Solicita fechamento educado de UMA janela GNOME identificada sem ambiguidade. Sempre exige confirmação específica por risco de dados não salvos; só declara sucesso quando o ID desaparece do inventário.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
+    {"type":"function","name":"focused_window","description":"Consulta a janela atualmente em foco via Window Control GetFocused e confirma ID, classe e título no inventário GNOME. Somente leitura.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"arrange_windows","description":"Organiza DUAS janelas GNOME no mesmo monitor, uma à esquerda e outra à direita. Só prossegue se ambas forem inequívocas. Informe left_app e right_app e títulos opcionais. Retorna layout_verified apenas se ambas as posições forem observadas.","parameters":{"type":"object","properties":{"left_app":{"type":"string"},"right_app":{"type":"string"},"left_title":{"type":"string"},"right_title":{"type":"string"}},"required":["left_app","right_app"],"additionalProperties":False}},
+    {"type":"function","name":"arrange_window_grid","description":"Organiza exatamente três ou quatro janelas já abertas no mesmo monitor. Informe windows em ordem de leitura, cada uma com app e título opcional. Três: metade esquerda e duas à direita; quatro: grade 2x2. Recusa ambiguidades e verifica geometria de cada janela.","parameters":{"type":"object","properties":{"windows":{"type":"array","minItems":3,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["windows"],"additionalProperties":False}},
+    {"type":"function","name":"save_window_layout","description":"Salva um perfil nomeado com a geometria atual de duas a quatro janelas já abertas no mesmo monitor. Informe seletores de app e título opcional, sem IDs inventados. Persiste em SQLite local.","parameters":{"type":"object","properties":{"name":{"type":"string"},"windows":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["name","windows"],"additionalProperties":False}},
+    {"type":"function","name":"restore_window_layout","description":"Restaura um perfil salvo para janelas já abertas. Redimensiona proporcionalmente à área útil atual, revalida IDs e verifica geometria após cada ação. Não abre aplicativos ausentes.","parameters":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"],"additionalProperties":False}},
+    {"type":"function","name":"list_window_layouts","description":"Lista nomes dos perfis de janelas salvos em SQLite local. Não altera janelas.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"manage_window","description":"Minimiza, restaura, maximiza ou desfaz maximização de UMA janela GNOME Wayland identificada unicamente por app e título opcional. Requer extensão opcional Window Control; utiliza ID obtido do compositor, revalida janela e estado após comando, sem Shell.Eval. Não fecha janelas.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"},"action":{"type":"string","enum":["minimize","restore","maximize","unmaximize"]}},"required":["app","action"],"additionalProperties":False}},
     {"type":"function","name":"launch_installed_app_and_focus","description":"Abre aplicativo XDG com autorização e tenta focar UMA janela correspondente com segunda aprovação, somente quando identificação no GNOME é inequívoca. Use o app_id obtido no catálogo; estados separados para abertura e foco.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"open_project_and_focus","description":"Abre projeto existente no editor, depois tenta trazer a janela desse projeto ao primeiro plano. Duas aprovações separadas e verificações GNOME; não afirma sucesso quando título do projeto não é encontrado.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
@@ -408,7 +488,7 @@ TOOL_SPECS = [
     {"type":"function","name":"browser_screenshot","description":"Salva screenshot do navegador isolado em jarvis_screenshot.png no workspace mediante aprovação.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"list_files","description":"Lista arquivos e pastas dentro do workspace autorizado.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"additionalProperties":False}},
     {"type":"function","name":"read_file","description":"Lê arquivo de texto até 100 KB no workspace autorizado.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
-    {"type":"function","name":"write_file","description":"Escreve arquivo de texto dentro do workspace, após confirmação humana.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":False}},
+    {"type":"function","name":"write_file","description":"Escreve texto atomicamente em diretório autorizado. Mostra diff na autorização e recusa se o arquivo mudar durante a operação. Para editar versão lida antes, informe expected_sha256 do conteúdo anterior.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"expected_sha256":{"type":"string"}},"required":["path","content"],"additionalProperties":False}},
     {"type":"function","name":"run_command","description":"Comandos de inspeção limitados, sem argumentos livres.","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"}},"required":["command"],"additionalProperties":False}},
     {"type":"function","name":"browser_open","description":"Abre URL HTTP/HTTPS no navegador padrão após autorização.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"],"additionalProperties":False}},
 ]

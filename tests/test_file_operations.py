@@ -1,7 +1,9 @@
 """Operações em arquivos confinadas ao workspace e com aprovação."""
 import tempfile
 import unittest
+import hashlib
 from pathlib import Path
+from unittest.mock import patch
 
 from jarvis.tools import Toolkit, TOOL_SPECS
 
@@ -62,6 +64,52 @@ class FilesOperationsTests(unittest.TestCase):
     def test_specs_registered(self):
         names={item["name"] for item in TOOL_SPECS}
         self.assertTrue({"make_directory","move_path","delete_path"} <= names)
+
+    def test_write_shows_diff_and_rejects_stale_content(self):
+        target = self.root / "note.txt"
+        target.write_text("original\n", encoding="utf-8")
+        prompts = []
+        kit = Toolkit(self.root, approve=lambda message: prompts.append(message) or True)
+        stale = kit.execute("write_file", {"path": "note.txt", "content": "novo\n",
+                                           "expected_sha256": "0" * 64})
+        self.assertIn("error", stale)
+        self.assertFalse(prompts)
+        digest = hashlib.sha256(b"original\n").hexdigest()
+        written = kit.execute("write_file", {"path": "note.txt", "content": "novo\n",
+                                             "expected_sha256": digest})
+        self.assertEqual(written["result"]["status"], "written")
+        self.assertIn("-original", prompts[0])
+        self.assertIn("+novo", prompts[0])
+        self.assertEqual(target.read_text(encoding="utf-8"), "novo\n")
+        self.assertEqual(written["result"]["sha256"], hashlib.sha256(b"novo\n").hexdigest())
+
+    def test_write_aborts_when_file_changes_during_approval(self):
+        target = self.root / "note.txt"
+        target.write_text("before", encoding="utf-8")
+        def concurrent_edit(_message):
+            target.write_text("someone else", encoding="utf-8")
+            return True
+        kit = Toolkit(self.root, approve=concurrent_edit)
+        result = kit.execute("write_file", {"path": "note.txt", "content": "jarvis"})
+        self.assertIn("error", result)
+        self.assertEqual(target.read_text(encoding="utf-8"), "someone else")
+
+    def test_write_replace_failure_preserves_existing_file_and_cleans_temp(self):
+        target = self.root / "note.txt"
+        target.write_text("before", encoding="utf-8")
+        with patch("jarvis.tools.os.replace", side_effect=OSError("disk error")):
+            result = self.allowed.execute("write_file", {"path": "note.txt", "content": "after"})
+        self.assertIn("error", result)
+        self.assertEqual(target.read_text(encoding="utf-8"), "before")
+        self.assertEqual(list(self.root.glob(".jarvis-write-*")), [])
+
+    def test_write_rejects_symlink_destination(self):
+        outside = Path(self.tmp.name) / "outside.txt"
+        outside.write_text("outside", encoding="utf-8")
+        (self.root / "link.txt").symlink_to(outside)
+        result = self.allowed.execute("write_file", {"path": "link.txt", "content": "wrong"})
+        self.assertIn("error", result)
+        self.assertEqual(outside.read_text(encoding="utf-8"), "outside")
 
 if __name__ == "__main__":
     unittest.main()

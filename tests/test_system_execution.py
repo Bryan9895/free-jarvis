@@ -41,7 +41,10 @@ class SystemExecutionTests(unittest.TestCase):
     def test_launch_uses_gtk_launch_not_desktop_exec(self):
         with patch("jarvis.apps.shutil.which", return_value="/usr/bin/gtk-launch"), patch(
             "jarvis.apps.subprocess.Popen", return_value=Mock(pid=77)
-        ) as run:
+        ) as run, patch("jarvis.window_tracking.snapshot", return_value=None), patch(
+            "jarvis.window_tracking.observe_launch",
+            side_effect=lambda launched, *_args: {**launched, "window_observation": {"status": "unavailable"}}
+        ):
             result = launch_installed_app("org.example.Editor", lambda _: True)
         self.assertEqual(result["status"], "launched_unverified")
         self.assertEqual(run.call_args.args[0], ["/usr/bin/gtk-launch", "org.example.Editor"])

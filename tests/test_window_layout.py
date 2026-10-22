@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from jarvis.window_layout import _half, _workarea, place_window, arrange_windows
+from jarvis.window_layout import (_half, _rectangle, _grid_rectangles, _workarea,
+                                  place_window, arrange_windows, arrange_window_grid)
 from jarvis.tools import TOOL_SPECS, Toolkit
 from jarvis.router import tool_catalog
 from jarvis.agent import Agent
@@ -70,11 +71,81 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual([windows[0][k] for k in
                           ("x", "y", "width", "height")],
                          [700, 38, 650, 690])
+    def test_grid_rectangles_cover_area_without_overlap(self):
+        area = (10, 20, 1001, 801)
+        for count in (3, 4):
+            with self.subTest(count=count):
+                cells = _grid_rectangles(area, count)
+                self.assertEqual(len(cells), count)
+                self.assertEqual(sum(w * h for _, _, w, h in cells), 1001 * 801)
+                self.assertTrue(all(10 <= x and 20 <= y and x + w <= 1011
+                                    and y + h <= 821 for x, y, w, h in cells))
+
+    def test_three_window_grid_sends_and_verifies_each_placement(self):
+        original = [window(1, "code", "Code"), window(2, "firefox", "Firefox"),
+                    window(3, "ptyxis", "Terminal")]
+        placed = []
+        for old, rect in zip(original, _grid_rectangles((0, 0, 1000, 800), 3)):
+            updated = {**old, "x": rect[0], "y": rect[1],
+                       "width": rect[2], "height": rect[3]}
+            placed.append(updated)
+        selectors = [{"app": item["app"]} for item in original]
+        with patch("jarvis.window_layout._inventory",
+                   side_effect=[original, original, [placed[0], *original[1:]],
+                                [*placed[:2], original[2]], placed]), patch(
+            "jarvis.window_layout._workarea", return_value=(0, 0, 1000, 800)), patch(
+            "jarvis.window_layout._run", return_value=True) as run:
+            result = arrange_window_grid(selectors, lambda _: True)
+        self.assertEqual(result["status"], "layout_verified")
+        self.assertEqual(len(run.call_args_list), 3)
+
+    def test_grid_refuses_duplicate_and_changed_windows(self):
+        original = [window(1, "code", "Code"), window(2, "firefox", "Firefox"),
+                    window(3, "ptyxis", "Terminal")]
+        with patch("jarvis.window_layout._inventory", return_value=original), patch(
+            "jarvis.window_layout._workarea", return_value=(0, 0, 1000, 800)), patch(
+            "jarvis.window_layout._run") as run:
+            result = arrange_window_grid([{"app": "code"}, {"app": "code"},
+                                          {"app": "firefox"}], lambda _: True)
+            self.assertEqual(result["status"], "ambiguous")
+            run.assert_not_called()
+        changed = [*original[:2], window(4, "ptyxis", "Terminal")]
+        with patch("jarvis.window_layout._inventory", side_effect=[original, changed]), patch(
+            "jarvis.window_layout._workarea", return_value=(0, 0, 1000, 800)), patch(
+            "jarvis.window_layout._run") as run:
+            result = arrange_window_grid([{"app": "code"}, {"app": "firefox"},
+                                          {"app": "ptyxis"}], lambda _: True)
+            self.assertEqual(result["status"], "changed")
+            run.assert_not_called()
 
     def test_half_geometry_preserves_odd_pixel(self):
         area = (5, 10, 1001, 800)
         self.assertEqual(_half(area, "left"), (5, 10, 500, 800))
         self.assertEqual(_half(area, "right"), (505, 10, 501, 800))
+
+    def test_center_corner_and_percentage_stay_inside_workarea(self):
+        area = (1920, 30, 1000, 900)
+        current = window(15, "code", "VS Code", width=600)
+        current["height"] = 400
+        self.assertEqual(_rectangle(area, "center", current), (2120, 280, 600, 400))
+        self.assertEqual(_rectangle(area, "bottom_right", current), (2420, 480, 500, 450))
+        self.assertEqual(_rectangle(area, "center", current, 70, 100),
+                         (2070, 30, 700, 900))
+        with self.assertRaises(ValueError):
+            _rectangle(area, "center", current, 101, None)
+
+    def test_center_position_is_sent_and_verified(self):
+        old = window(15, "code", "VS Code")
+        after = window(15, "code", "VS Code", x=150, width=700)
+        after["y"] = 0
+        with patch("jarvis.window_layout._inventory",
+                   side_effect=[[old], [old], [after]]), patch(
+            "jarvis.window_layout._workarea", return_value=(0, 0, 1000, 900)), patch(
+            "jarvis.window_layout._run", return_value=True) as action:
+            result = place_window("code", "center", lambda _: True,
+                                  width_percent=70, height_percent=100)
+        self.assertEqual(result["status"], "geometry_verified")
+        action.assert_called_once_with("MoveResize", 15, 150, 0, 700, 900)
 
     def test_one_window_moves_and_verifies(self):
         old = window(15, "firefox_firefox", "Mozilla Firefox")
@@ -141,12 +212,19 @@ class LayoutTests(unittest.TestCase):
         names = {s["name"] for s in TOOL_SPECS}
         self.assertIn("place_window", names)
         self.assertIn("arrange_windows", names)
+        self.assertIn("arrange_window_grid", names)
         self.assertEqual([s["name"] for s in tool_catalog(
             "Coloque Firefox na metade esquerda da tela", TOOL_SPECS)],
             ["place_window"])
         self.assertEqual([s["name"] for s in tool_catalog(
             "Coloque Firefox e VS Code lado a lado", TOOL_SPECS)],
             ["arrange_windows"])
+        self.assertEqual([s["name"] for s in tool_catalog(
+            "Centralize o Firefox", TOOL_SPECS)], ["place_window"])
+        self.assertEqual([s["name"] for s in tool_catalog(
+            "Deixe o VS Code ocupando 70% da tela", TOOL_SPECS)], ["place_window"])
+        self.assertEqual([s["name"] for s in tool_catalog(
+            "Organize três janelas em grade", TOOL_SPECS)], ["arrange_window_grid"])
 
     def test_layout_reply_does_not_request_second_model_round(self):
         class Client:

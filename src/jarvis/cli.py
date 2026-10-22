@@ -142,7 +142,7 @@ def main():
             return
         auto.initialize()
         mem = Memory(c.db)
-        toolkit = Toolkit(c.workspace, approve=confirm)
+        toolkit = Toolkit(c.workspace, approve=confirm, layout_db=c.db)
         agent = Agent(auto, toolkit, mem, auto.active_model)
         from .planner import TaskPlanner
         from .plan_store import PlanStore
@@ -161,7 +161,7 @@ def main():
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
-        print("Autorizações: /permissoes auto | manual | status  (atual: " + approval.mode + ")")
+        print("Autorizações: /permissoes auto | manual | revogar | status  (atual: " + approval.mode + ")")
         if approval.auto:
             print("⚡ AUTOAPROVAÇÃO ATIVA: ferramentas atuais executam sem pedir SIM. "
                   "Limites do workspace, comandos e permissões GNOME continuam valendo.")
@@ -262,6 +262,11 @@ def main():
                     approval.set_mode("manual")
                     print("Autorizações manuais restauradas. As próximas "
                           "operações voltarão a pedir SIM.")
+                    continue
+                if msg.lower() in ("/permissoes revogar", "/permissões revogar"):
+                    approval.revoke()
+                    print("Sessão revogada. Novas ações locais serão recusadas até "
+                          "você escolher /permissoes manual ou /permissoes auto.")
                     continue
                 if msg.lower() == "/rapido":
                     agent.mode = "fast"

@@ -58,6 +58,23 @@ class ApprovalModeTests(unittest.TestCase):
             policy.set_mode("root")
         self.assertFalse(policy(None))
 
+    def test_revocation_blocks_actions_until_explicitly_reenabled(self):
+        with tempfile.TemporaryDirectory() as temp:
+            policy = ApprovalPolicy(auto=True, report=lambda _: None)
+            kit = Toolkit(Path(temp), approve=policy)
+            policy.revoke()
+            self.assertEqual(policy.mode, "revoked")
+            denied = kit.execute("write_file", {"path": "blocked.txt", "content": "no"})
+            self.assertEqual(denied["result"]["status"], "rejected")
+            self.assertEqual(kit.execute("list_files", {"path": "."})["result"]["status"],
+                             "rejected")
+            self.assertFalse((Path(temp) / "blocked.txt").exists())
+            self.assertEqual(policy.auto_approved, 0)
+            policy.set_mode("auto")
+            allowed = kit.execute("write_file", {"path": "allowed.txt", "content": "yes"})
+            self.assertEqual(allowed["result"]["status"], "written")
+            kit.close()
+
 
 if __name__ == "__main__":
     unittest.main()

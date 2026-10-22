@@ -958,3 +958,36 @@ Teste real no GNOME do usuário: ao pedir `Jarvis, coloque o Firefox e o VS Code
 A JARVIS agora também exibe a causa específica de falhas de layout, em vez de apenas uma mensagem genérica. Se a janela do Code ainda não aparecer, abra o aplicativo e aguarde que sua janela esteja visível; consultar novamente não exige reinstalar extensões nem alterar permissões. Confira com `gnome-extensions list --enabled` e execute `/metricas` após tentar o layout para determinar se a ferramenta `arrange_windows` foi usada.
 
 Fonte do contrato: https://github.com/carlo9890/gnome-window-control/blob/main/window-control@carlo9890.github.io/extension.js (`ListDetailed()`).
+## v0.5.0 em desenvolvimento — geometria e fechamento de janelas
+
+As ferramentas agora aceitam `place_window` com `center` e `bottom_right`, além de `left`/`right`. `width_percent` e `height_percent` opcionais definem o tamanho relativo à área útil do monitor (inteiros de 10 a 100). `focused_window` consulta a janela em foco pelo ID e confere título/classe no inventário. `close_window` solicita fechamento educado pelo ID da janela; mesmo em `--auto-approve`, exige confirmação específica. Ela só retorna `closed_verified` quando a janela desaparece do inventário. Se o aplicativo abrir um diálogo para salvar alterações, o resultado permanece `close_unverified`.
+
+Para validar no Ubuntu com [Window Control](https://github.com/carlo9890/gnome-window-control) ativo, inicie a JARVIS pelo checkout atualizado e teste com uma janela descartável, sem alterações não salvas:
+
+```text
+Jarvis, qual janela está em foco?
+Jarvis, centralize o Firefox.
+Jarvis, coloque o terminal no canto inferior direito.
+Jarvis, deixe o VS Code com 70% da largura da tela.
+Jarvis, feche a janela do Firefox.
+/metricas
+```
+
+Confirme visualmente posição e tamanho, confira `geometry_verified` ou `closed_verified` e repita o fechamento com duas janelas Firefox para observar `ambiguous`. Os testes automatizados simulam a extensão; **essas ações ainda não foram validadas no Ubuntu real**. A v0.5.0 continua em desenvolvimento: tamanhos em pixels, histórico das ações de layout e validação física ainda faltam.
+
+### Grade de janelas e perfis nomeados
+
+`arrange_window_grid` organiza exatamente três janelas (uma metade à esquerda e duas à direita) ou quatro janelas (grade 2×2). Todas precisam estar abertas, ser identificáveis sem ambiguidade e estar no mesmo monitor. Cada posição é verificada separadamente; `layout_unverified` contém os resultados parciais.
+
+`save_window_layout` grava a geometria atual de duas a quatro janelas em um perfil nomeado no SQLite configurado por `JARVIS_DB`. `list_window_layouts` lista os nomes e `restore_window_layout` aplica o perfil às mesmas janelas abertas, ajustando as coordenadas à área útil atual do monitor. A restauração não abre aplicativos nem move janelas entre monitores.
+
+Exemplos para testar no notebook com Window Control ativo:
+
+```text
+Jarvis, organize três janelas em grade: VS Code, Firefox e terminal.
+Jarvis, salve o perfil de janelas "programação" com VS Code, Firefox e terminal.
+Jarvis, liste meus perfis de janelas.
+Jarvis, restaure o perfil "programação".
+```
+
+Antes de salvar, deixe as janelas nas posições desejadas. Se houver duas janelas do mesmo aplicativo, informe parte única do título. Confirme visualmente cada posição após restaurar e confira `/metricas`. Os testes automatizados cobrem a geometria e persistência, mas ainda não validam o GNOME físico.

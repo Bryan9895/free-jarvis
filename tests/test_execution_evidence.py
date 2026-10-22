@@ -64,7 +64,10 @@ class ExecutionEvidenceTests(unittest.TestCase):
             process = Mock(pid=17)
             with patch("jarvis.process_manager.shutil.which", return_value="/usr/bin/code"), patch(
                 "jarvis.process_manager.subprocess.Popen", return_value=process
-            ) as launch:
+            ) as launch, patch("jarvis.window_tracking.snapshot", return_value=None), patch(
+                "jarvis.window_tracking.observe_launch",
+                side_effect=lambda launched, *_args: {**launched, "window_observation": {"status": "unavailable"}}
+            ):
                 result = tool.execute("open_file", {"path": "main.py"})
             self.assertEqual(result["result"]["status"], "launched_unverified")
             self.assertEqual(launch.call_args.args[0][-1], str(file))
