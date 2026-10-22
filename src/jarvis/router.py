@@ -61,14 +61,14 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
         return available
     # Layout declarativo: o posicionamento usa só ferramentas GNOME.
     # Não trata "mova um arquivo" como janela; mantém o catálogo completo.
-    layout_target = re.search(r"\\b(?:janela|janelas|firefox|chrome|"
-                              r"vscode|vs code|terminal|ptyxis|code)\\b", normalized)
-    if layout_target and re.search(r"\\b(?:metade|lado a lado|"
-                                   r"esquerda|direita|divida a tela)\\b", normalized):
-        if re.search(r"\\b(?: e | com | lado a lado| dois | duas )", normalized):
+    layout_target = re.search(r"\b(?:janela|janelas|firefox|chrome|"
+                              r"vscode|vs code|terminal|ptyxis|code)\b", normalized)
+    if layout_target and re.search(r"\b(?:metade|lado a lado|"
+                                   r"esquerda|direita|divida a tela)\b", normalized):
+        if re.search(r"\b(?: e | com | lado a lado| dois | duas )", normalized):
             return [t for t in available if t.get("name") == "arrange_windows"]
-        if re.search(r"\\b(?:coloque|colocar|mova|mover|posicione|"
-                     r"posicionar|organize|organizar)\\b", normalized):
+        if re.search(r"\b(?:coloque|colocar|mova|mover|posicione|"
+                     r"posicionar|organize|organizar)\b", normalized):
             return [t for t in available if t.get("name") == "place_window"]
 
     # Não escolher só uma ferramenta se houve pedido de arquivo, navegador,
