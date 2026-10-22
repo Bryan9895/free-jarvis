@@ -41,6 +41,8 @@ class ProcessManager:
         # A existência foi verificada antes e é conferida novamente.
         if not directory.is_dir():
             raise ValueError("A pasta do projeto deixou de existir")
+        from .window_tracking import snapshot, observe_launch
+        before = snapshot()
         process = subprocess.Popen(
             [executable, *options, str(directory)],
             stdin=subprocess.DEVNULL,
@@ -54,9 +56,9 @@ class ProcessManager:
             "id": launch_id, "editor": editor, "directory": str(directory),
             "pid": process.pid, "started_at": time.time(), "process": process
         })
-        return {"status": "launched_unverified", "id": launch_id, "pid": process.pid,
+        return observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
                 "directory": str(directory), "editor": editor,
-                "note": "Início do lançador confirmado; janela/instância gráfica não verificada."}
+                "note": "Início do lançador confirmado; janela/instância gráfica não verificada."}, editor, before)
 
     def open_file(self, file_path: Path, editor: str, approve):
         """Abre arquivo existente em editor conhecido; não executa seu conteúdo."""
@@ -86,9 +88,9 @@ class ProcessManager:
             "file": str(file_path), "pid": process.pid,
             "started_at": time.time(), "process": process,
         })
-        return {"status": "launched_unverified", "id": launch_id, "pid": process.pid,
+        return observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
                 "file": str(file_path), "editor": editor,
-                "note": "Lançador iniciado; foco e janela não verificados."}
+                "note": "Lançador iniciado; foco e janela não verificados."}, editor, before)
 
     def list_launches(self):
         result = []
