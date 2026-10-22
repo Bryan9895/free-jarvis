@@ -560,3 +560,17 @@ A JARVIS agora permite selecionar planos históricos por ID e continuar **soment
 Em vez de `skip`, use `/resolver-etapa retry` para retornar **a primeira etapa incerta** à fila de pendentes. `skip` significa apenas "não executar novamente", **não** indica que a ação anterior teve sucesso. O comando de resolução exige confirmação explícita, e cada ação de ferramenta mantém suas permissões. Se houver várias etapas incertas, resolva uma por comando e confira `/plano` entre elas. Depois use `/retomar-plano` para tornar o plano executável e `/executar-plano` para autorizar a execução apenas do que continua pendente.
 
 Esta versão **não** inicia tarefas em segundo plano, não retoma automaticamente após crash e não verifica por conta própria se um clique ou escrita anterior realmente aconteceu. O plano e suas decisões continuam registrados no SQLite local, inclusive após reiniciar a aplicação. Não escolha `retry` em ações potencialmente irreversíveis sem conferir manualmente o estado do sistema.
+
+### Tarefas por conversa natural (sem comandos)
+
+O chat agora inclui um roteador local de intenções (`task_intent.py`) e um controlador (`natural_tasks.py`) conectados ao planejador SQLite. Não é necessário usar comandos `/` para os casos mais comuns:
+
+- `Jarvis, analise os arquivos Python do meu projeto e depois explique sua organização.` — cria plano, apresenta as etapas e pede autorização para executá-las.
+- `Jarvis, planeje uma análise do workspace.` — cria plano, sem executar até receber `Execute o plano`.
+- `Como está o meu plano?` — mostra painel de andamento, sem JSON bruto.
+- `Mostre o histórico das minhas tarefas.` — mostra tarefas salvas.
+- `Continue a análise do meu projeto de onde parou.` — procura tarefa relacionada no histórico. Em caso de dúvida, pede especificação em vez de selecionar arbitrariamente.
+- `Ignore a etapa interrompida.` ou `Repita a etapa interrompida.` — registra uma decisão explícita para a **primeira etapa incerta**, mas nunca assume sucesso passado.
+- `Continue de onde parou.` — executa somente etapas pendentes **depois** de autorização; etapas incertas precisam de resolução prévia.
+
+O roteamento não faz outra inferência para classificar intenções comuns, preservando a velocidade de perguntas simples. Pedidos que o roteador não reconhecer continuam na conversa normal do agente; ainda não há entendimento semântico completo de todas as paráfrases, nem execução em segundo plano. Alguns objetivos complexos podem requerer reformulação para ativar planejamento. As ferramentas existentes e as autorizações de cada uma permanecem as mesmas. Os comandos explícitos `/plano`, `/planejar` etc. continuam disponíveis como alternativa.
