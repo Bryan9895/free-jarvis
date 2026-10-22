@@ -3,7 +3,6 @@
 Requer Window Calls Extended para inventário e Activate Window By Title
 para solicitar foco. Nunca usa org.gnome.Shell.Eval, comandos livres ou X11.
 """
-import ast
 import shutil
 import subprocess
 import time
@@ -80,11 +79,10 @@ def focus_window(app, title, approve, *, retries=3, delay=0.25):
         if result.returncode:
             return {"status": "unavailable",
                     "reason": "Activate Window By Title ausente, desabilitada ou sem resposta"}
-        parsed = ast.literal_eval(result.stdout.strip())
-        if not (isinstance(parsed, tuple) and len(parsed) == 1
-                and type(parsed[0]) is bool):
+        reply = result.stdout.strip().lower()
+        if reply not in ("(true,)", "(false,)"):
             return {"status": "unverified", "reason": "Resposta inesperada da extensão"}
-        if not parsed[0]:
+        if reply == "(false,)":
             return {"status": "not_activated", "reason": "Extensão não encontrou a janela"}
     except (OSError, ValueError, SyntaxError, MemoryError, subprocess.TimeoutExpired):
         return {"status": "unavailable", "reason": "Falha ao consultar a extensão de ativação"}
