@@ -27,6 +27,19 @@ class Toolkit:
             raise ToolError("Acesso fora do workspace bloqueado")
         return p
 
+    def _safe_mutation_path(self, requested):
+        """Não permite usar links simbólicos em operações mutáveis."""
+        if not isinstance(requested, str):
+            raise ToolError("Caminho inválido")
+        raw = self.workspace / requested
+        # Inspeciona cada componente antes de resolve() para não seguir symlinks.
+        candidate = raw
+        while candidate != self.workspace and candidate.is_relative_to(self.workspace):
+            if candidate.is_symlink():
+                raise ToolError("Links simbólicos não são aceitos em alterações")
+            candidate = candidate.parent
+        return self.path(requested)
+
     def list_files(self, path="."):
         p = self.path(path)
         if not p.is_dir():
@@ -54,7 +67,7 @@ class Toolkit:
         return {"status": "written", "path": str(p)}
 
     def make_directory(self, path):
-        destination = self.path(path)
+        destination = self._safe_mutation_path(path)
         if destination == self.workspace or not destination.is_relative_to(self.workspace):
             raise ToolError("Escolha uma subpasta do workspace")
         if destination.exists():
@@ -62,14 +75,14 @@ class Toolkit:
         if not self.approve(f"CRIAR PASTA {destination}"):
             return {"status": "rejected"}
         # Revalidar após a confirmação.
-        destination = self.path(path)
+        destination = self._safe_mutation_path(path)
         destination.mkdir(parents=True, exist_ok=False)
         return {"status": "created", "path": str(destination)}
 
     def move_path(self, source, destination):
-        src, dst = self.path(source), self.path(destination)
-        if src == self.workspace or dst == self.workspace:
-            raise ToolError("Não é permitido mover a raiz do workspace")
+        src, dst = self._safe_mutation_path(source), self._safe_mutation_path(destination)
+        if src == self.workspace or dst == self.workspace or src == self.workspace / ".jarvis-trash":
+            raise ToolError("Não é permitido mover a raiz do workspace nem a lixeira")
         if src == dst or not src.exists() or dst.exists():
             raise ToolError("Origem ausente, destino existente ou caminhos idênticos")
         if src.is_symlink() or dst.is_symlink():
@@ -88,7 +101,7 @@ class Toolkit:
 
     def delete_path(self, path):
         """Move para a lixeira interna do workspace, sem excluir definitivamente."""
-        target = self.path(path)
+        target = self._safe_mutation_path(path)
         trash = self.workspace / ".jarvis-trash"
         if target == self.workspace or target == trash or target.is_relative_to(trash):
             raise ToolError("Não é permitido remover a raiz ou a lixeira")
