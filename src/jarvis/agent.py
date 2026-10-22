@@ -29,6 +29,9 @@ SYSTEM = (
     "plano, prefira open_project_and_focus ou open_file_and_focus. "
     "Para abrir um aplicativo instalado e também colocá-lo em primeiro plano, "
     "prefira launch_installed_app_and_focus após consultar seu app_id. "
+    "Para posicionar uma janela na metade esquerda/direita use place_window; "
+    "para duas janelas lado a lado use arrange_windows. Verifique geometry_verified "
+    "ou layout_verified antes de declarar sucesso. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
     "Se o retorno focus não for focused_verified/already_focused, informe a "
@@ -136,6 +139,42 @@ def _local_window_state_reply(calls, outcomes):
         "not_activated": "A extensão recusou a alteração da janela.",
         "unverified": "A extensão não retornou confirmação válida.",
         "state_unverified": "A solicitação foi enviada, mas o GNOME não confirmou o novo estado.",
+    }
+    return failures.get(status)
+
+
+def _local_layout_reply(calls, outcomes):
+    """Evita inferência extra quando a geometria foi medida pelo GNOME."""
+    if len(calls) != 1 or len(outcomes) != 1:
+        return None
+    name = calls[0].get("name")
+    if name not in ("place_window", "arrange_windows"):
+        return None
+    payload = outcomes[0]
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("error"):
+        return "Não consegui organizar as janelas: " + str(payload["error"])[:160]
+    state = payload.get("result")
+    if not isinstance(state, dict):
+        return None
+    status = state.get("status")
+    if status == "geometry_verified":
+        side = "esquerda" if state.get("position") == "left" else "direita"
+        return f"Janela posicionada na metade {side}, com geometria confirmada pelo GNOME: {state.get('title', '')}."
+    if status == "layout_verified":
+        return ("Janelas organizadas lado a lado, geometria confirmada pelo GNOME: "
+                + str(state.get("left", "")) + " à esquerda; "
+                + str(state.get("right", "")) + " à direita.")
+    failures = {
+        "unavailable": "A extensão Window Control ou a geometria do monitor está indisponível.",
+        "ambiguous": "Existem várias janelas possíveis; informe parte dos títulos.",
+        "not_observed": "Não encontrei uma das janelas solicitadas.",
+        "rejected": "Organização de janelas cancelada.",
+        "changed": "Uma janela mudou antes da operação; repita a solicitação.",
+        "failed": "O GNOME recusou posicionar a janela.",
+        "geometry_unverified": "Posicionamento solicitado, mas a geometria final não foi confirmada.",
+        "layout_unverified": "Organização parcialmente aplicada ou não confirmada. Confira as posições antes de repetir.",
     }
     return failures.get(status)
 
@@ -269,7 +308,8 @@ class Agent:
                     })
                 if chosen == "tools":
                     direct_result = (_local_focus_reply(calls, round_outcomes, message)
-                                     or _local_window_state_reply(calls, round_outcomes))
+                                     or _local_window_state_reply(calls, round_outcomes)
+                                     or _local_layout_reply(calls, round_outcomes))
                     if direct_result is not None:
                         self.memory.add("user", message)
                         self.memory.add("assistant", direct_result)
