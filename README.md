@@ -731,6 +731,7 @@ Com a extensão Window Calls Extended habilitada e o `jarvis-fcc --windows-diagn
 
 - `appeared_after_request`: surgiu uma janela/título correspondente no inventário após a solicitação (pode ser atualização de título de uma janela preexistente, não prova causalidade).
 - `already_observed`: a janela correspondente já constava da amostra anterior.
+- `window_changed_after_request`: janela de mesma aplicação/PID tinha outro título antes da solicitação; mudança observada, não nova janela comprovada.
 - `observed_unknown_origin`: janela observada, mas o estado anterior estava indisponível.
 - `not_observed`: não foi localizada janela correspondente; o lançamento pode ter funcionado.
 - `unavailable`: consulta ao compositor indisponível.
