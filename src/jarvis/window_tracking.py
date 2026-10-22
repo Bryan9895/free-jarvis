@@ -18,9 +18,11 @@ _APP_ALIASES = {
 
 
 def snapshot():
-    from .desktop_windows import desktop_windows
+    from .gnome_shell_windows import shell_windows
     try:
-        data = desktop_windows()
+        # Launch checks use compositor only: AT-SPI fallback may block for 6s
+        # and cannot reliably match graphical application windows.
+        data = shell_windows(timeout=1.5)
         if not isinstance(data, dict) or data.get("status") != "observed":
             return None
         entries = data.get("windows", [])
@@ -85,7 +87,7 @@ def observe_launch(launch, app, before, *, attempts=2, interval=0.35):
     after = snapshot()
     assessment = compare(before, after, app)
     for _ in range(max(0, attempts - 1)):
-        if assessment["status"] not in ("not_observed", "unavailable"):
+        if assessment["status"] != "not_observed":
             break
         time.sleep(interval)
         assessment = compare(before, snapshot(), app)
