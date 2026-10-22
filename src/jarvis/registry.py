@@ -6,6 +6,7 @@ ser registrada explicitamente com esquema, capacidade e função executora.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from copy import deepcopy
 from typing import Callable
 
 
@@ -32,7 +33,13 @@ class ToolRegistry:
             raise ValueError("Capacidade inválida")
         if not (isinstance(handler, str) and handler.isidentifier() or callable(handler)):
             raise ValueError("Executor de ferramenta inválido")
-        self._entries[name] = ToolEntry(spec, capability, handler)
+        self._entries[name] = ToolEntry(deepcopy(spec), capability, handler)
+
+    def copy(self) -> ToolRegistry:
+        copied = ToolRegistry()
+        for entry in self._entries.values():
+            copied.register(entry.spec, entry.capability, entry.handler)
+        return copied
 
     def get(self, name: str) -> ToolEntry | None:
         if not isinstance(name, str):

@@ -1,5 +1,7 @@
 """Registro central, concessões de capacidade e extensões explícitas."""
 import tempfile
+import sys
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +10,7 @@ from jarvis.agent import Agent
 from jarvis.approval import ApprovalPolicy
 from jarvis.memory import Memory
 from jarvis.registry import ToolRegistry
+from jarvis.plugins import load_plugins
 from jarvis.tools import DEFAULT_REGISTRY, TOOL_SPECS, Toolkit
 
 
@@ -90,6 +93,27 @@ class RegistryTests(unittest.TestCase):
             self.assertGreaterEqual(entry["duration_ms"], 0)
             self.assertNotIn("private-secret", str(entry))
             kit.close()
+
+    def test_explicit_plugin_loader_is_isolated_from_default_registry(self):
+        module = types.ModuleType("jarvis_test_plugin")
+        module.register_tools = lambda registry: registry.register(
+            {"type": "function", "name": "plugin_hello",
+             "parameters": {"type": "object", "properties": {}}},
+            "plugin.hello", lambda kit: "ok")
+        with patch.dict(sys.modules, {"jarvis_test_plugin": module}):
+            loaded = load_plugins(DEFAULT_REGISTRY, "jarvis_test_plugin")
+        self.assertIsNone(DEFAULT_REGISTRY.get("plugin_hello"))
+        self.assertEqual(loaded.get("plugin_hello").capability, "plugin.hello")
+        with tempfile.TemporaryDirectory() as temp:
+            kit = Toolkit(Path(temp), registry=loaded)
+            self.assertEqual(kit.execute("plugin_hello", {})["result"], "ok")
+            kit.close()
+
+    def test_plugin_loader_rejects_duplicates_and_invalid_modules(self):
+        with self.assertRaisesRegex(ValueError, "repetido"):
+            load_plugins(DEFAULT_REGISTRY, "a,a")
+        with self.assertRaisesRegex(ValueError, "inválido"):
+            load_plugins(DEFAULT_REGISTRY, "../evil")
 
 
 if __name__ == "__main__":

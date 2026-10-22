@@ -6,6 +6,8 @@
 - Filtragem das ferramentas anunciadas e bloqueio no limite de execução por `JARVIS_ENABLED_CAPABILITIES`, inclusive no modo `--auto-approve`.
 - Entrada gráfica experimental permanece sujeita ao opt-in `JARVIS_ENABLE_DESKTOP_INPUT=1`; testes automatizados de registro, negação e extensibilidade.
 - Medições por chamada de ferramenta, com estado e duração, em trilha limitada a 100 registros sem argumentos; expostas em `/metricas`.
+- Esquemas extraídos para `tool_specs.py`; carregamento de plugins Python somente por `JARVIS_PLUGINS`, em cópia isolada do registro.
+- Autoaprovação passou a ser o padrão da CLI, inclusive para fechar janelas; `--manual-approve` e `/permissoes manual` preservam escolha explícita pelo modo manual. `--auto-approve` segue compatível.
 
 ## Em desenvolvimento — v0.6.0
 

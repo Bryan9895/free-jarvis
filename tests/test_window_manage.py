@@ -47,17 +47,17 @@ class WindowManageTests(unittest.TestCase):
         self.assertEqual(result["status"], "closed_verified")
         dbus.assert_called_once_with("Close", 17)
 
-    def test_close_requires_specific_confirmation_even_in_auto_mode(self):
+    def test_close_uses_auto_mode_without_terminal_prompt(self):
         prompts = []
         policy = ApprovalPolicy(auto=True, manual_callback=lambda msg: prompts.append(msg) or False,
                                 report=lambda _: None)
-        with patch("jarvis.window_manage._inventory", return_value=[win()]), patch(
-            "jarvis.window_manage._dbus") as dbus:
+        with patch("jarvis.window_manage._inventory", side_effect=[[win()], [win()], []]), patch(
+            "jarvis.window_manage._dbus", return_value=Mock(returncode=0, stdout="(true,)")) as dbus:
             result = close_window("firefox", "", policy)
-        self.assertEqual(result["status"], "rejected")
-        self.assertIn("FECHAR JANELA", prompts[0])
-        self.assertEqual(policy.auto_approved, 0)
-        dbus.assert_not_called()
+        self.assertEqual(result["status"], "closed_verified")
+        self.assertFalse(prompts)
+        self.assertEqual(policy.auto_approved, 1)
+        dbus.assert_called_once_with("Close", 17)
 
     def test_close_ambiguity_and_unsaved_dialog_are_not_success(self):
         with patch("jarvis.window_manage._inventory", return_value=[win(id=17), win(id=18)]), patch(

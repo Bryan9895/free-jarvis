@@ -8,11 +8,24 @@ from jarvis.tools import Toolkit
 
 
 class ApprovalModeTests(unittest.TestCase):
-    def test_default_is_manual_and_does_not_approve_without_callback(self):
+    def test_default_is_auto_and_manual_remains_opt_in(self):
         policy = ApprovalPolicy(report=lambda _: None)
-        self.assertEqual(policy.mode, "manual")
+        self.assertEqual(policy.mode, "auto")
+        self.assertTrue(policy("CRIAR ARQUIVO"))
+        self.assertEqual(policy.auto_approved, 1)
+        policy.set_mode("manual")
         self.assertFalse(policy("CRIAR ARQUIVO"))
-        self.assertEqual(policy.auto_approved, 0)
+
+    def test_default_auto_writes_without_terminal_callback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            policy = ApprovalPolicy(
+                manual_callback=lambda _: self.fail("Não deveria pedir SIM"),
+                report=lambda _: None)
+            kit = Toolkit(Path(temp), approve=policy)
+            result = kit.execute("write_file", {"path": "hello.txt", "content": "olá"})
+            self.assertEqual(result["result"]["status"], "written")
+            self.assertEqual((Path(temp) / "hello.txt").read_text(), "olá")
+            kit.close()
 
     def test_auto_approves_without_reasking_then_can_disable(self):
         logs = []

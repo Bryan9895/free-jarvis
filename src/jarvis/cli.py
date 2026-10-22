@@ -9,6 +9,8 @@ from .tools import Toolkit
 from .memory import Memory
 from .agent import Agent
 from .approval import ApprovalPolicy
+from .plugins import load_plugins
+from .tools import DEFAULT_REGISTRY
 
 def confirm(action):
     print(f"\n⚠️  AUTORIZAÇÃO NECESSÁRIA: {action}")
@@ -21,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
     parser.add_argument("--locate-target", metavar="ALVO", help="Localiza visualmente alvo e salva imagem anotada; nunca clica")
     parser.add_argument("--guided-click", metavar="ALVO", help="Clique visual supervisionado com cursor posicionado pelo usuário e verificação posterior")
-    parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e dupla confirmação")
+    parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e permissões do portal")
     parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
@@ -33,11 +35,12 @@ def main():
     parser.add_argument("--desktop-screenshot", action="store_true", help="Solicita captura de tela via portal Wayland com confirmação")
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
-    parser.add_argument("--auto-approve", action="store_true", help="Autorizar automaticamente ações das ferramentas desta sessão (não amplia permissões do SO)")
+    approval_group = parser.add_mutually_exclusive_group()
+    approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
+    approval_group.add_argument("--manual-approve", action="store_true", help="Pedir confirmação no terminal para cada ação")
     args = parser.parse_args()
     c = Config.from_env()
-    # O modo automático deve ser escolhido explicitamente pelo operador.
-    approval = ApprovalPolicy(auto=args.auto_approve, manual_callback=globals()["confirm"])
+    approval = ApprovalPolicy(auto=not args.manual_approve, manual_callback=globals()["confirm"])
     confirm = approval
     if args.doctor:
         from pathlib import Path
@@ -143,7 +146,9 @@ def main():
         auto.initialize()
         mem = Memory(c.db)
         try:
-            toolkit = Toolkit(c.workspace, approve=confirm, layout_db=c.db)
+            registry = load_plugins(DEFAULT_REGISTRY, os.getenv("JARVIS_PLUGINS", ""))
+            toolkit = Toolkit(c.workspace, approve=confirm, layout_db=c.db,
+                              registry=registry)
         except ValueError as exc:
             parser.error(str(exc))
         agent = Agent(auto, toolkit, mem, auto.active_model)

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 
 class ApprovalPolicy:
-    def __init__(self, auto=False, manual_callback=None, report=print):
+    def __init__(self, auto=True, manual_callback=None, report=print):
         if not isinstance(auto, bool):
             raise TypeError("auto deve ser booleano")
         self.auto = auto
@@ -38,10 +38,8 @@ class ApprovalPolicy:
         self.set_mode("revoked")
 
     def confirm_sensitive(self, action):
-        """Ações que podem perder dados sempre pedem confirmação específica."""
-        if self.revoked or not isinstance(action, str):
-            return False
-        return bool(self.manual_callback(action))
+        """Respeita o modo da sessão também para ações sensíveis."""
+        return self(action)
 
     @property
     def mode(self):

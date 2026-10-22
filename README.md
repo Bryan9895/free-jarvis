@@ -136,7 +136,7 @@ O histórico SQLite e as configurações locais não são transferidos pelo Git.
 
 ### Segurança e limites
 
-As ferramentas respeitam o workspace e pastas explicitamente autorizadas. Arquivos são gravados após confirmação; remoção é recuperável na lixeira interna. O agente não possui shell arbitrário, `sudo` nem controle total do GNOME. Verificações de escrita usam hash SHA-256; a presença/alteração de título de janela é evidência limitada e **não comprova a conclusão de uma ação no aplicativo**. Clique/teclado via RemoteDesktop são experimentais e ficam desabilitados por padrão (não habilite `JARVIS_ENABLE_DESKTOP_INPUT` sem uma sessão de testes supervisionada).
+As ferramentas respeitam o workspace e pastas explicitamente autorizadas. Ações permitidas são autoaprovadas por padrão, sem pedir `SIM`; remoção é recuperável na lixeira interna. O agente não possui shell arbitrário, `sudo` nem controle total do GNOME. Verificações de escrita usam hash SHA-256; a presença/alteração de título de janela é evidência limitada e **não comprova a conclusão de uma ação no aplicativo**. Clique/teclado via RemoteDesktop são experimentais e ficam desabilitados por padrão (não habilite `JARVIS_ENABLE_DESKTOP_INPUT` sem uma sessão de testes supervisionada).
 
 **Amanhã:** continuar a partir do [ponto de retomada](docs/RETOMADA.md): verificar a correlação antes/depois no GNOME real e estudar foco/seleção de janelas por identificador, com aprovação e verificação posterior.
 
@@ -228,7 +228,7 @@ pip install -e '.[desktop]'
 O pacote `xdg-desktop-portal-gnome` é específico do GNOME; para KDE, use o backend correspondente da sua distribuição. A JARVIS oferece:
 - `desktop_info`: informa sessão gráfica, desktop e disponibilidade dos portais;
 - `desktop_screenshot`: solicita uma captura pela interface `org.freedesktop.portal.Screenshot`, com **confirmação no terminal e no diálogo do sistema**. O arquivo PNG é salvo em `jarvis_desktop_screenshot.png` no workspace e **não é enviado automaticamente à IA**;
-- `desktop_open_app`: abre por `gtk-launch` apenas aplicativos cujos IDs estejam em `JARVIS_ALLOWED_APPS`, sempre com confirmação.
+- `desktop_open_app`: abre por `gtk-launch` apenas aplicativos cujos IDs estejam em `JARVIS_ALLOWED_APPS`, seguindo o modo de autorização da sessão.
 
 Exemplo:
 ```bash
@@ -858,13 +858,13 @@ Diga: `Jarvis, coloque o Firefox em primeiro plano`. Se ele já estiver focado, 
 
 ## JARVIS v0.2.0 — autorizações automáticas por sessão
 
-Você pode ativar o modo de execução sem digitar `SIM` repetidamente:
+O modo de execução sem pedir `SIM` é o padrão. Inicie normalmente:
 
 ```bash
 cd ~/free-jarvis
 git pull --ff-only origin main
 source .venv/bin/activate
-jarvis-fcc --auto-approve
+jarvis-fcc
 ```
 
 Dentro da JARVIS também estão disponíveis:
@@ -873,11 +873,11 @@ Dentro da JARVIS também estão disponíveis:
 - `/permissoes manual`: volta a solicitar `SIM` para ações.
 - `/permissoes status`: mostra o modo e o contador de operações autoautorizadas.
 
-O modo padrão continua manual, salvo quando `--auto-approve` for usado. Cada aprovação automática aparece no terminal como `⚡ AUTOAUTORIZADO (sessão): ...`. **Atenção:** no modo automático, a JARVIS pode criar, alterar ou mover arquivos do workspace, abrir apps e URLs e interagir com ferramentas existentes sem perguntar. Uma instrução equivocada da IA pode causar efeitos reais. Monitore as ações e prefira `/permissoes manual` quando estiver trabalhando com dados importantes.
+O modo padrão é automático. `--auto-approve` continua aceito por compatibilidade; `--manual-approve` inicia no modo manual, e `/permissoes manual` permite mudar durante a sessão. Cada autorização automática aparece no terminal como `⚡ AUTOAUTORIZADO (sessão): ...`. A JARVIS pode criar, alterar ou mover arquivos dos diretórios autorizados e controlar aplicativos sem pedir confirmação adicional no terminal.
 
 **O que esse modo NÃO faz:** não confere permissões de administrador/root, não contorna diálogos de permissão do GNOME/Wayland, não adiciona execução genérica de shell, não modifica permissões Unix, não acessa pastas fora de `JARVIS_WORKSPACE` e `JARVIS_ALLOWED_DIRS`, nem amplia o catálogo de ferramentas permitido. O controle de escopo e validação dos caminhos permanece no `Toolkit`. A autorização automática vale somente para as solicitações de consentimento internas da JARVIS, não para permissões do sistema.
 
-Para o modo automático permanecer habilitado em novas sessões, use `jarvis-fcc --auto-approve` na forma habitual de iniciar. A autoaprovação é interrompida ao sair da sessão e só será reativada com uma escolha explícita do usuário.
+O modo escolhido dentro da sessão não é persistido. Ao reiniciar, a JARVIS volta ao padrão automático, exceto quando iniciada com `--manual-approve`.
 
 ## JARVIS v0.3.0 — minimizar, restaurar e maximizar janelas no GNOME Wayland
 
@@ -960,7 +960,7 @@ A JARVIS agora também exibe a causa específica de falhas de layout, em vez de 
 Fonte do contrato: https://github.com/carlo9890/gnome-window-control/blob/main/window-control@carlo9890.github.io/extension.js (`ListDetailed()`).
 ## v0.5.0 em desenvolvimento — geometria e fechamento de janelas
 
-As ferramentas agora aceitam `place_window` com `center` e `bottom_right`, além de `left`/`right`. `width_percent` e `height_percent` opcionais definem o tamanho relativo à área útil do monitor (inteiros de 10 a 100). `focused_window` consulta a janela em foco pelo ID e confere título/classe no inventário. `close_window` solicita fechamento educado pelo ID da janela; mesmo em `--auto-approve`, exige confirmação específica. Ela só retorna `closed_verified` quando a janela desaparece do inventário. Se o aplicativo abrir um diálogo para salvar alterações, o resultado permanece `close_unverified`.
+As ferramentas agora aceitam `place_window` com `center` e `bottom_right`, além de `left`/`right`. `width_percent` e `height_percent` opcionais definem o tamanho relativo à área útil do monitor (inteiros de 10 a 100). `focused_window` consulta a janela em foco pelo ID e confere título/classe no inventário. `close_window` solicita fechamento educado pelo ID da janela, seguindo o modo da sessão e sem confirmação extra no modo automático. Ela só retorna `closed_verified` quando a janela desaparece do inventário. Se o aplicativo abrir um diálogo para salvar alterações, o resultado permanece `close_unverified`.
 
 Para validar no Ubuntu com [Window Control](https://github.com/carlo9890/gnome-window-control) ativo, inicie a JARVIS pelo checkout atualizado e teste com uma janela descartável, sem alterações não salvas:
 
@@ -1034,7 +1034,7 @@ No Ubuntu GNOME Wayland real, um perfil com duas XTerm descartáveis restaurou �
 
 ## v0.7.0 em desenvolvimento — registro e capacidades das ferramentas
 
-O catálogo de 48 ferramentas agora passa por `ToolRegistry` em `src/jarvis/registry.py`. Cada entrada associa esquema da API, capacidade e executor. O agente anuncia somente as ferramentas concedidas, e `Toolkit.execute` verifica novamente a capacidade antes de executar uma chamada, inclusive em `--auto-approve`. Ferramentas novas podem ser registradas explicitamente com um executor Python sem alterar o agente. O sistema não carrega plugins de terceiros automaticamente.
+O catálogo de 48 ferramentas agora passa por `ToolRegistry` em `src/jarvis/registry.py`; os esquemas ficam em `src/jarvis/tool_specs.py`. Cada entrada associa esquema da API, capacidade e executor. O agente anuncia somente as ferramentas concedidas, e `Toolkit.execute` verifica novamente a capacidade antes de executar uma chamada, inclusive no modo automático. Ferramentas novas podem ser registradas explicitamente com um executor Python sem alterar o agente. O sistema não descobre nem carrega plugins de terceiros automaticamente.
 
 `/metricas` inclui `tool_execution` com ferramenta, capacidade, estado e duração em milissegundos das chamadas do turno. O executor mantém no máximo 100 registros em memória; não armazena argumentos, conteúdo de arquivos ou texto dos erros nessa trilha. O histórico SQLite de ações de janelas permanece separado.
 
@@ -1042,9 +1042,20 @@ Por padrão, as capacidades existentes continuam habilitadas para preservar o co
 
 ```bash
 export JARVIS_ENABLED_CAPABILITIES="filesystem.read,desktop.read"
-jarvis-fcc --auto-approve
+jarvis-fcc
 ```
 
 Capacidades disponíveis: `filesystem.read`, `filesystem.write`, `command.read`, `browser.read`, `browser.control`, `desktop.read`, `desktop.control`, `desktop.capture` e `desktop.input`. Uma lista vazia desabilita todas; um nome desconhecido causa erro de configuração. `desktop.input` ainda exige `JARVIS_ENABLE_DESKTOP_INPUT=1` e as permissões do portal GNOME. Ao terminar, `unset JARVIS_ENABLED_CAPABILITIES` restaura o padrão na próxima sessão. As aprovações individuais, restrições de diretórios e verificações das ferramentas continuam aplicadas.
 
 Validação desta etapa: `python -m unittest discover -s tests -q`. Os testes de registro e autorização são automatizados; a restrição do catálogo deve ser conferida no notebook com uma sessão FCC real antes de considerá-la validada em uso diário.
+
+### Plugins explícitos
+
+Um módulo Python instalado pode registrar ferramentas exportando `register_tools(registry)`. Ele só é carregado quando seu nome consta em `JARVIS_PLUGINS` (lista separada por vírgulas). Por exemplo, com um módulo confiável `meus_plugins.notas` instalado no ambiente Python da JARVIS:
+
+```bash
+export JARVIS_PLUGINS="meus_plugins.notas"
+jarvis-fcc
+```
+
+O plugin recebe uma cópia isolada do registro padrão e chama `registry.register(spec, capability, handler)`. O `handler` recebe o `Toolkit` como primeiro argumento e os argumentos do esquema como parâmetros nomeados. A capacidade do plugin também pode ser incluída em `JARVIS_ENABLED_CAPABILITIES`. Importar um plugin executa seu código Python local; instale apenas módulos que você controla. Plugins externos e sua integração com FCC real ainda não foram validados.

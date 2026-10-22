@@ -56,7 +56,7 @@ def extract_text(response):
 
 
 def analyze_screen(client, model, workspace, approve, question, *, max_output_tokens=1200, reasoning_effort=None, retry_incomplete=False):
-    """Uma captura, duas confirmações, uma inferência sem tools ou fallback."""
+    """Uma captura via portal e uma inferência sem tools ou fallback."""
     if not isinstance(question, str) or not question.strip() or len(question) > MAX_QUESTION:
         raise WaylandError("Pergunta deve ter de 1 a 500 caracteres")
     if not isinstance(model, str) or not model.strip():

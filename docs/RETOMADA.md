@@ -2,6 +2,8 @@
 
 ## Estado mais recente — início da v0.7.0
 
+**Atualização seguinte:** a CLI inicia em autoaprovação, sem pedir `SIM` por ação, inclusive ao fechar janela; `--manual-approve` é opt-in e `--auto-approve` continua aceito. O aplicativo ainda pode abrir seu próprio diálogo de alterações não salvas. Os esquemas foram separados em `tool_specs.py`, e módulos Python são carregados somente quando listados em `JARVIS_PLUGINS`, em uma cópia do registro. Testes automatizados cobrem os modos e o carregamento; falta ensaio integrado com FCC real. Próxima tarefa: proteção contra ciclos em tarefas compostas.
+
 `src/jarvis/registry.py` centraliza catálogo e concessões por capacidade; `Toolkit.execute` deixou de manter uma segunda lista manual de ferramentas. `JARVIS_ENABLED_CAPABILITIES` aceita nomes separados por vírgulas para limitar a sessão, com todas as capacidades existentes habilitadas por padrão. O agente só anuncia o subconjunto concedido, e a execução verifica novamente a concessão. O opt-in separado de `desktop_input` continua obrigatório. Tempo e estado de até 100 execuções ficam em memória, sem argumentos, e aparecem em `/metricas` por turno. Testes automatizados de negação, modo automático, registro explícito, métricas e catálogo foram adicionados. A integração com FCC real e plugins externos ainda não foi testada. Próxima entrega: extrair esquemas legados de `tools.py`, adicionar carregamento explícito de plugins e reforçar a proteção contra ciclos; não elevar a versão do pacote antes dos critérios de lançamento pendentes.
 
 ## Contexto confirmado pelo usuário (Ubuntu GNOME Wayland)
