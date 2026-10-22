@@ -241,6 +241,28 @@ class Toolkit:
         file_path = self.path(path)
         return self._processes.open_file(file_path, editor, self.approve)
 
+    def open_project_and_focus(self, path, editor="vscode"):
+        """Abre projeto e tenta focar somente janela com título do projeto."""
+        directory = self.path(path)
+        launched = self._processes.open_project(directory, editor, self.approve)
+        if launched.get("status") != "launched_unverified":
+            return {"launch": launched, "focus": {"status": "not_attempted"}}
+        aliases = {"vscode": "code", "vscodium": "codium",
+                   "vscode-insiders": "code"}
+        focused = self.focus_window(aliases[editor], directory.name)
+        return {"launch": launched, "focus": focused}
+
+    def open_file_and_focus(self, path, editor="vscode"):
+        """Abre arquivo e tenta focar somente janela com título do arquivo."""
+        file_path = self.path(path)
+        launched = self._processes.open_file(file_path, editor, self.approve)
+        if launched.get("status") != "launched_unverified":
+            return {"launch": launched, "focus": {"status": "not_attempted"}}
+        aliases = {"vscode": "code", "vscodium": "codium",
+                   "vscode-insiders": "code"}
+        focused = self.focus_window(aliases[editor], file_path.name)
+        return {"launch": launched, "focus": focused}
+
     def verify_file(self, path, content=None):
         file_path = self.path(path)
         if not file_path.is_file():
@@ -311,6 +333,8 @@ class Toolkit:
             "launch_installed_app": self.launch_installed_app,
             "authorized_directories": self.authorized_directories,
             "open_project": self.open_project, "open_file": self.open_file,
+            "open_project_and_focus": self.open_project_and_focus,
+            "open_file_and_focus": self.open_file_and_focus,
             "verify_file": self.verify_file, "managed_processes": self.managed_processes,
             "desktop_input": self.desktop_input,
         }
@@ -324,6 +348,8 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"open_project_and_focus","description":"Abre projeto existente no editor, depois tenta trazer a janela desse projeto ao primeiro plano. Duas aprovações separadas e verificações GNOME; não afirma sucesso quando título do projeto não é encontrado.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
+    {"type":"function","name":"open_file_and_focus","description":"Abre arquivo existente no editor, depois tenta trazer a janela desse arquivo ao primeiro plano. Aprovações separadas, identificação por título e verificação via GNOME Shell; pode retornar not_observed.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"focus_window","description":"Com autorização explícita, solicita foco de UMA janela do GNOME Wayland usando a extensão opcional Activate Window By Title. Requer Window Calls Extended para identificar janela por app e título único. Confere foco depois; recusa ambiguidades. Não fecha, move ou redimensiona.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"desktop_windows","description":"Consulta somente nomes de aplicativos e títulos de janelas que expõem acessibilidade AT-SPI no GNOME Wayland. Leitura, sem clique. Lista pode ser incompleta.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"verify_app_window","description":"Procura janela acessível de aplicativo por nome e título opcional no GNOME Wayland. window_observed atesta somente janela acessível, não foco ou arquivo aberto. not_observed não prova ausência.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
