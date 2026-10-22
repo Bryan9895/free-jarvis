@@ -76,6 +76,8 @@ class ProcessManager:
             return {"status": "rejected"}
         if not file_path.is_file():
             raise ValueError("Arquivo removido antes da abertura")
+        from .window_tracking import snapshot, observe_launch
+        before = snapshot()
         process = subprocess.Popen(
             [executable, "--reuse-window", str(file_path)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
