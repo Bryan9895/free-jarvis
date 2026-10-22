@@ -8,9 +8,9 @@ def main():
         return {"status":"unavailable","windows":[],"reason":"python3-pyatspi ausente"}
     desktop=pyatspi.Registry.getDesktop(0)
     windows=[]
-    for app in list(desktop)[:80]:
+    for app in (desktop.getChildAtIndex(i) for i in range(min(int(desktop.childCount), 80))):
         try:
-            for child in list(app)[:80]:
+            for child in (app.getChildAtIndex(j) for j in range(min(int(app.childCount), 80))):
                 if child and child.getRoleName().lower() in ("frame","window","dialog"):
                     windows.append({"app":str(app.name or "")[:120],"title":str(child.name or "")[:240]})
         except Exception:
