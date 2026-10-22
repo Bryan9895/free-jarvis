@@ -237,6 +237,25 @@ class Toolkit:
         folder = self.path(path)
         return self._processes.open_project(folder, editor, self.approve)
 
+    def open_file(self, path, editor="vscode"):
+        file_path = self.path(path)
+        return self._processes.open_file(file_path, editor, self.approve)
+
+    def verify_file(self, path, content=None):
+        file_path = self.path(path)
+        if not file_path.is_file():
+            return {"status": "not_found", "path": str(file_path)}
+        if content is not None:
+            if not isinstance(content, str):
+                raise ToolError("Conteúdo esperado inválido")
+            if file_path.stat().st_size > MAX_FILE_BYTES:
+                raise ToolError("Arquivo grande demais para verificação textual")
+            actual = file_path.read_text(encoding="utf-8")
+            return {"status": "verified" if actual == content else "content_mismatch",
+                    "path": str(file_path), "bytes": file_path.stat().st_size}
+        return {"status": "verified", "path": str(file_path),
+                "bytes": file_path.stat().st_size}
+
     def managed_processes(self):
         return self._processes.list_launches()
 
@@ -276,7 +295,8 @@ class Toolkit:
             "list_installed_apps": self.list_installed_apps,
             "launch_installed_app": self.launch_installed_app,
             "authorized_directories": self.authorized_directories,
-            "open_project": self.open_project, "managed_processes": self.managed_processes,
+            "open_project": self.open_project, "open_file": self.open_file,
+            "verify_file": self.verify_file, "managed_processes": self.managed_processes,
             "desktop_input": self.desktop_input,
         }
         if name not in operations:
@@ -289,6 +309,8 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"open_file","description":"Abre um arquivo INDIVIDUAL existente e autorizado no VS Code, VSCodium ou VS Code Insiders. Não abre diretórios; use open_project para pastas. Exige autorização.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
+    {"type":"function","name":"verify_file","description":"Confere se um arquivo de texto existe dentro de diretórios autorizados e opcionalmente se seu conteúdo é exatamente igual a content. Não altera arquivos.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"create_python_project","description":"Cria uma nova pasta com projeto Python básico (main.py, README.md, .gitignore), dentro de diretório autorizado. Não sobrescreve nem executa código. Use open_project depois para abrir no VS Code.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"open_project","description":"Abre pasta de projeto existente em VS Code, VSCodium ou VS Code Insiders instalado, após autorização. Use editor=vscode e path absoluto dentro de diretório autorizado ou relativo ao workspace. Início do lançador não garante janela aberta.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"managed_processes","description":"Lista os editores de projeto lançados pela JARVIS nesta sessão e o estado real do processo lançador. Não garante estado da janela.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
