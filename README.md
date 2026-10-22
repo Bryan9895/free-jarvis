@@ -796,3 +796,24 @@ Jarvis, identifique a janela do Firefox e coloque-a em primeiro plano.
 
 A JARVIS deverá solicitar sua autorização explícita. Para um teste sem alterar foco, use `jarvis-fcc --windows-diagnostic`. A extensão de ativação não é instalada pelo `pip install` e não foi testada fisicamente no notebook do usuário nesta versão; a confirmação em GNOME real é a próxima validação.
 
+
+### Fluxo integrado de abertura + foco e desempenho (22/10/2026)
+
+A JARVIS agora oferece três ferramentas supervisionadas para solicitações **explícitas** de abertura e foco:
+
+- `open_project_and_focus`: abre projeto no VS Code/VSCodium e tenta focar uma janela única cujo título contém o nome da pasta.
+- `open_file_and_focus`: abre arquivo no editor e tenta focar uma janela única cujo título contém o nome do arquivo.
+- `launch_installed_app_and_focus`: abre aplicativo conhecido do catálogo XDG e tenta focar uma janela única da classe correspondente.
+
+Em todos os casos o **lançamento exige aprovação**, e a **mudança de foco exige aprovação separada** se a janela ainda não estava focada. As respostas têm campos independentes `launch` e `focus`: um `launch.status=launched_unverified` **não prova** que o foco teve sucesso; somente `focus.status=focused_verified` confirma observação do foco no GNOME.
+
+Para evitar lentidão, as amostras antes/depois da abertura agora usam diretamente o serviço D-Bus do GNOME Shell, com limite menor de espera. O inventário completo da CLI (`--windows-diagnostic`) mantém fallback AT-SPI para diagnósticos. Quando o serviço do GNOME não responde, a observação da abertura é marcada `unavailable`, sem consultar demoradamente o AT-SPI nem afirmar que o programa falhou.
+
+Teste, após `git pull --ff-only origin main` e ativar `.venv`:
+
+```text
+Jarvis, abra o Firefox e coloque sua janela em primeiro plano.
+Jarvis, abra meu projeto TesteJanela no VS Code e coloque sua janela em primeiro plano.
+```
+
+Se os títulos diferirem, ou houver janelas duplicadas, o foco será recusado ou não observado — não há busca agressiva nem clique cego. É necessário manter **Window Calls Extended** e **Activate Window By Title** habilitadas. Os tempos totais também dependem da inferência do FCC: depois de uma interação execute `/metricas` para separar `model_s` (modelo) do tempo total. A validação física desses novos fluxos no notebook ainda está pendente.
