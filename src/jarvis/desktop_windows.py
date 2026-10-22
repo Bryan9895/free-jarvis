@@ -9,7 +9,7 @@ WORKER = Path(__file__).with_name("atspi_worker.py")
 PYTHON = "/usr/bin/python3"
 
 
-def desktop_windows():
+def _atspi_windows():
     if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
         return {"status":"unavailable","reason":"Requer sessão Wayland","windows":[]}
     if not Path(PYTHON).is_file():
@@ -31,6 +31,22 @@ def desktop_windows():
         return {"status":"unavailable","reason":"Falha de consulta AT-SPI","windows":[]}
 
 
+def desktop_windows():
+    """Prefer windows known by Mutter; fall back to partial accessibility."""
+    from .gnome_shell_windows import shell_windows
+    primary = shell_windows()
+    if primary.get("status") == "observed":
+        return primary
+    secondary = _atspi_windows()
+    if secondary.get("status") == "observed":
+        secondary["fallback_reason"] = primary.get("reason", "GNOME Shell indisponível")
+        return secondary
+    return {"status": "unavailable", "windows": [], "complete": False,
+            "reason": "Sem extensão GNOME Shell e sem AT-SPI funcional",
+            "gnome_shell_reason": primary.get("reason"),
+            "atspi_reason": secondary.get("reason")}
+
+
 def verify_app_window(app, title=""):
     if not isinstance(app,str) or not 2<=len(app)<=100 or not re.fullmatch(r"[\w .+\-]+",app):
         raise ValueError("Nome de aplicativo inválido")
@@ -46,7 +62,7 @@ def verify_app_window(app, title=""):
     if title_needle:
         found=[w for w in found if title_needle in w.get("title","").casefold()]
     if found:
-        return {"status":"window_observed","complete":False,"matches":found[:10],
+        return {"status":"window_observed","complete":False,"source":data.get("source"),"matches":found[:10],
                 "note":"Janela exposta via acessibilidade; não comprova foco ou conteúdo"}
-    return {"status":"not_observed","complete":False,"matches":[],
+    return {"status":"not_observed","complete":False,"source":data.get("source"),"matches":[],
             "note":"Ausência na árvore AT-SPI não comprova que aplicativo está fechado"}
