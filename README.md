@@ -950,3 +950,11 @@ jarvis-fcc --auto-approve
 As chamadas isoladas de `manage_window`, `place_window` e `arrange_windows` respondem diretamente pelos resultados locais, sem esperar outra inferência no FCC. Use `/metricas` para conferir `tools_advertised:1` e `direct_tool_reply:true` quando o roteador reconhecer o pedido como uma operação de janela.
 
 **Limites:** GNOME Wayland com extensão Window Control ativa; o comportamento em notebook real deve ser confirmado. A função organiza janelas já existentes e não cria novas janelas do VS Code. Por ora não oferece fechamento de janelas, múltiplos monitores ou arranjo com mais de duas janelas. A extensão instalada é de terceiros e expõe controles D-Bus também a outros processos da sessão.
+
+### Correção de interoperabilidade Window Control (22/10/2026)
+
+Teste real no GNOME do usuário: ao pedir `Jarvis, coloque o Firefox e o VS Code lado a lado`, inicialmente o Code não tinha janela observada após lançar o aplicativo. Na tentativa seguinte, a ferramenta respondeu incorretamente que a extensão ou geometria estava indisponível. A inspeção do código oficial de `Window Control.ListDetailed` mostrou que ela retorna `monitor_index` e `frame_rect: {x, y, width, height}`, enquanto `window_layout.py` esperava `monitor` e geometria na raiz. O parser de `window_manage._inventory()` agora normaliza explicitamente esses campos, preservando os originais, e testes reproduzem a resposta real da extensão em um layout com Firefox e VS Code.
+
+A JARVIS agora também exibe a causa específica de falhas de layout, em vez de apenas uma mensagem genérica. Se a janela do Code ainda não aparecer, abra o aplicativo e aguarde que sua janela esteja visível; consultar novamente não exige reinstalar extensões nem alterar permissões. Confira com `gnome-extensions list --enabled` e execute `/metricas` após tentar o layout para determinar se a ferramenta `arrange_windows` foi usada.
+
+Fonte do contrato: https://github.com/carlo9890/gnome-window-control/blob/main/window-control@carlo9890.github.io/extension.js (`ListDetailed()`).
