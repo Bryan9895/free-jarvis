@@ -29,6 +29,8 @@ SYSTEM = (
     "plano, prefira open_project_and_focus ou open_file_and_focus. "
     "Para abrir um aplicativo instalado e também colocá-lo em primeiro plano, "
     "prefira launch_installed_app_and_focus após consultar seu app_id. "
+    "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
+    "não declare sucesso sem state_verified ou already_in_state. "
     "Se o retorno focus não for focused_verified/already_focused, informe a "
     "incerteza sem declarar sucesso visual."
 )
@@ -99,6 +101,41 @@ def _local_focus_reply(calls, outcomes, message):
         "not_activated": "A extensão do GNOME não ativou a janela.",
         "focus_unverified": "A solicitação foi enviada, mas o GNOME não confirmou o foco.",
         "unverified": "Não consegui confirmar o resultado da extensão do GNOME.",
+    }
+    return failures.get(status)
+
+
+def _local_window_state_reply(calls, outcomes):
+    """Resposta determinística para uma única ação de estado de janela."""
+    if (len(calls) != 1 or len(outcomes) != 1
+            or calls[0].get("name") != "manage_window"):
+        return None
+    result = outcomes[0]
+    if not isinstance(result, dict):
+        return None
+    if result.get("error"):
+        return "Não consegui controlar a janela: " + str(result["error"])[:180]
+    state = result.get("result")
+    if not isinstance(state, dict):
+        return None
+    status = state.get("status")
+    action = state.get("action")
+    title = str(state.get("title", "janela solicitada"))[:160]
+    labels = {"minimize": "minimizada", "restore": "restaurada",
+              "maximize": "maximizada", "unmaximize": "desmaximizada"}
+    if status == "state_verified" and action in labels:
+        return f"Janela {labels[action]}, estado confirmado pelo GNOME: {title}."
+    if status == "already_in_state" and action in labels:
+        return f"A janela já estava {labels[action]}: {title}."
+    failures = {
+        "rejected": "Operação de janela cancelada.",
+        "ambiguous": "Há várias janelas correspondentes. Informe parte do título.",
+        "not_observed": "Não foi encontrada uma janela correspondente.",
+        "changed": "A janela mudou durante a operação; nenhuma alteração foi enviada.",
+        "unavailable": "Controle de janelas indisponível. Instale e habilite a extensão Window Control.",
+        "not_activated": "A extensão recusou a alteração da janela.",
+        "unverified": "A extensão não retornou confirmação válida.",
+        "state_unverified": "A solicitação foi enviada, mas o GNOME não confirmou o novo estado.",
     }
     return failures.get(status)
 
@@ -231,7 +268,8 @@ class Agent:
                         "output": json.dumps(outcome, ensure_ascii=False),
                     })
                 if chosen == "tools":
-                    direct_result = _local_focus_reply(calls, round_outcomes, message)
+                    direct_result = (_local_focus_reply(calls, round_outcomes, message)
+                                     or _local_window_state_reply(calls, round_outcomes))
                     if direct_result is not None:
                         self.memory.add("user", message)
                         self.memory.add("assistant", direct_result)
