@@ -779,3 +779,20 @@ Jarvis, mostre os programas que você iniciou nesta sessão.
 ```
 
 A consulta só ocorre **após autorização de abertura**, não executa comandos de clique ou foco e pode adicionar alguns segundos aos pedidos de lançamento. Perguntas simples não pagam esse custo de observação. O sistema não força fechamento de aplicativos e não acessa a interface insegura `Shell.Eval`.
+
+### Colocar uma janela em primeiro plano (GNOME Wayland; supervisão obrigatória)
+
+Além do **Window Calls Extended** (inventário de janelas), a JARVIS pode usar a extensão separada **[Activate Window By Title](https://extensions.gnome.org/extension/5021/activate-window-by-title/)** para solicitar foco, compatível com GNOME 45–50 na versão atualmente anunciada. Instale e ative a extensão **manualmente**, depois de conferir `gnome-shell --version`. Ela registra `de.lucaswerkmeister.ActivateWindowByTitle.activateByTitle` na sessão D-Bus; não há necessidade de `Shell.Eval`, X11 ou sudo.
+
+A ferramenta `focus_window` exige nome do aplicativo e aceita parte do título para **localizar** uma janela, mas a chamada final usa **sempre o título exato** da correspondência. Antes de executar, ela confere que há uma única janela correspondente, recusa títulos repetidos entre aplicativos, apresenta app+título para você autorizar com `SIM` e revalida o inventário. Depois da resposta da extensão, consulta o GNOME Shell novamente e só retorna `focused_verified` quando a mesma janela de app/título/PID aparece como focada. Não muda foco se a janela já estiver focada.
+
+Se faltar uma das extensões, a ferramenta retornará `unavailable`. Se houver mais de uma janela, retornará `ambiguous` sem escolher arbitrariamente; especifique mais detalhes do título. Se a extensão aceitar a chamada, mas não puder comprovar o foco, o estado será `focus_unverified`, sem promessa de sucesso.
+
+Para testar, primeiro abra duas aplicações comuns (por exemplo, Firefox e VS Code) e digite:
+
+```text
+Jarvis, identifique a janela do Firefox e coloque-a em primeiro plano.
+```
+
+A JARVIS deverá solicitar sua autorização explícita. Para um teste sem alterar foco, use `jarvis-fcc --windows-diagnostic`. A extensão de ativação não é instalada pelo `pip install` e não foi testada fisicamente no notebook do usuário nesta versão; a confirmação em GNOME real é a próxima validação.
+
