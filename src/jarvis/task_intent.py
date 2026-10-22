@@ -72,10 +72,10 @@ def classify(message):
         return "plan"
     # Localizar + focar a mesma janela é UMA operação, não uma tarefa
     # multietapa. Evita que o planejador foque e depois tente focar novamente.
-    if (re.search(r"\\b(?:janela|firefox|vscode|aplicativo)\\b", raw)
-            and re.search(r"\\b(?:primeiro plano|traga .* frente|focar|foco|ative .* janela)\\b", raw)
+    if (re.search(r"\b(?:janela|firefox|vscode|aplicativo)\b", raw)
+            and re.search(r"\b(?:primeiro plano|traga .* frente|focar|foco|ative .* janela)\b", raw)
             and not _MULTI.search(raw)
-            and not re.search(r"\\b(?:crie|escreva|salve|apague|edite|instale)\\b", raw)):
+            and not re.search(r"\b(?:crie|escreva|salve|apague|edite|instale)\b", raw)):
         return "normal"
     # Só planejar automaticamente sequências expressas com múltiplas operações
     # sobre recursos locais; frases comuns continuam sendo respondidas pelo agente.
