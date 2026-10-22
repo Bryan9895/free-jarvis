@@ -149,7 +149,7 @@ def main():
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
-        print("Tarefas: /planejar OBJETIVO, /plano, /historico-planos, /executar-plano, /cancelar-plano")
+        print("Tarefas: /planejar OBJETIVO, /plano, /historico-planos, /selecionar-plano ID, /resolver-etapa skip|retry, /retomar-plano, /executar-plano")
         try:
             while True:
                 try:
@@ -175,6 +175,37 @@ def main():
                 if msg.lower() in {"sair", "/quit", "exit"}:
                     break
                 if not msg:
+                    continue
+                if msg.lower().startswith("/selecionar-plano "):
+                    try:
+                        plan_id = int(msg.split(maxsplit=1)[1])
+                        print(format_plan(planner.select(plan_id)))
+                    except (ValueError, OverflowError) as exc:
+                        print("Plano não selecionado:", exc, file=sys.stderr)
+                    continue
+                if msg.lower().startswith("/resolver-etapa "):
+                    try:
+                        choice = msg.split(maxsplit=1)[1].strip().lower()
+                        if choice not in ("skip", "retry"):
+                            raise ValueError("Use skip (ignorar) ou retry (reexecutar).")
+                        pending = planner.snapshot()
+                        affected = next((x for x in pending.get("steps", [])
+                                         if x.get("status") in ("interrupted", "failed", "blocked", "running")), None)
+                        if not affected:
+                            raise ValueError("Nenhuma etapa incerta neste plano.")
+                        if confirm("RESOLVER etapa #" + str(affected["id"]) + " (" + affected["description"] + ") como " + choice + "?"):
+                            print(format_plan(planner.resolve_step(choice)))
+                        else:
+                            print("Operação cancelada.")
+                    except ValueError as exc:
+                        print("Etapa não alterada:", exc, file=sys.stderr)
+                    continue
+                if msg.lower() == "/retomar-plano":
+                    try:
+                        print(format_plan(planner.ready_to_resume()))
+                        print("Use /executar-plano para confirmar e executar apenas as pendentes.")
+                    except ValueError as exc:
+                        print("Retomada indisponível:", exc, file=sys.stderr)
                     continue
                 if msg.lower().startswith("/planejar "):
                     try:
