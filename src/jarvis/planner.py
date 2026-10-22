@@ -196,7 +196,7 @@ class TaskPlanner:
                 report("Execução interrompida: ferramenta recusada ou com erro.")
                 break
             # Exige evidência de ferramenta em etapas que pedem escrita/abertura.
-            verb = re.search(r"\\b(?:criar|crie|escrever|escreva|salvar|salve|abrir|abra|inserir|insira|digitar|digite)\\b", step["description"].lower())
+            verb = bool(set(step["description"].lower().replace(",", " ").split()) & {"criar", "crie", "escrever", "escreva", "salvar", "salve", "abrir", "abra", "inserir", "insira", "digitar", "digite"})
             if verb and isinstance(metrics, dict) and "tools_executed" in metrics:
                 actions = metrics.get("tool_outcomes", [])
                 successful = {"written", "created", "moved", "trashed", "launched_unverified"}
