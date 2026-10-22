@@ -19,10 +19,13 @@ class WindowTests(unittest.TestCase):
                 returncode=0,stdout=json.dumps(payload))):
             observed=desktop_windows()
             self.assertEqual(len(observed["windows"]),2)
+            self.assertFalse(observed["complete"])
+            self.assertEqual(observed["source"], "atspi_accessibility_partial")
             found=verify_app_window("Code","main.py")
             self.assertEqual(found["status"],"window_observed")
             absent=verify_app_window("LibreOffice")
             self.assertEqual(absent["status"],"not_observed")
+            self.assertFalse(absent["complete"])
 
     def test_unavailable_is_not_false_negative(self):
         with patch.dict("os.environ",{"XDG_SESSION_TYPE":"x11"}):
