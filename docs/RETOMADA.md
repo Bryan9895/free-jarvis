@@ -31,3 +31,13 @@ Antes de ampliar capacidades, validar em notebook o comparador antes/depois com 
 ## Segurança e operação
 
 Aprovações para mudanças locais continuam obrigatórias. `delete_path` envia para lixeira interna recuperável, não apaga permanentemente. `JARVIS_ENABLE_DESKTOP_INPUT` deve permanecer desativado por padrão. Captura de tela, voz e navegador exigem extras e permissões separadas. **Não** versionar tokens, conteúdo de conversas, banco SQLite, capturas nem segredos do FCC. Não copiar credenciais de um notebook para outro sem decisão do usuário. O nome `jarvis-fcc` evita conflito com pacotes genéricos de nome `jarvis`.
+
+## Entrega seguinte — abertura + foco e redução de espera (22/10/2026)
+
+A ferramenta `focus_window` permanece supervisionada, exigindo Window Calls Extended e Activate Window By Title. Adicionadas `launch_installed_app_and_focus`, `open_project_and_focus` e `open_file_and_focus`, que fazem duas operações e devolvem duas evidências distintas (`launch` e `focus`). Há duas autorizações separadas quando necessárias. Uma janela já focada não gera novo comando de foco; múltiplas janelas de uma aplicação ou títulos duplicados bloqueiam ativação em vez de escolher por sorte.
+
+**Desempenho:** `window_tracking.snapshot()` usa agora somente a extensão GNOME Shell, com prazo de consulta mais curto (1,5s), e não faz mais fallback lento AT-SPI a cada lançamento. Não repete consulta quando GNOME Shell está indisponível. `jarvis-fcc --windows-diagnostic` preserva fallback completo para diagnosticar. Verificar `/metricas` para distinguir demora do FCC (`model_s`) de espera por ferramentas.
+
+**Reparo:** `ProcessManager.open_file` passou a persistir corretamente `window_observation` em `managed_processes` e foi removido código inacessível.
+
+**Validação pendente no computador:** após atualizar (`git pull --ff-only origin main`), confirmar as duas extensões habilitadas; solicitar `Jarvis, abra o Firefox e coloque a janela em primeiro plano`; conferir `launch.status` e `focus.status` (com duas autorizações se necessário). Fazer o mesmo com projeto existente no VS Code; em caso de demora fornecer o JSON do comando `/metricas`. O foco real no desktop continua condicionado à extensão e ao estado observado, não é garantido por testes simulados.
