@@ -24,7 +24,7 @@ class ProcessesTests(unittest.TestCase):
                                  ["/usr/bin/code", "--new-window", str(root)])
             self.assertEqual(manager.list_launches()[0]["launcher_status"], "running")
             self.assertEqual(manager.list_launches()[0]["launcher_status"], "exited")
-            self.assertEqual(manager.list_launches()[0]["window_status"], "unknown")
+            self.assertEqual(manager.list_launches()[0]["window_status"], "unavailable")
             manager.close()
 
     def test_denied_or_unknown_editor_never_starts_process(self):
