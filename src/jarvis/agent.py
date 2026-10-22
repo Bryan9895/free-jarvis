@@ -44,6 +44,28 @@ def _output_text(response):
     ).strip()
 
 
+def _valid_history_output(output):
+    """Retém chamadas/itens úteis; não reenvia mensagens vazias ao FCC."""
+    cleaned = []
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "message":
+            cleaned.append(item)
+            continue
+        content = item.get("content")
+        if not isinstance(content, list):
+            continue
+        parts = [part for part in content
+                 if isinstance(part, dict) and (
+                     (isinstance(part.get("text"), str) and part["text"].strip())
+                     or part.get("type") not in ("output_text", "text")
+                 )]
+        if parts:
+            cleaned.append({**item, "content": parts})
+    return cleaned
+
+
 class Agent:
     def __init__(self, client, toolkit, memory, model: str):
         self.client, self.toolkit, self.memory, self.model = client, toolkit, memory, model
@@ -108,7 +130,7 @@ class Agent:
                     self.memory.add("user", message)
                     self.memory.add("assistant", answer)
                     return answer
-                messages.extend(output)
+                messages.extend(_valid_history_output(output))
                 for call in calls:
                     call_id = call.get("call_id")
                     if not isinstance(call_id, str) or not call_id:
