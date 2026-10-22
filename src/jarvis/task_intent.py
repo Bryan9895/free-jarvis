@@ -11,7 +11,7 @@ import unicodedata
 _STOP = frozenset(
     "a o as os um uma de do da dos das e em no na nos nas meu minha meus minhas "
     "seu sua seus suas projeto tarefa tarefas trabalho favor jarvis por para com "
-    "que eu voce voce aonde onde os arquivos arquivo pasta pastas analise analisa "
+    "que eu voce voce aonde onde os pasta pastas analise analisa "
     "analisar continue continuar retome retomar estava estavamos paramos parei "
     "parou sobre".split()
 )
