@@ -60,8 +60,11 @@ def verify_step(toolkit, outcomes):
                 valid = path.is_file() if name == "write_file" else path.exists()
                 if valid and name == "write_file":
                     expected = action.get("expected_sha256")
-                    if isinstance(expected, str):
-                        valid = (hashlib.sha256(path.read_bytes()).hexdigest() == expected)
+                    if not isinstance(expected, str):
+                        evidence.append({"tool": name, "status": "unverified",
+                                         "detail": "Sem hash esperado para comparar conteúdo"})
+                        continue
+                    valid = (hashlib.sha256(path.read_bytes()).hexdigest() == expected)
             evidence.append({"tool": name, "status": "verified" if valid else "failed",
                              "detail": "Estado do sistema de arquivos conferido" if valid
                              else "Resultado ausente ou diferente do esperado"})
