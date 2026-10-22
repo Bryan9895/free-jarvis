@@ -543,3 +543,20 @@ Os comandos passam a ser:
 `/plano` agora mostra um painel de texto com objetivo, modelo, estado, etapas e barra de progresso em vez de JSON. `/historico-planos` mostra as últimas dez tarefas, mesmo após reiniciar. O painel diferencia explicitamente **etapa processada** de **resultado verificado**; não infere êxito externo com base apenas na resposta do modelo.
 
 O histórico fica em `~/.local/share/jarvis-fcc/memory.sqlite3` por padrão e pode conter objetivos e resultados sensíveis em texto puro. Proteja a conta local e evite armazenar segredos nas tarefas. A retomada automática e a reexecução de etapas interrompidas **não** estão habilitadas: antes de executar novamente, crie um novo plano ou confira manualmente o estado.
+
+### Retomada supervisionada de planos e seleção do histórico
+
+A JARVIS agora permite selecionar planos históricos por ID e continuar **somente etapas pendentes**, sem repetir automaticamente ações concluídas ou incertas. Os novos comandos são:
+
+```text
+/historico-planos
+/selecionar-plano 12
+/plano
+/resolver-etapa skip
+/retomar-plano
+/executar-plano
+```
+
+Em vez de `skip`, use `/resolver-etapa retry` para retornar **a primeira etapa incerta** à fila de pendentes. `skip` significa apenas "não executar novamente", **não** indica que a ação anterior teve sucesso. O comando de resolução exige confirmação explícita, e cada ação de ferramenta mantém suas permissões. Se houver várias etapas incertas, resolva uma por comando e confira `/plano` entre elas. Depois use `/retomar-plano` para tornar o plano executável e `/executar-plano` para autorizar a execução apenas do que continua pendente.
+
+Esta versão **não** inicia tarefas em segundo plano, não retoma automaticamente após crash e não verifica por conta própria se um clique ou escrita anterior realmente aconteceu. O plano e suas decisões continuam registrados no SQLite local, inclusive após reiniciar a aplicação. Não escolha `retry` em ações potencialmente irreversíveis sem conferir manualmente o estado do sistema.
