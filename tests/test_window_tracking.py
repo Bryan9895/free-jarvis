@@ -27,7 +27,7 @@ class WindowTrackingTests(unittest.TestCase):
     def test_code_title_change_is_observation_not_verified_file(self):
         before = windows([{"app": "code", "title": "README.md - VS Code", "pid": 8}])
         after = windows([{"app": "code", "title": "main.py - VS Code", "pid": 8}])
-        self.assertEqual(compare(before, after, "vscode")["status"], "appeared_after_request")
+        self.assertEqual(compare(before, after, "vscode")["status"], "window_changed_after_request")
 
     def test_unavailable_never_fails_launcher(self):
         self.assertEqual(compare(None, None, "vscode")["status"], "unavailable")
