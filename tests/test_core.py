@@ -128,6 +128,26 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(result[0]["content"],
                          [{"type": "output_text", "text": "texto"}])
 
+    def test_desktop_source_and_completeness_appear_in_metrics(self):
+        with tempfile.TemporaryDirectory() as td:
+            first = {"output": [{"type": "function_call", "name": "desktop_windows",
+                                  "call_id": "c1", "arguments": "{}"}]}
+            last = {"output": [{"type": "message", "content": [
+                {"type": "output_text", "text": "Janelas observadas."}]}]}
+            client = FakeClient([first, last])
+            mem = Memory(Path(td) / "memory.db")
+            kit = Toolkit(Path(td))
+            with patch.object(kit, "execute", return_value={"result": {
+                "status": "observed", "source": "gnome_shell_extension",
+                "complete": False, "windows": []}}):
+                agent = Agent(client, kit, mem, "fake")
+                agent.ask("Liste as janelas", mode="tools")
+            evidence = agent.last_metrics["tool_outcomes"][0]["outcome"]["result"]
+            self.assertEqual(evidence["source"], "gnome_shell_extension")
+            self.assertIs(evidence["complete"], False)
+            self.assertNotIn("windows", evidence)
+            mem.close()
+
     def test_fast_mode_never_executes_tools(self):
         with tempfile.TemporaryDirectory() as td:
             call={"type":"function_call","name":"write_file","call_id":"c1",
