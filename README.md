@@ -590,3 +590,24 @@ Mova a pasta ProjetoTeste para a lixeira interna.
 Para recuperar um item, localize a entrada criada em `.jarvis-trash` e mova-a manualmente para o destino desejado. O navegador de arquivos ou ferramenta `move_path` podem auxiliar nessa recuperação se o destino estiver vazio. Cada ação do modelo requer um provedor FCC que suporte function calling; modelos anunciados mas incompatíveis não executarão as ferramentas.
 
 **Limites atuais:** não existe acesso arbitrário ao computador, execução irrestrita de programas, gerenciamento de pacotes ou exclusão permanente. O GNOME Wayland mantém permissões próprias. A próxima fase de controle do sistema precisará separar descoberta de apps, seleção de diretórios adicionais por autorização e verificação independente dos efeitos.
+
+### Ubuntu: pesquisar aplicativos, executá-los e autorizar pastas adicionais
+
+A JARVIS possui novas ferramentas via FCC:
+- `list_installed_apps`: pesquisa nomes e IDs `.desktop` anunciados no menu do GNOME por meio do catálogo XDG local; não executa nada.
+- `launch_installed_app`: solicita autorização e abre um aplicativo instalado pelo ID retornado na pesquisa, com `gtk-launch`. Não interpreta nem executa a linha `Exec` de arquivos `.desktop`, não usa shell nem aceita um comando livre. O resultado `launched_unverified` significa que o lançador foi iniciado, não necessariamente que a janela apareceu.
+- `authorized_directories`: lista as raízes de arquivos que a JARVIS está autorizada a acessar.
+
+Para permitir que `list_files`, `read_file`, `write_file`, `make_directory`, `move_path` e `delete_path` trabalhem também em diretórios pessoais adicionais, defina `JARVIS_ALLOWED_DIRS` **antes** de abrir a JARVIS. Diretórios informados devem existir; separe com `:`. Caminhos relativos continuam sendo resolvidos no workspace original, enquanto caminhos absolutos dentro das raízes adicionais são aceitos.
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+export JARVIS_ALLOWED_DIRS="$HOME/Documentos:$HOME/Downloads"
+jarvis-fcc
+```
+
+Pedidos naturais de exemplo: `Pesquise os aplicativos instalados com nome Firefox`; `Abra o aplicativo Firefox instalado`; `Liste os arquivos em /home/bryan/Documentos`; `Crie a pasta /home/bryan/Documentos/ProjetoPython`. Para abrir aplicativos por nome, o modelo precisa pesquisar o ID correto antes de invocar o lançador. Usar nomes diferentes no menu pode exigir pesquisar por outro termo.
+
+**Restrições:** não há execução irrestrita de programas/terminal, instalação de pacotes, administração/root, acesso a outras pastas sem configuração ou garantia de foco/abertura da janela. O GTK/GNOME pode exigir permissões adicionais. Exclusão usa a lixeira recuperável do workspace, mesmo para itens movidos de raízes adicionais. Acesso a caminhos simbólicos é recusado para operações mutáveis. Configure somente diretórios que realmente deseja expor aos modelos FCC, especialmente se utilizar provedores remotos.
