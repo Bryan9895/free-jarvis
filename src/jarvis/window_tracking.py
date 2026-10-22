@@ -63,7 +63,14 @@ def compare(before, after, app):
         earlier = _matching(before["windows"], app)
         fingerprints = {(w.get("app"), w.get("title"), w.get("pid")) for w in earlier}
         current = {(w.get("app"), w.get("title"), w.get("pid")) for w in matches}
-        status = "appeared_after_request" if current - fingerprints else "already_observed"
+        if not current - fingerprints:
+            status = "already_observed"
+        elif any(w.get("app") == old.get("app")
+                 and w.get("pid") == old.get("pid") and w.get("pid") is not None
+                 for w in matches for old in earlier):
+            status = "window_changed_after_request"
+        else:
+            status = "appeared_after_request"
     return {"status": status, "source": after["source"],
             "windows_observed": len(matches),
             "focused": any(w.get("focused") is True for w in matches),
