@@ -314,6 +314,15 @@ class Toolkit:
         from .window_manage import manage_window
         return manage_window(app, title, action, self.approve)
 
+    def place_window(self, app, position, title=""):
+        from .window_layout import place_window
+        return place_window(app, position, self.approve, title=title)
+
+    def arrange_windows(self, left_app, right_app, left_title="", right_title=""):
+        from .window_layout import arrange_windows
+        return arrange_windows(left_app, right_app, self.approve,
+                               left_title=left_title, right_title=right_title)
+
     def desktop_info(self):
         from .wayland import desktop_info
         return desktop_info()
@@ -345,6 +354,7 @@ class Toolkit:
             "desktop_windows": self.desktop_windows,
             "verify_app_window": self.verify_app_window,
             "focus_window": self.focus_window, "manage_window": self.manage_window,
+            "place_window": self.place_window, "arrange_windows": self.arrange_windows,
             "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
             "list_installed_apps": self.list_installed_apps,
@@ -367,6 +377,8 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"place_window","description":"Posiciona UMA janela existente na metade esquerda (left) ou direita (right) da área útil do mesmo monitor. GNOME Wayland Window Control, revalida ID e confirma geometria após MoveResize. Exige app, posição e título se houver ambiguidade.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right"]},"title":{"type":"string"}},"required":["app","position"],"additionalProperties":False}},
+    {"type":"function","name":"arrange_windows","description":"Organiza DUAS janelas GNOME no mesmo monitor, uma à esquerda e outra à direita. Só prossegue se ambas forem inequívocas. Informe left_app e right_app e títulos opcionais. Retorna layout_verified apenas se ambas as posições forem observadas.","parameters":{"type":"object","properties":{"left_app":{"type":"string"},"right_app":{"type":"string"},"left_title":{"type":"string"},"right_title":{"type":"string"}},"required":["left_app","right_app"],"additionalProperties":False}},
     {"type":"function","name":"manage_window","description":"Minimiza, restaura, maximiza ou desfaz maximização de UMA janela GNOME Wayland identificada unicamente por app e título opcional. Requer extensão opcional Window Control; utiliza ID obtido do compositor, revalida janela e estado após comando, sem Shell.Eval. Não fecha janelas.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"},"action":{"type":"string","enum":["minimize","restore","maximize","unmaximize"]}},"required":["app","action"],"additionalProperties":False}},
     {"type":"function","name":"launch_installed_app_and_focus","description":"Abre aplicativo XDG com autorização e tenta focar UMA janela correspondente com segunda aprovação, somente quando identificação no GNOME é inequívoca. Use o app_id obtido no catálogo; estados separados para abertura e foco.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"open_project_and_focus","description":"Abre projeto existente no editor, depois tenta trazer a janela desse projeto ao primeiro plano. Duas aprovações separadas e verificações GNOME; não afirma sucesso quando título do projeto não é encontrado.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
