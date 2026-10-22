@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import uuid
+import shutil
 from urllib.parse import urlparse
 
 MAX_FILE_BYTES = 100_000
@@ -50,6 +52,57 @@ class Toolkit:
         p = self.path(path)
         p.write_text(content, encoding="utf-8")
         return {"status": "written", "path": str(p)}
+
+    def make_directory(self, path):
+        destination = self.path(path)
+        if destination == self.workspace or not destination.is_relative_to(self.workspace):
+            raise ToolError("Escolha uma subpasta do workspace")
+        if destination.exists():
+            raise ToolError("O caminho já existe")
+        if not self.approve(f"CRIAR PASTA {destination}"):
+            return {"status": "rejected"}
+        # Revalidar após a confirmação.
+        destination = self.path(path)
+        destination.mkdir(parents=True, exist_ok=False)
+        return {"status": "created", "path": str(destination)}
+
+    def move_path(self, source, destination):
+        src, dst = self.path(source), self.path(destination)
+        if src == self.workspace or dst == self.workspace:
+            raise ToolError("Não é permitido mover a raiz do workspace")
+        if src == dst or not src.exists() or dst.exists():
+            raise ToolError("Origem ausente, destino existente ou caminhos idênticos")
+        if src.is_symlink() or dst.is_symlink():
+            raise ToolError("Links simbólicos não são aceitos nesta operação")
+        if src.is_dir() and dst.is_relative_to(src):
+            raise ToolError("Não é possível mover uma pasta para dentro dela mesma")
+        if not dst.parent.is_dir():
+            raise ToolError("A pasta de destino precisa existir")
+        if not self.approve(f"MOVER {src} PARA {dst}"):
+            return {"status": "rejected"}
+        src, dst = self.path(source), self.path(destination)
+        if not src.exists() or dst.exists():
+            raise ToolError("Os caminhos mudaram; operação cancelada")
+        moved = shutil.move(str(src), str(dst))
+        return {"status": "moved", "path": moved}
+
+    def delete_path(self, path):
+        """Move para a lixeira interna do workspace, sem excluir definitivamente."""
+        target = self.path(path)
+        trash = self.workspace / ".jarvis-trash"
+        if target == self.workspace or target == trash or target.is_relative_to(trash):
+            raise ToolError("Não é permitido remover a raiz ou a lixeira")
+        if target.is_symlink() or not target.exists():
+            raise ToolError("Caminho inexistente ou link simbólico não permitido")
+        if not self.approve(f"MOVER PARA LIXEIRA INTERNA {target}"):
+            return {"status": "rejected"}
+        target = self.path(path)
+        if not target.exists() or target.is_symlink():
+            raise ToolError("Caminho alterado desde a autorização")
+        trash.mkdir(exist_ok=True)
+        destination = trash / (uuid.uuid4().hex + "-" + target.name)
+        shutil.move(str(target), str(destination))
+        return {"status": "trashed", "previous_path": str(target), "trash_path": str(destination)}
 
     def run_command(self, command, cwd="."):
         """Executa apenas comandos de inspeção exatos, sem shell."""
@@ -136,7 +189,9 @@ class Toolkit:
     def execute(self, name, arguments):
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
-            "write_file": self.write_file, "run_command": self.run_command,
+            "write_file": self.write_file, "make_directory": self.make_directory,
+            "move_path": self.move_path, "delete_path": self.delete_path,
+            "run_command": self.run_command,
             "browser_open": self.browser_open,
             "browser_navigate": self.browser_navigate, "browser_inspect": self.browser_inspect,
             "browser_click": self.browser_click, "browser_fill": self.browser_fill,
@@ -155,6 +210,9 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"make_directory","description":"Cria pasta dentro do workspace após confirmação.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
+    {"type":"function","name":"move_path","description":"Renomeia ou move arquivo/pasta dentro do workspace; destino não deve existir. Exige confirmação.","parameters":{"type":"object","properties":{"source":{"type":"string"},"destination":{"type":"string"}},"required":["source","destination"],"additionalProperties":False}},
+    {"type":"function","name":"delete_path","description":"Remove arquivo ou pasta dentro do workspace movendo-o para .jarvis-trash, para permitir recuperação manual. Exige confirmação. Nunca faz exclusão permanente.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"desktop_input","description":"EXPERIMENTAL, desativado por padrão: executa UMA ação gráfica autorizada por sessão GNOME/Wayland: move o cursor no máximo 50px por eixo, um clique esquerdo na posição atual, ou digita até 40 caracteres minúsculos/dígitos/espaço. Não percebe a tela nem sabe onde está o foco. Requer JARVIS_ENABLE_DESKTOP_INPUT=1, aprovação do usuário e diálogo RemoteDesktop do GNOME. Não usar para compras, senhas, terminais ou operações irreversíveis.","parameters":{"type":"object","properties":{"action":{"type":"string","enum":["move","click","type"]},"dx":{"type":"number"},"dy":{"type":"number"},"text":{"type":"string"}},"required":["action"],"additionalProperties":False}},
     {"type":"function","name":"desktop_open_app","description":"Abre aplicativo Linux pelo ID do arquivo .desktop, apenas se permitido em JARVIS_ALLOWED_APPS e confirmado pelo usuário. Não promete foco de janela.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"desktop_info","description":"Diagnostica sessão Wayland, compositor, Screenshot e RemoteDesktop portals; não controla o computador.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
