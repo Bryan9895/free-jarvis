@@ -132,6 +132,8 @@ class TaskPlanner:
                 "desktop GNOME mediante permissões. "
                 "Quando o usuário solicitar pasta TestJarvis com main.py, considere "
                 "TestJarvis uma pasta e main.py um arquivo DENTRO dela. "
+                "Para focar uma janela já aberta, faça UMA única etapa usando focus_window; "
+                "não divida localizar e ativar em etapas redundantes. "
                 "Uma etapa deve ser executável por ferramentas, não apenas uma "
                 "solicitação para pedir confirmação. Use open_file para abrir "
                 "arquivos individuais no VS Code e open_project para pastas. "
@@ -200,6 +202,35 @@ class TaskPlanner:
                 self.plan["status"] = "stopped"
                 report("Execução interrompida: ferramenta recusada ou com erro.")
                 break
+            # Para operações de foco, não confiar no texto redigido pela IA.
+            # Só o retorno da ferramenta confirma foco; ausência/bloqueio para o plano.
+            if re.search(r"\\b(?:foc[oa]r?|primeiro plano|ativar a janela|trazer a janela)\\b",
+                         step["description"].lower()):
+                actions = metrics.get("tool_outcomes", []) if isinstance(metrics, dict) else []
+                focus_results = [
+                    action["outcome"]["result"]["status"]
+                    for action in actions if isinstance(action, dict)
+                    and action.get("name") == "focus_window"
+                    and isinstance(action.get("outcome"), dict)
+                    and isinstance(action["outcome"].get("result"), dict)
+                    and isinstance(action["outcome"]["result"].get("status"), str)
+                ]
+                if not focus_results or focus_results[-1] not in (
+                        "focused_verified", "already_focused"):
+                    step["status"] = "blocked"
+                    step["problems"] = [{"tool": "focus_window",
+                        "reason": "Foco não confirmado pelo GNOME; "
+                                  + (focus_results[-1] if focus_results else "ferramenta não executada")}]
+                    self.plan["status"] = "stopped"
+                    self._save()
+                    report("Plano interrompido: não há confirmação de foco pelo GNOME.")
+                    break
+                step["status"] = "verified"
+                step["verification"] = [{"tool": "focus_window", "status": "verified",
+                                        "detail": "Foco observado pelo GNOME Shell"}]
+                self._save()
+                report(result)
+                continue
             # Exige evidência de ferramenta em etapas que pedem escrita/abertura.
             verb = bool(set(step["description"].lower().replace(",", " ").split()) & {"criar", "crie", "escrever", "escreva", "salvar", "salve", "abrir", "abra", "inserir", "insira", "digitar", "digite"})
             if verb and isinstance(metrics, dict) and "tools_executed" in metrics:
