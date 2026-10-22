@@ -79,8 +79,10 @@ def launch_installed_app(app_id, approve):
     # Revalida antes de acionar gtk-launch, após consentimento.
     if not any(x["id"] == app_id for x in installed_applications(query=app_id, limit=120)):
         raise ValueError("Aplicativo indisponível após autorização")
+    from .window_tracking import snapshot, observe_launch
+    before = snapshot()
     process = subprocess.Popen([launcher, app_id], stdin=subprocess.DEVNULL,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                start_new_session=True)
-    return {"status": "launched_unverified", "id": app_id, "pid": process.pid,
-            "note": "O gtk-launch foi iniciado; não confirma abertura da janela."}
+    return observe_launch({"status": "launched_unverified", "id": app_id, "pid": process.pid,
+            "note": "O gtk-launch foi iniciado; não confirma abertura da janela."}, app_id, before)
