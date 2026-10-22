@@ -37,7 +37,7 @@ def main():
     args = parser.parse_args()
     c = Config.from_env()
     # O modo automático deve ser escolhido explicitamente pelo operador.
-    approval = ApprovalPolicy(auto=args.auto_approve, manual_callback=confirm)
+    approval = ApprovalPolicy(auto=args.auto_approve, manual_callback=globals()["confirm"])
     confirm = approval
     if args.doctor:
         from pathlib import Path
