@@ -73,8 +73,8 @@ def _local_focus_reply(calls, outcomes, message):
     import re
     if len(calls) != 1 or len(outcomes) != 1 or calls[0].get("name") != "focus_window":
         return None
-    if not re.search(r"\\b(?:foco|focar|foque|primeiro plano|traga .* frente|"
-                     r"coloque .* frente|ative .* janela)\\b", message.casefold()):
+    if not re.search(r"\b(?:foco|focar|foque|primeiro plano|traga .* frente|"
+                     r"coloque .* frente|ative .* janela)\b", message.casefold()):
         return None
     result = outcomes[0]
     if not isinstance(result, dict):
