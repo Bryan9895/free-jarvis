@@ -206,6 +206,45 @@ class CoreTests(unittest.TestCase):
             self.assertFalse(agent.last_metrics["direct_tool_reply"])
             memory.close()
 
+    def test_capability_catalog_focus_is_minimal(self):
+        from jarvis.router import tool_catalog
+        from jarvis.tools import TOOL_SPECS
+        selected = tool_catalog("Jarvis, coloque o Firefox em primeiro plano.", TOOL_SPECS)
+        self.assertEqual([t["name"] for t in selected], ["focus_window"])
+        selected = tool_catalog("Jarvis, foque a janela do VS Code", TOOL_SPECS)
+        self.assertEqual([t["name"] for t in selected], ["focus_window"])
+        selected = tool_catalog("Quais janelas estão abertas no meu computador?", TOOL_SPECS)
+        self.assertEqual([t["name"] for t in selected], ["desktop_windows"])
+
+    def test_capability_catalog_ambiguous_requests_keep_all_tools(self):
+        from jarvis.router import tool_catalog
+        from jarvis.tools import TOOL_SPECS
+        for prompt in (
+            "Abra o Firefox e coloque em primeiro plano",
+            "Coloque o Firefox em primeiro plano e depois liste os arquivos",
+            "Coloque a janela do projeto Python em primeiro plano",
+            "Crie um projeto e depois mostre as janelas abertas",
+            "Explique o projeto que estou desenvolvendo",
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(tool_catalog(prompt, TOOL_SPECS), TOOL_SPECS)
+
+    def test_agent_advertises_only_focus_tool_for_simple_focus_request(self):
+        with tempfile.TemporaryDirectory() as td:
+            call = {"type": "function_call", "name": "focus_window",
+                    "call_id": "fc", "arguments": '{"app":"firefox"}'}
+            client = FakeClient([{"output": [call]}])
+            memory = Memory(Path(td) / "m.db")
+            kit = Toolkit(Path(td))
+            with patch.object(kit, "execute", return_value={"result": {
+                "status": "already_focused", "title": "Firefox"}}):
+                agent = Agent(client, kit, memory, "fake")
+                agent.ask("Jarvis, coloque o Firefox em primeiro plano.")
+            self.assertEqual([t["name"] for t in client.requests[0]["tools"]],
+                             ["focus_window"])
+            self.assertTrue(agent.last_metrics["direct_tool_reply"])
+            memory.close()
+
     def test_fast_mode_never_executes_tools(self):
         with tempfile.TemporaryDirectory() as td:
             call={"type":"function_call","name":"write_file","call_id":"c1",
