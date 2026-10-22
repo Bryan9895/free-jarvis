@@ -855,3 +855,26 @@ jarvis-fcc
 ```
 
 Diga: `Jarvis, coloque o Firefox em primeiro plano`. Se ele já estiver focado, espere mensagem `already_focused`. Depois solicite `/metricas`. A correção é um caminho curto somente para foco isolado, não uma promessa de eliminar toda a latência de modelos FCC.
+
+## JARVIS v0.2.0 — autorizações automáticas por sessão
+
+Você pode ativar o modo de execução sem digitar `SIM` repetidamente:
+
+```bash
+cd ~/free-jarvis
+git pull --ff-only origin main
+source .venv/bin/activate
+jarvis-fcc --auto-approve
+```
+
+Dentro da JARVIS também estão disponíveis:
+
+- `/permissoes auto`: ativa autoaprovação **na sessão atual**.
+- `/permissoes manual`: volta a solicitar `SIM` para ações.
+- `/permissoes status`: mostra o modo e o contador de operações autoautorizadas.
+
+O modo padrão continua manual, salvo quando `--auto-approve` for usado. Cada aprovação automática aparece no terminal como `⚡ AUTOAUTORIZADO (sessão): ...`. **Atenção:** no modo automático, a JARVIS pode criar, alterar ou mover arquivos do workspace, abrir apps e URLs e interagir com ferramentas existentes sem perguntar. Uma instrução equivocada da IA pode causar efeitos reais. Monitore as ações e prefira `/permissoes manual` quando estiver trabalhando com dados importantes.
+
+**O que esse modo NÃO faz:** não confere permissões de administrador/root, não contorna diálogos de permissão do GNOME/Wayland, não adiciona execução genérica de shell, não modifica permissões Unix, não acessa pastas fora de `JARVIS_WORKSPACE` e `JARVIS_ALLOWED_DIRS`, nem amplia o catálogo de ferramentas permitido. O controle de escopo e validação dos caminhos permanece no `Toolkit`. A autorização automática vale somente para as solicitações de consentimento internas da JARVIS, não para permissões do sistema.
+
+Para o modo automático permanecer habilitado em novas sessões, use `jarvis-fcc --auto-approve` na forma habitual de iniciar. A autoaprovação é interrompida ao sair da sessão e só será reativada com uma escolha explícita do usuário.
