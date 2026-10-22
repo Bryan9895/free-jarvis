@@ -148,6 +148,64 @@ class CoreTests(unittest.TestCase):
             self.assertNotIn("windows", evidence)
             mem.close()
 
+    def test_focus_window_returns_immediately_without_second_fcc_round(self):
+        with tempfile.TemporaryDirectory() as td:
+            call = {"type": "function_call", "name": "focus_window",
+                    "call_id": "focus-1", "arguments": '{"app":"firefox"}'}
+            client = FakeClient([{"output": [call]}])
+            memory = Memory(Path(td)/"db.sqlite3")
+            kit = Toolkit(Path(td))
+            with patch.object(kit, "execute", return_value={"result": {
+                "status": "focused_verified", "title": "Mozilla Firefox",
+                "app": "firefox_firefox", "pid": 100}}) as execute:
+                agent = Agent(client, kit, memory, "fake")
+                answer = agent.ask("Jarvis, coloque o Firefox em primeiro plano")
+            self.assertIn("foco confirmado", answer)
+            self.assertEqual(len(client.requests), 1)
+            execute.assert_called_once()
+            self.assertTrue(agent.last_metrics["direct_tool_reply"])
+            self.assertEqual(agent.last_metrics["model_rounds"], 1)
+            self.assertEqual(len(memory.recent()), 2)
+            memory.close()
+
+    def test_focus_denial_reply_is_local_and_never_claims_success(self):
+        with tempfile.TemporaryDirectory() as td:
+            call = {"type": "function_call", "name": "focus_window",
+                    "call_id": "focus-2", "arguments": '{"app":"firefox"}'}
+            client = FakeClient([{"output": [call]}])
+            memory = Memory(Path(td)/"db.sqlite3")
+            kit = Toolkit(Path(td))
+            with patch.object(kit, "execute", return_value={"result": {
+                "status": "rejected"}}):
+                agent = Agent(client, kit, memory, "fake")
+                answer = agent.ask("Coloque o Firefox em primeiro plano")
+            self.assertIn("cancelada", answer)
+            self.assertNotIn("confirmado", answer)
+            self.assertEqual(len(client.requests), 1)
+            memory.close()
+
+    def test_multi_tool_round_does_not_short_circuit(self):
+        with tempfile.TemporaryDirectory() as td:
+            focus = {"type": "function_call", "name": "focus_window",
+                     "call_id": "f1", "arguments": '{"app":"firefox"}'}
+            inventory = {"type": "function_call", "name": "desktop_windows",
+                         "call_id": "w1", "arguments": "{}"}
+            client = FakeClient([
+                {"output": [focus, inventory]},
+                {"output": [{"type": "message", "content": [
+                    {"type": "output_text", "text": "Concluído."}]}]},
+            ])
+            memory = Memory(Path(td)/"db.sqlite3")
+            kit = Toolkit(Path(td))
+            with patch.object(kit, "execute", return_value={"result": {
+                "status": "focused_verified", "title": "Mozilla Firefox"}}):
+                agent = Agent(client, kit, memory, "fake")
+                answer = agent.ask("Coloque o Firefox em primeiro plano e liste as janelas")
+            self.assertEqual(answer, "Concluído.")
+            self.assertEqual(len(client.requests), 2)
+            self.assertFalse(agent.last_metrics["direct_tool_reply"])
+            memory.close()
+
     def test_fast_mode_never_executes_tools(self):
         with tempfile.TemporaryDirectory() as td:
             call={"type":"function_call","name":"write_file","call_id":"c1",
