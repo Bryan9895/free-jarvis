@@ -90,6 +90,48 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(planner.snapshot()["goal"], "Tarefa nova")
         agent.ask.assert_not_called()
 
+    def test_focus_plan_does_not_accept_model_claim_without_tool_evidence(self):
+        planner, client, agent = self.make_planner(
+            '{"steps":["Colocar a janela do Firefox em primeiro plano",'
+            '"Ativar a janela do Firefox novamente"]}')
+        agent.ask.return_value = "O foco foi confirmado pelo GNOME."
+        agent.ask.side_effect = None
+        agent.last_metrics = {"tool_problems": [], "tool_outcomes": [],
+                              "tools_executed": 0}
+        planner.prepare("Focar Firefox")
+        state = planner.execute(lambda _: True, report=lambda _: None)
+        self.assertEqual(state["status"], "stopped")
+        self.assertEqual(state["steps"][0]["status"], "blocked")
+        self.assertEqual(state["steps"][1]["status"], "pending")
+        self.assertEqual(agent.ask.call_count, 1)
+
+    def test_focus_plan_verified_only_from_tool_status(self):
+        planner, _, agent = self.make_planner(
+            '{"steps":["Colocar a janela do Firefox em primeiro plano"]}')
+        agent.ask.side_effect = None
+        agent.ask.return_value = "Firefox em primeiro plano."
+        agent.last_metrics = {"tool_problems": [], "tools_executed": 1,
+                              "tool_outcomes": [{"name": "focus_window",
+                                  "outcome": {"result": {"status": "focused_verified"}}}]}
+        planner.prepare("Focar Firefox")
+        state = planner.execute(lambda _: True, report=lambda _: None)
+        self.assertEqual(state["status"], "completed_verified")
+        self.assertEqual(state["steps"][0]["status"], "verified")
+
+    def test_focus_plan_unavailable_blocks_remaining_steps(self):
+        planner, _, agent = self.make_planner(
+            '{"steps":["Ativar a janela do Firefox", "Listar arquivos do workspace"]}')
+        agent.ask.side_effect = None
+        agent.ask.return_value = "Não consegui ativar."
+        agent.last_metrics = {"tool_problems": [], "tools_executed": 1,
+                              "tool_outcomes": [{"name": "focus_window",
+                                  "outcome": {"result": {"status": "not_observed"}}}]}
+        planner.prepare("Focar Firefox")
+        state = planner.execute(lambda _: True, report=lambda _: None)
+        self.assertEqual(state["status"], "stopped")
+        self.assertEqual(state["steps"][0]["status"], "blocked")
+        self.assertEqual(state["steps"][1]["status"], "pending")
+
     def test_remote_model_omits_ollama_reasoning(self):
         planner, client, _ = self.make_planner()
         client.active_model = "openai/example"
