@@ -56,9 +56,11 @@ class ProcessManager:
             "id": launch_id, "editor": editor, "directory": str(directory),
             "pid": process.pid, "started_at": time.time(), "process": process
         })
-        return observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
+        launched = observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
                 "directory": str(directory), "editor": editor,
                 "note": "Início do lançador confirmado; janela/instância gráfica não verificada."}, editor, before)
+        self._launched[-1]["window_observation"] = launched.get("window_observation")
+        return launched
 
     def open_file(self, file_path: Path, editor: str, approve):
         """Abre arquivo existente em editor conhecido; não executa seu conteúdo."""
@@ -93,6 +95,8 @@ class ProcessManager:
         return observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
                 "file": str(file_path), "editor": editor,
                 "note": "Lançador iniciado; foco e janela não verificados."}, editor, before)
+        self._launched[-1]["window_observation"] = launched.get("window_observation")
+        return launched
 
     def list_launches(self):
         result = []
@@ -105,7 +109,8 @@ class ProcessManager:
                 "started_at": entry["started_at"],
                 "launcher_status": "running" if code is None else "exited",
                 "launcher_exit_code": code,
-                "window_status": "unknown",
+                "window_status": (entry.get("window_observation") or {}).get("status", "unknown"),
+                "window_observation": entry.get("window_observation"),
             })
         return result
 
