@@ -912,3 +912,41 @@ O roteador anuncia apenas `manage_window` para pedidos de estado de janela inequ
 **Aviso:** a interface D-Bus do Window Control não possui controle de acesso próprio dentro da sessão GNOME. Como qualquer programa da sessão pode potencialmente usá-la, avalie esse aspecto antes de instalar. O usuário controla a instalação e a ativação. O funcionamento real precisa ser testado no notebook; o CI valida apenas comportamentos simulados e não controla um GNOME físico.
 
 Referências técnicas da extensão: https://github.com/carlo9890/gnome-window-control e https://github.com/carlo9890/gnome-window-control/blob/main/window-control@carlo9890.github.io/dbus-interface.js
+
+## JARVIS v0.4.0 — restaurar Firefox minimizado e organizar janelas lado a lado
+
+**Erro real observado no notebook:** a ferramenta `manage_window` respondia `already_in_state` ao maximizar um Firefox minimizado porque o GNOME mantém simultaneamente `is_maximized=true` e `is_minimized=true`. Corrigido: quando a intenção é `maximize` ou `restore`, a ferramenta usa `Unminimize` e `Activate` antes da confirmação; para `maximize` só chama `Maximize` caso não esteja maximizada. Respostas de sucesso exigem que `is_minimized=false` tenha sido observado depois. Um comando recusado ou sem estado final continua sem confirmação. **A janela deve permanecer aberta no sistema:** reabrir a janela minimizada não reabre uma aba do Firefox que foi fechada.
+
+Também corrigimos o apelido `terminal` para corresponder a classes como `org.gnome.Ptyxis`, `gnome-terminal` e `konsole`. Se houver várias janelas de terminal, a ferramenta retorna `ambiguous` e pede um título mais específico; não escolhe por PID nem faz foco aleatório.
+
+### Nova ferramenta de layout GNOME Wayland
+
+O módulo `src/jarvis/window_layout.py` integra a extensão [Window Control](https://extensions.gnome.org/extension/10886/window-control/) existente e oferece:
+
+- `place_window(app,position,title?)`: `left` ou `right`, ocupando metade da área útil do monitor.
+- `arrange_windows(left_app,right_app,left_title?,right_title?)`: duas janelas, uma à esquerda e outra à direita, no **mesmo monitor**.
+
+Usa D-Bus `ListDetailed` → `GetWorkarea` → `Unminimize`/`Unmaximize` se necessário → `MoveResize`. Cada alvo é identificado por título/classe/PID/ID e revalidado após a aprovação. Não aceita IDs fornecidos pelo modelo. Só informa `geometry_verified` ou `layout_verified` quando o compositor expõe uma geometria compatível com a solicitada (tolerância de 48 pixels para restrições do aplicativo/decoração). Resultados parciais são reportados como não verificados; ações já aplicadas não são automaticamente desfeitas.
+
+Exemplos de comandos:
+
+```text
+Jarvis, restaure a janela do Firefox.
+Jarvis, maximize o Firefox.
+Jarvis, minimize o Firefox.
+Jarvis, coloque o Firefox na metade esquerda da tela.
+Jarvis, coloque o Firefox e o VS Code lado a lado.
+```
+
+Para testar:
+
+```bash
+cd ~/free-jarvis
+git pull --ff-only origin main
+source .venv/bin/activate
+jarvis-fcc --auto-approve
+```
+
+As chamadas isoladas de `manage_window`, `place_window` e `arrange_windows` respondem diretamente pelos resultados locais, sem esperar outra inferência no FCC. Use `/metricas` para conferir `tools_advertised:1` e `direct_tool_reply:true` quando o roteador reconhecer o pedido como uma operação de janela.
+
+**Limites:** GNOME Wayland com extensão Window Control ativa; o comportamento em notebook real deve ser confirmado. A função organiza janelas já existentes e não cria novas janelas do VS Code. Por ora não oferece fechamento de janelas, múltiplos monitores ou arranjo com mais de duas janelas. A extensão instalada é de terceiros e expõe controles D-Bus também a outros processos da sessão.
