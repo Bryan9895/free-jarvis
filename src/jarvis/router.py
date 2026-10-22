@@ -42,9 +42,56 @@ def route(message: str, mode="auto") -> str:
 
 
 def tool_catalog(message: str, available: list[dict]) -> list[dict]:
-    """Por enquanto, o agente de ações recebe todo o catálogo autorizado.
+    """Seleciona um conjunto mínimo só em intenções inequívocas.
 
-    Evita regras de palavras-chave impedindo ferramentas necessárias.
-    O caminho fast é o responsável por eliminar ferramentas com segurança.
+    Inspirado na resolução de ferramentas por capacidade do OpenJarvis,
+    porém sem importar sua infraestrutura. Não concede permissões novas:
+    apenas reduz ferramentas previamente autorizadas.
+    Casos compostos/ambíguos preservam o catálogo original.
     """
+    import unicodedata
+
+    def fold(value):
+        normalized = unicodedata.normalize("NFKD", value.casefold())
+        return "".join(c for c in normalized if not unicodedata.combining(c))
+
+    normalized = fold(message).strip()
+    normalized = re.sub(r"^jarvis[,.:!\\s]+", "", normalized)
+    if len(normalized) > 180 or "\\n" in normalized:
+        return available
+    # Não escolher só uma ferramenta se houve pedido de arquivo, navegador,
+    # abertura de aplicativo, mais de uma ação ou operação composta.
+    complex_verbs = (r"\\b(?:abra|abrir|inicie|iniciar|crie|criar|"
+                     r"salve|salvar|escreva|escrever|edite|editar|"
+                     r"feche|fechar|mova|mover|apague|apagar|"
+                     r"clique|clicar|pesquise|pesquisar|"
+                     r"navegue|navegar|acesse|acessar)\\b")
+    complex_targets = r"\\b(?:arquivo|arquivos|pasta|pastas|projeto|projetos|site|sites)\\b"
+    if re.search(complex_verbs, normalized) or re.search(complex_targets, normalized):
+        return available
+    if re.search(r"\\b(?:depois|em seguida|por fim|tambem)\\b", normalized):
+        return available
+
+    # Solicitações únicas de foco (identificar a janela é parte interna do
+    # focus_window); uma consulta adicional ao desktop não é necessária.
+    focus_verb = re.search(
+        r"\\b(?:coloque|colocar|traga|trazer|ative|ativar|foque|focar)\\b",
+        normalized,
+    )
+    focus_target = re.search(
+        r"\\b(?:primeiro plano|em foco|janela|janelas)\\b",
+        normalized,
+    )
+    if focus_verb and focus_target and not re.search(
+        r"\\b(?:liste|listar|mostre|mostrar|quais|todas|todos)\\b", normalized
+    ):
+        return [t for t in available if t.get("name") == "focus_window"]
+
+    # Leitura simples de janelas disponíveis. Não confundir com ações de foco.
+    if re.search(r"\\b(?:janelas|janela)\\b", normalized) and re.search(
+        r"\\b(?:quais|liste|listar|mostre|mostrar|veja|ver|abertas|abertos)\\b",
+        normalized,
+    ) and not focus_verb:
+        return [t for t in available if t.get("name") == "desktop_windows"]
+
     return available
