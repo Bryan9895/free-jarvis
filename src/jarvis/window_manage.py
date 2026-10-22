@@ -66,7 +66,19 @@ def _inventory():
                     or not isinstance(title, str) or not isinstance(app, str)
                     or len(title) > 240 or len(app) > 120):
                 return None
-            result.append({**row, "app": app, "title": title})
+            # Window Control ListDetailed devolve monitor_index e frame_rect
+            # aninhado, não monitor/x/y/width/height na raiz.
+            normalized = {**row, "app": app, "title": title}
+            monitor = row.get("monitor_index", row.get("monitor"))
+            if type(monitor) is int and 0 <= monitor <= 64:
+                normalized["monitor"] = monitor
+            frame = row.get("frame_rect")
+            if isinstance(frame, dict):
+                for key in ("x", "y", "width", "height"):
+                    value = frame.get(key)
+                    if type(value) is int and abs(value) <= 100_000:
+                        normalized[key] = value
+            result.append(normalized)
         return result
     except (ValueError, SyntaxError, TypeError, MemoryError):
         return None
