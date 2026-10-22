@@ -107,7 +107,7 @@ class CoreTests(unittest.TestCase):
             with patch.object(toolkit, "execute", return_value={
                 "result": {"status": "observed", "windows": []}}):
                 answer = Agent(client, toolkit, memory, "fake").ask(
-                    "Quais janelas estão abertas?")
+                    "Quais janelas estão abertas?", mode="tools")
             self.assertEqual(answer, "Encontrei janelas.")
             following = client.requests[1]["input"]
             self.assertEqual(sum(i.get("type") == "function_call" for i in following), 1)
