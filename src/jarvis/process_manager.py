@@ -92,7 +92,7 @@ class ProcessManager:
             "file": str(file_path), "pid": process.pid,
             "started_at": time.time(), "process": process,
         })
-        return observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
+        launched = observe_launch({"status": "launched_unverified", "id": launch_id, "pid": process.pid,
                 "file": str(file_path), "editor": editor,
                 "note": "Lançador iniciado; foco e janela não verificados."}, editor, before)
         self._launched[-1]["window_observation"] = launched.get("window_observation")
