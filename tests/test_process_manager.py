@@ -54,6 +54,28 @@ class ProcessesTests(unittest.TestCase):
                             {t["name"] for t in TOOL_SPECS})
             toolkit.close()
 
+    def test_create_python_project_and_open_later(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            toolkit=Toolkit(root, approve=lambda _: True)
+            result=toolkit.execute("create_python_project", {"path":"demo"})
+            self.assertEqual(result["result"]["status"], "created")
+            project=root/"demo"
+            self.assertTrue((project/"main.py").exists())
+            self.assertTrue((project/"README.md").exists())
+            self.assertTrue((project/".gitignore").exists())
+            self.assertIn("error", toolkit.execute("create_python_project", {"path":"demo"}))
+            toolkit.close()
+
+    def test_no_project_creation_when_denied(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            toolkit=Toolkit(root, approve=lambda _: False)
+            result=toolkit.execute("create_python_project", {"path":"demo"})
+            self.assertEqual(result["result"]["status"], "rejected")
+            self.assertFalse((root/"demo").exists())
+            toolkit.close()
+
     def test_project_requires_existing_directory(self):
         with tempfile.TemporaryDirectory() as td:
             with self.assertRaises(ValueError):
