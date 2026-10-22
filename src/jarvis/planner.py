@@ -221,7 +221,8 @@ class TaskPlanner:
             if isinstance(metrics, dict) and metrics.get("tool_outcomes"):
                 from .verification import verify_step
                 toolkit = getattr(self.agent, "toolkit", None)
-                if toolkit is not None:
+                from .tools import Toolkit
+                if isinstance(toolkit, Toolkit):
                     verification, evidence = verify_step(toolkit, metrics["tool_outcomes"])
                     if evidence:
                         step["verification"] = evidence
