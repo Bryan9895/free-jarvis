@@ -22,6 +22,10 @@ def desktop_windows():
         response=json.loads(proc.stdout)
         if not isinstance(response,dict) or not isinstance(response.get("windows"),list):
             raise ValueError("Resposta incorreta")
+        # AT-SPI nunca oferece inventário completo das superfícies do compositor.
+        response["complete"] = False
+        response["source"] = "atspi_accessibility_partial"
+        response.setdefault("note", "Lista parcial: outras janelas podem estar abertas.")
         return response
     except (OSError,subprocess.TimeoutExpired,ValueError):
         return {"status":"unavailable","reason":"Falha de consulta AT-SPI","windows":[]}
@@ -42,7 +46,7 @@ def verify_app_window(app, title=""):
     if title_needle:
         found=[w for w in found if title_needle in w.get("title","").casefold()]
     if found:
-        return {"status":"window_observed","matches":found[:10],
+        return {"status":"window_observed","complete":False,"matches":found[:10],
                 "note":"Janela exposta via acessibilidade; não comprova foco ou conteúdo"}
-    return {"status":"not_observed","matches":[],
+    return {"status":"not_observed","complete":False,"matches":[],
             "note":"Ausência na árvore AT-SPI não comprova que aplicativo está fechado"}
