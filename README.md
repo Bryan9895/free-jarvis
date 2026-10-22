@@ -708,3 +708,19 @@ jarvis-fcc --windows-diagnostic
 ```
 
 Essa saída permite comparar as aplicações presentes na árvore AT-SPI com janelas visíveis. `not_observed` significa apenas que a janela não apareceu nos objetos inspecionados, **não** que o aplicativo esteja fechado. Para inventário mais completo será necessária uma integração autorizada e específica com o compositor/ambiente GNOME, mantendo o AT-SPI como fonte complementar.
+
+### Reconhecimento de janelas via GNOME Shell (Mutter), com fallback AT-SPI
+
+Os testes locais mostraram que AT-SPI publicou apenas GNOME Shell, Nautilus e Ptyxis. A inspeção completou sem erros (`inspection_failures: 0`, `truncated: false`), portanto o problema não era o limite de busca: Firefox/VS Code podem não expor suas janelas na árvore de acessibilidade.
+
+A JARVIS agora detecta automaticamente a interface D-Bus **read-only** da extensão opcional [Window Calls Extended](https://extensions.gnome.org/extension/4974/window-calls-extended/), mantida para GNOME Shell 45–50. Quando disponível, consulta via `gdbus` o método `org.gnome.Shell.Extensions.WindowsExt.List` para obter título, classe, foco e PID de janelas gerenciadas pelo compositor. Se a extensão não estiver ativa, mantém o inventário parcial AT-SPI.
+
+**Instalação/ativação é uma decisão do usuário.** A JARVIS nunca instala extensão, ativa modo inseguro, chama `Shell.Eval`, nem contorna Wayland. Consulte a página acima, confirme compatibilidade com seu GNOME (`gnome-shell --version`) e habilite a extensão no aplicativo Extensões. Depois faça:
+
+```bash
+jarvis-fcc --windows-diagnostic
+```
+
+Com a extensão ativa, `source` será `gnome_shell_extension`; se não, permanece `atspi_accessibility_partial` e mostra `fallback_reason`. A própria enumeração de janelas do compositor é marcada como `complete: false`, pois não inclui todas as superfícies possíveis. Títulos de janelas e informações de PID podem ser sensíveis e serão fornecidos ao modelo quando a ferramenta for chamada.
+
+A interface expõe apenas **leitura de janelas**. Não envia comandos de gerenciamento, não solicita permissões novas para clique e não garante que o título mostrado corresponda ao arquivo ativo.
