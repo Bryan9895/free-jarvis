@@ -21,7 +21,7 @@ class EditorFocusTests(unittest.TestCase):
                 answer = kit.execute("open_project_and_focus", {"path": "MyProject"})
             self.assertEqual(answer["result"]["focus"]["status"], "focused_verified")
             self.assertEqual(opened.call_args.args[0], folder)
-            self.assertEqual(focus.call_args.args[0][:2], ("code", "MyProject"))
+            self.assertEqual(focus.call_args.args[:2], ("code", "MyProject"))
             kit.close()
 
     def test_rejected_launch_never_attempts_focus(self):
@@ -63,7 +63,7 @@ class EditorFocusTests(unittest.TestCase):
             self.assertEqual(result["result"]["launch"]["status"], "launched_unverified")
             self.assertEqual(result["result"]["focus"]["status"], "focus_unverified")
             launched.assert_called_once()
-            self.assertEqual(focused.call_args.args[0][0], "firefox_firefox")
+            self.assertEqual(focused.call_args.args[0], "firefox_firefox")
             kit.close()
 
     def test_rejected_app_never_focuses(self):
