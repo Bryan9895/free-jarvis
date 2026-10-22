@@ -120,6 +120,23 @@ class FCCTests(unittest.TestCase):
         auto.responses({"input":"teste"})
         self.assertEqual(auto.active_model, "second")
 
+    def test_tool_calls_do_not_implicitly_switch_to_unverified_model(self):
+        fake = FakeClient([503])
+        client = AutoModelClient(fake)
+        client.initialize()
+        with self.assertRaises(FCCError):
+            client.responses({"input": "lista de janelas", "tools": [{"name": "desktop_windows"}]})
+        self.assertEqual(fake.seen, ["first"])
+
+    def test_tool_calls_can_use_explicit_backup(self):
+        fake = FakeClient([503, None])
+        client = AutoModelClient(fake, backups=["second"])
+        client.initialize()
+        answer = client.responses({"input": "lista de janelas",
+                                   "tools": [{"name": "desktop_windows"}]})
+        self.assertTrue(answer["output"])
+        self.assertEqual(fake.seen, ["first", "second"])
+
     def test_default_model_automatic(self):
         a=AutoModelClient(FakeClient())
         self.assertEqual(a.initialize(), "first")
