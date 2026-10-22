@@ -74,12 +74,12 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
 
     # Comandos simples de estado de janela: o próprio manage_window seleciona
     # por classe/título e faz a revalidação, sem inventário LLM adicional.
-    if (re.search(r"\\b(?:minimize|minimizar|maximize|maximizar|"
-                  r"restaure|restaurar|desmaximize|desmaximizar)\\b", normalized)
-            and re.search(r"\\b(?:janela|firefox|chrome|vscode|code|"
-                          r"terminal|ptyxis|aplicativo)\\b", normalized)
-            and not re.search(r"\\b(?:liste|listar|mostre|mostrar|quais|"
-                              r"todas|todos|outras|varias)\\b", normalized)):
+    if (re.search(r"\b(?:minimize|minimizar|maximize|maximizar|"
+                  r"restaure|restaurar|desmaximize|desmaximizar)\b", normalized)
+            and re.search(r"\b(?:janela|firefox|chrome|vscode|code|"
+                          r"terminal|ptyxis|aplicativo)\b", normalized)
+            and not re.search(r"\b(?:liste|listar|mostre|mostrar|quais|"
+                              r"todas|todos|outras|varias)\b", normalized)):
         return [t for t in available if t.get("name") == "manage_window"]
 
     # Solicitações únicas de foco (identificar a janela é parte interna do
