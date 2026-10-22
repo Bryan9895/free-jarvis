@@ -16,6 +16,12 @@ Veja **[README — Instalação rápida](../README.md#instalação-rápida-no-ub
 
 Diagnósticos independentes do modelo: `jarvis-fcc --doctor`, `jarvis-fcc --desktop-info`, `jarvis-fcc --windows-diagnostic`. Diagnósticos do FCC (requerem servidor): `jarvis-fcc --health`, `jarvis-fcc --models`, `jarvis-fcc --check-fcc`. Testes: `PYTHONPATH=src python -m unittest discover -s tests -v`.
 
+## Avanço de 22/10/2026 — ativação supervisionada de janela
+
+Implementada ferramenta `focus_window(app, title="")` no `src/jarvis/window_focus.py`, usando Window Calls Extended para conferir janelas e a extensão **opcional e separada** [Activate Window By Title](https://extensions.gnome.org/extension/5021/activate-window-by-title/) para solicitar foco via D-Bus. A ferramenta recusa correspondências múltiplas, títulos idênticos, solicita confirmação explícita e só retorna `focused_verified` quando a mesma janela aparece como focada no inventário posterior. Em caso de ausência da extensão, informa `unavailable`. Testes automatizados foram criados; **validação física no Ubuntu do usuário ainda pendente**. Não habilita `Shell.Eval`, ações remotas irrestritas, fechamento ou movimento de janelas.
+
+**Próximo teste no notebook:** instalar/habilitar Activate Window By Title (sem desativar Window Calls Extended), atualizar via `git pull --ff-only origin main` e testar `Jarvis, coloque o Firefox em primeiro plano`, em cenário com uma janela do Firefox e VS Code aberto. Testar também com duas janelas Firefox para verificar `ambiguous`.
+
 ## Próximo objetivo ao retomar
 
 **Controle supervisionado de janelas GNOME Wayland** sobre a base já validada: determinar identificador confiável de janela; avaliar métodos permitidos pela extensão e pelo compositor para solicitar foco/seleção **somente com autorização humana**; verificar o resultado pela leitura do GNOME Shell; impedir confusões quando há múltiplas janelas da mesma aplicação. Separar presença de janela de prova de ação concluída. Não utilizar `Shell.Eval`, bypass de Wayland ou comandos shell livres.
