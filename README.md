@@ -611,3 +611,29 @@ jarvis-fcc
 Pedidos naturais de exemplo: `Pesquise os aplicativos instalados com nome Firefox`; `Abra o aplicativo Firefox instalado`; `Liste os arquivos em /home/bryan/Documentos`; `Crie a pasta /home/bryan/Documentos/ProjetoPython`. Para abrir aplicativos por nome, o modelo precisa pesquisar o ID correto antes de invocar o lançador. Usar nomes diferentes no menu pode exigir pesquisar por outro termo.
 
 **Restrições:** não há execução irrestrita de programas/terminal, instalação de pacotes, administração/root, acesso a outras pastas sem configuração ou garantia de foco/abertura da janela. O GTK/GNOME pode exigir permissões adicionais. Exclusão usa a lixeira recuperável do workspace, mesmo para itens movidos de raízes adicionais. Acesso a caminhos simbólicos é recusado para operações mutáveis. Configure somente diretórios que realmente deseja expor aos modelos FCC, especialmente se utilizar provedores remotos.
+
+### Próxima etapa: abrir projetos no editor e acompanhar lançadores
+
+A JARVIS agora fornece ferramentas `create_python_project`, `open_project` e `managed_processes` no catálogo FCC. Isso permite encadear pedidos como:
+
+```text
+Jarvis, crie um projeto Python chamado Exemplo dentro de Documentos
+Jarvis, abra o projeto Exemplo no VS Code
+Jarvis, quais programas você iniciou nesta sessão?
+```
+
+`create_python_project` cria uma **pasta nova** com `main.py`, `README.md` e `.gitignore`, sem sobrescrever arquivos, instalar pacotes ou executar scripts. `open_project` aceita `editor="vscode"`, `vscodium` ou `vscode-insiders` e uma pasta existente dentro das raízes autorizadas. Abre diretamente com o executável `code`, `codium` ou `code-insiders` resolvido pelo PATH, usando `subprocess.Popen` com lista de argumentos, **sem shell** e mediante autorização.
+
+`managed_processes` informa o PID, identificador da sessão e estado do **processo lançador** (running/exited), mas não comprova abertura de uma janela nem o estado de programas que reutilizam instâncias já abertas. O registro é válido apenas durante a sessão atual da JARVIS e não inclui processos de outros aplicativos. Encerrar a JARVIS não mata os aplicativos iniciados. Isso evita um comando genérico para terminar processos alheios.
+
+Para utilizar Documentos:
+
+```bash
+cd ~/Documentos/Projetos/Jarvis/free-jarvis
+git pull origin main
+source .venv/bin/activate
+export JARVIS_ALLOWED_DIRS="$HOME/Documentos:$HOME/Downloads"
+jarvis-fcc
+```
+
+Exemplo de caminho absoluto autorizado: `/home/bryan/Documentos/Exemplo`. Para comandos de ferramentas, selecione um modelo FCC compatível com `function_call`. Os estados de lançamento são `launched_unverified` até existir verificação independente. Esta etapa ainda não monitora janelas ou aplicativos iniciados fora da JARVIS.
