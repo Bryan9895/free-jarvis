@@ -95,6 +95,31 @@ class Toolkit:
         destination.mkdir(parents=True, exist_ok=False)
         return {"status": "created", "path": str(destination)}
 
+    def create_python_project(self, path):
+        """Cria estrutura Python mínima sem instalar pacotes nem executar código."""
+        folder = self._safe_mutation_path(path)
+        if self._is_root(folder) or folder.exists():
+            raise ToolError("Escolha uma nova subpasta de projeto")
+        if not folder.parent.is_dir():
+            raise ToolError("A pasta pai precisa existir")
+        if not self.approve(f"CRIAR PROJETO PYTHON {folder} (main.py, README.md, .gitignore)?"):
+            return {"status": "rejected"}
+        folder = self._safe_mutation_path(path)
+        if folder.exists() or not folder.parent.is_dir():
+            raise ToolError("O destino mudou desde a autorização")
+        folder.mkdir(exist_ok=False)
+        (folder / "main.py").write_text(
+            'def main():\n    print("Olá, mundo!")\n\n\nif __name__ == "__main__":\n    main()\n',
+            encoding="utf-8")
+        (folder / "README.md").write_text(
+            f"# {folder.name}\n\nProjeto Python criado pela JARVIS.\n",
+            encoding="utf-8")
+        (folder / ".gitignore").write_text(
+            "__pycache__/\n*.py[cod]\n.venv/\n",
+            encoding="utf-8")
+        return {"status": "created", "path": str(folder),
+                "files": ["main.py", "README.md", ".gitignore"]}
+
     def move_path(self, source, destination):
         src, dst = self._safe_mutation_path(source), self._safe_mutation_path(destination)
         if self._is_root(src) or self._is_root(dst) or src == self.workspace / ".jarvis-trash":
@@ -239,6 +264,7 @@ class Toolkit:
         operations = {
             "list_files": self.list_files, "read_file": self.read_file,
             "write_file": self.write_file, "make_directory": self.make_directory,
+            "create_python_project": self.create_python_project,
             "move_path": self.move_path, "delete_path": self.delete_path,
             "run_command": self.run_command,
             "browser_open": self.browser_open,
@@ -263,6 +289,7 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"create_python_project","description":"Cria uma nova pasta com projeto Python básico (main.py, README.md, .gitignore), dentro de diretório autorizado. Não sobrescreve nem executa código. Use open_project depois para abrir no VS Code.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"open_project","description":"Abre pasta de projeto existente em VS Code, VSCodium ou VS Code Insiders instalado, após autorização. Use editor=vscode e path absoluto dentro de diretório autorizado ou relativo ao workspace. Início do lançador não garante janela aberta.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"managed_processes","description":"Lista os editores de projeto lançados pela JARVIS nesta sessão e o estado real do processo lançador. Não garante estado da janela.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"list_installed_apps","description":"Pesquisa aplicativos gráficos instalados visíveis no menu Ubuntu/GNOME. Informe query por nome ou ID antes de abrir. Não executa programas.","parameters":{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":120}},"additionalProperties":False}},
