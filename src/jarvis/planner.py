@@ -217,8 +217,28 @@ class TaskPlanner:
                     self._save()
                     report("A etapa descreveu a ação mas não a executou; plano interrompido.")
                     break
-            # Uma resposta de linguagem do modelo não comprova execução.
-            step["status"] = "reported_unverified"
+            # Só marcamos verificado após reler o estado do filesystem.
+            if isinstance(metrics, dict) and metrics.get("tool_outcomes"):
+                from .verification import verify_step
+                toolkit = getattr(self.agent, "toolkit", None)
+                if toolkit is not None:
+                    verification, evidence = verify_step(toolkit, metrics["tool_outcomes"])
+                    if evidence:
+                        step["verification"] = evidence
+                    if verification == "failed":
+                        step["status"] = "blocked"
+                        self.plan["status"] = "stopped"
+                        self._save()
+                        report("Verificação de resultado falhou; próximas etapas não serão executadas.")
+                        break
+                    if verification == "verified":
+                        step["status"] = "verified"
+                    else:
+                        step["status"] = "reported_unverified"
+                else:
+                    step["status"] = "reported_unverified"
+            else:
+                step["status"] = "reported_unverified"
             self._save()
             report(result)
             # Evita executar etapas posteriores quando o agente não concluiu a execução.
@@ -227,6 +247,8 @@ class TaskPlanner:
                 self._save()
                 break
         else:
-            self.plan["status"] = "completed_unverified"
+            self.plan["status"] = ("completed_verified" if all(
+                item["status"] == "verified" for item in self.plan["steps"])
+                else "completed_unverified")
         self._save()
         return self.snapshot()
