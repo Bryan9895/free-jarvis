@@ -68,6 +68,41 @@ def _valid_history_output(output):
     return cleaned
 
 
+def _local_focus_reply(calls, outcomes, message):
+    """Responde foco isolado pelo resultado real, sem uma 2ª inferência."""
+    import re
+    if len(calls) != 1 or len(outcomes) != 1 or calls[0].get("name") != "focus_window":
+        return None
+    if not re.search(r"\\b(?:foco|focar|foque|primeiro plano|traga .* frente|"
+                     r"coloque .* frente|ative .* janela)\\b", message.casefold()):
+        return None
+    result = outcomes[0]
+    if not isinstance(result, dict):
+        return None
+    if result.get("error"):
+        return "Não consegui consultar o foco da janela: " + str(result["error"])[:180]
+    detail = result.get("result")
+    if not isinstance(detail, dict):
+        return None
+    status = detail.get("status")
+    title = str(detail.get("title", "janela solicitada"))[:160]
+    if status == "focused_verified":
+        return f"Janela em primeiro plano, com foco confirmado pelo GNOME: {title}."
+    if status == "already_focused":
+        return f"A janela já estava em primeiro plano, confirmado pelo GNOME: {title}."
+    failures = {
+        "rejected": "A ativação foi cancelada por você.",
+        "ambiguous": "Existem várias janelas possíveis; informe parte do título da janela desejada.",
+        "not_observed": "Não encontrei uma janela correspondente no inventário do GNOME.",
+        "unavailable": "Não consegui acessar o controle de foco do GNOME.",
+        "changed": "A janela mudou durante a confirmação; operação cancelada.",
+        "not_activated": "A extensão do GNOME não ativou a janela.",
+        "focus_unverified": "A solicitação foi enviada, mas o GNOME não confirmou o foco.",
+        "unverified": "Não consegui confirmar o resultado da extensão do GNOME.",
+    }
+    return failures.get(status)
+
+
 class Agent:
     def __init__(self, client, toolkit, memory, model: str):
         self.client, self.toolkit, self.memory, self.model = client, toolkit, memory, model
@@ -92,6 +127,7 @@ class Agent:
         tool_problems = []
         tool_outcomes = []
         seen = {}
+        direct_result = None
         try:
             rounds = 1 if chosen == "fast" else MAX_TOOL_ROUNDS + 1
             for round_index in range(rounds):
@@ -133,6 +169,7 @@ class Agent:
                     self.memory.add("assistant", answer)
                     return answer
                 messages.extend(_valid_history_output(output))
+                round_outcomes = []
                 for call in calls:
                     call_id = call.get("call_id")
                     if not isinstance(call_id, str) or not call_id:
@@ -182,11 +219,18 @@ class Agent:
                         if issue is not None:
                             tool_problems.append({"tool": call.get("name", "?"),
                                                   "reason": str(issue)[:240]})
+                    round_outcomes.append(outcome)
                     messages.append({
                         "type": "function_call_output",
                         "call_id": call_id,
                         "output": json.dumps(outcome, ensure_ascii=False),
                     })
+                if chosen == "tools":
+                    direct_result = _local_focus_reply(calls, round_outcomes, message)
+                    if direct_result is not None:
+                        self.memory.add("user", message)
+                        self.memory.add("assistant", direct_result)
+                        return direct_result
             raise AssertionError("Número inválido de rodadas")
         finally:
             self.last_metrics = {
@@ -198,4 +242,5 @@ class Agent:
                 "tools_executed": calls_executed,
                 "tool_problems": tool_problems,
                 "tool_outcomes": tool_outcomes,
+                "direct_tool_reply": direct_result is not None,
             }
