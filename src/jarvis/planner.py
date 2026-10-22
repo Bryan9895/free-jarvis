@@ -64,6 +64,56 @@ class TaskPlanner:
             return [self.snapshot()] if self.plan else []
         return self.store.recent(limit)
 
+    def select(self, plan_id):
+        if self.store is None:
+            raise ValueError("Histórico de planos indisponível.")
+        if self.plan and self.plan["status"] == "running":
+            raise ValueError("Não é possível trocar plano em execução.")
+        plan = self.store.get(plan_id)
+        if plan is None:
+            raise ValueError("Plano não encontrado.")
+        self.plan = plan
+        if self.plan["status"] == "running":
+            self.plan["status"] = "interrupted"
+            for step in self.plan["steps"]:
+                if step["status"] == "running":
+                    step["status"] = "interrupted"
+            self._save()
+        return self.snapshot()
+
+    def resolve_step(self, decision):
+        if not self.plan or self.plan["status"] not in ("interrupted", "stopped"):
+            raise ValueError("Selecione um plano parado ou interrompido.")
+        if decision not in ("skip", "retry"):
+            raise ValueError("Escolha skip ou retry.")
+        unresolved = [s for s in self.plan["steps"]
+                      if s["status"] in ("interrupted", "failed", "blocked", "running")]
+        if not unresolved:
+            raise ValueError("Nenhuma etapa incerta.")
+        step = unresolved[0]
+        if decision == "skip":
+            step["status"] = "skipped_unverified"
+            step["result"] = "Ignorada por decisão humana; resultado não verificado."
+        else:
+            step["status"] = "pending"
+            step["result"] = ""
+            step.pop("problems", None)
+        self.plan["status"] = "stopped"
+        self._save()
+        return self.snapshot()
+
+    def ready_to_resume(self):
+        if not self.plan or self.plan["status"] not in ("stopped", "interrupted"):
+            raise ValueError("Selecione um plano interrompido.")
+        if any(s["status"] in ("interrupted", "running", "failed", "blocked")
+               for s in self.plan["steps"]):
+            raise ValueError("Resolva etapas incertas com /resolver-etapa skip ou retry.")
+        if not any(s["status"] == "pending" for s in self.plan["steps"]):
+            raise ValueError("Nenhuma etapa pendente.")
+        self.plan["status"] = "ready"
+        self._save()
+        return self.snapshot()
+
     def prepare(self, goal):
         if not isinstance(goal, str) or not 1 <= len(goal.strip()) <= MAX_GOAL:
             raise ValueError("Objetivo deve ter entre 1 e 500 caracteres")
@@ -113,7 +163,7 @@ class TaskPlanner:
     def execute(self, approve, report=print):
         if not self.plan or self.plan["status"] != "ready":
             raise ValueError("Não há plano pronto. Use /planejar antes.")
-        summary = "\n".join(f"{s['id']}. {s['description']}" for s in self.plan["steps"])
+        summary = "\n".join(f"{s['id']}. {s['description']}" for s in self.plan["steps"] if s["status"] == "pending")
         if not approve("EXECUTAR PLANO COM ATÉ CINCO ETAPAS?\n" + summary):
             self.plan["status"] = "cancelled"
             self._save()
@@ -121,6 +171,8 @@ class TaskPlanner:
         self.plan["status"] = "running"
         self._save()
         for step in self.plan["steps"]:
+            if step["status"] != "pending":
+                continue
             step["status"] = "running"
             self._save()
             report(f"[{step['id']}/{len(self.plan['steps'])}] {step['description']}")
