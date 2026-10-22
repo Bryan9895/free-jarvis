@@ -18,6 +18,8 @@ class Toolkit:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.approve = approve or (lambda _action: False)
         self._browser = None
+        from .process_manager import ProcessManager
+        self._processes = ProcessManager()
         roots = []
         for value in os.getenv("JARVIS_ALLOWED_DIRS", "").split(os.pathsep):
             if value.strip():
@@ -193,6 +195,7 @@ class Toolkit:
         return self._browser_client().perform("screenshot")
 
     def close(self):
+        self._processes.close()
         if self._browser is not None:
             self._browser.close()
             self._browser = None
@@ -204,6 +207,13 @@ class Toolkit:
     def launch_installed_app(self, app_id):
         from .apps import launch_installed_app
         return launch_installed_app(app_id, self.approve)
+
+    def open_project(self, path, editor="vscode"):
+        folder = self.path(path)
+        return self._processes.open_project(folder, editor, self.approve)
+
+    def managed_processes(self):
+        return self._processes.list_launches()
 
     def authorized_directories(self):
         return [{"path": str(root), "default": root == self.workspace}
@@ -240,6 +250,7 @@ class Toolkit:
             "list_installed_apps": self.list_installed_apps,
             "launch_installed_app": self.launch_installed_app,
             "authorized_directories": self.authorized_directories,
+            "open_project": self.open_project, "managed_processes": self.managed_processes,
             "desktop_input": self.desktop_input,
         }
         if name not in operations:
@@ -252,6 +263,8 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"open_project","description":"Abre pasta de projeto existente em VS Code, VSCodium ou VS Code Insiders instalado, após autorização. Use editor=vscode e path absoluto dentro de diretório autorizado ou relativo ao workspace. Início do lançador não garante janela aberta.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
+    {"type":"function","name":"managed_processes","description":"Lista os editores de projeto lançados pela JARVIS nesta sessão e o estado real do processo lançador. Não garante estado da janela.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"list_installed_apps","description":"Pesquisa aplicativos gráficos instalados visíveis no menu Ubuntu/GNOME. Informe query por nome ou ID antes de abrir. Não executa programas.","parameters":{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":120}},"additionalProperties":False}},
     {"type":"function","name":"launch_installed_app","description":"Inicia um programa gráfico instalado pelo ID obtido em list_installed_apps, com autorização. Não executa comandos arbitrários nem confirma janela aberta.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"authorized_directories","description":"Lista as raízes de diretórios locais autorizados por JARVIS_ALLOWED_DIRS.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
