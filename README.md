@@ -574,3 +574,19 @@ O chat agora inclui um roteador local de intenções (`task_intent.py`) e um con
 - `Continue de onde parou.` — executa somente etapas pendentes **depois** de autorização; etapas incertas precisam de resolução prévia.
 
 O roteamento não faz outra inferência para classificar intenções comuns, preservando a velocidade de perguntas simples. Pedidos que o roteador não reconhecer continuam na conversa normal do agente; ainda não há entendimento semântico completo de todas as paráfrases, nem execução em segundo plano. Alguns objetivos complexos podem requerer reformulação para ativar planejamento. As ferramentas existentes e as autorizações de cada uma permanecem as mesmas. Os comandos explícitos `/plano`, `/planejar` etc. continuam disponíveis como alternativa.
+
+### Operações de arquivos — etapa de controle real do Ubuntu
+
+O agente FCC passa a oferecer três ferramentas novas: `make_directory`, `move_path` e `delete_path`. Elas criam subpastas, renomeiam/movem arquivos e pastas e movem itens para uma **lixeira recuperável** `JARVIS_WORKSPACE/.jarvis-trash`. Não existe exclusão definitiva nesta etapa. Cada ação solicita autorização e fica restrita ao workspace configurado (geralmente `~/Projetos`); não permite mover/remover a raiz nem sobrescrever destinos existentes.
+
+Exemplos em linguagem natural:
+
+```text
+Crie uma pasta chamada TesteJarvis dentro do meu workspace.
+Renomeie a pasta TesteJarvis para ProjetoTeste.
+Mova a pasta ProjetoTeste para a lixeira interna.
+```
+
+Para recuperar um item, localize a entrada criada em `.jarvis-trash` e mova-a manualmente para o destino desejado. O navegador de arquivos ou ferramenta `move_path` podem auxiliar nessa recuperação se o destino estiver vazio. Cada ação do modelo requer um provedor FCC que suporte function calling; modelos anunciados mas incompatíveis não executarão as ferramentas.
+
+**Limites atuais:** não existe acesso arbitrário ao computador, execução irrestrita de programas, gerenciamento de pacotes ou exclusão permanente. O GNOME Wayland mantém permissões próprias. A próxima fase de controle do sistema precisará separar descoberta de apps, seleção de diretórios adicionais por autorização e verificação independente dos efeitos.
