@@ -139,6 +139,8 @@ def main():
         from .plan_view import format_plan, format_history
         plan_store = PlanStore(c.db)
         planner = TaskPlanner(auto, agent, store=plan_store)
+        from .natural_tasks import NaturalTaskController
+        natural_tasks = NaturalTaskController(planner, confirm)
         voice = None
         if args.voice:
             from .voice import VoiceIO
@@ -306,7 +308,9 @@ def main():
                         print("Erro na análise da tela:", exc, file=sys.stderr)
                     continue
                 try:
-                    answer = agent.ask(msg)
+                    answer = natural_tasks.handle(msg)
+                    if answer is None:
+                        answer = agent.ask(msg)
                     print("JARVIS >", answer, "\n")
                     if os.getenv("JARVIS_SHOW_TIMING") == "1":
                         print("Tempo:", agent.last_metrics, "\n")
