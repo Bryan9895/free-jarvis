@@ -58,6 +58,38 @@ class ProcessManager:
                 "directory": str(directory), "editor": editor,
                 "note": "Início do lançador confirmado; janela/instância gráfica não verificada."}
 
+    def open_file(self, file_path: Path, editor: str, approve):
+        """Abre arquivo existente em editor conhecido; não executa seu conteúdo."""
+        if editor not in _EDITORS:
+            raise ValueError("Editor desconhecido. Use vscode, vscodium ou vscode-insiders.")
+        if not isinstance(file_path, Path) or not file_path.is_file():
+            raise ValueError("Arquivo inexistente; crie e verifique antes de abrir")
+        binary, _ = _EDITORS[editor]
+        executable = shutil.which(binary)
+        if not executable:
+            raise ValueError(f"Editor {binary} não está no PATH")
+        if len(self._launched) >= MAX_LAUNCHES:
+            raise ValueError("Limite de processos registrados na sessão")
+        if not approve(f"ABRIR ARQUIVO {file_path} no editor {editor}?"):
+            return {"status": "rejected"}
+        if not file_path.is_file():
+            raise ValueError("Arquivo removido antes da abertura")
+        process = subprocess.Popen(
+            [executable, "--reuse-window", str(file_path)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+        launch_id = self._next_id
+        self._next_id += 1
+        self._launched.append({
+            "id": launch_id, "editor": editor, "directory": str(file_path.parent),
+            "file": str(file_path), "pid": process.pid,
+            "started_at": time.time(), "process": process,
+        })
+        return {"status": "launched_unverified", "id": launch_id, "pid": process.pid,
+                "file": str(file_path), "editor": editor,
+                "note": "Lançador iniciado; foco e janela não verificados."}
+
     def list_launches(self):
         result = []
         for entry in self._launched:
