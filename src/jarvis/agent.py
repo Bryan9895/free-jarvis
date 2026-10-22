@@ -240,6 +240,7 @@ class Agent:
                 "model_rounds": len(timings),
                 "model_s": timings,
                 "tools_executed": calls_executed,
+                "tools_advertised": advertised_tool_count,
                 "tool_problems": tool_problems,
                 "tool_outcomes": tool_outcomes,
                 "direct_tool_reply": direct_result is not None,
