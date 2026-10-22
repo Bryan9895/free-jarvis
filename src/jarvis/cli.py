@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
+    parser.add_argument("--windows-diagnostic", action="store_true", help="Diagnóstico parcial de janelas acessíveis via AT-SPI, sem FCC")
     parser.add_argument("--desktop-info", action="store_true", help="Inspeciona portais e compositor Wayland sem iniciar FCC")
     parser.add_argument("--desktop-click-test", action="store_true", help="Teste autorizado: um clique esquerdo na posição do cursor")
     parser.add_argument("--desktop-keyboard-test", action="store_true", help="Teste autorizado: digitar apenas letra j no campo em foco")
@@ -46,6 +47,10 @@ def main():
             "voice_package_installed": importlib.util.find_spec("faster_whisper") is not None,
             "desktop_package_installed": importlib.util.find_spec("dbus_next") is not None,
         }, ensure_ascii=False, indent=2))
+        return
+    if args.windows_diagnostic:
+        from .desktop_windows import desktop_windows
+        print(json.dumps(desktop_windows(), ensure_ascii=False, indent=2))
         return
     if args.desktop_info:
         from .wayland import desktop_info
