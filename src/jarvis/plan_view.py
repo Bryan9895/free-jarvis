@@ -51,7 +51,9 @@ def format_plan(plan, *, show_results=True):
             lines.append(f"     ↳ {excerpt[:220]}{'…' if len(excerpt) > 220 else ''}")
         if show_results and step.get("verification"):
             for evidence in step["verification"][:5]:
-                lines.append(f"     ↳ {evidence.get('tool', 'verificação')}: {evidence.get('status', '—')}")
+                detail = str(evidence.get("detail", ""))[:140]
+                lines.append(f"     ↳ {evidence.get('tool', 'verificação')}: {evidence.get('status', '—')}"
+                             + (f" — {detail}" if detail else ""))
         if show_results and step.get("problems"):
             for issue in step["problems"][:3]:
                 lines.append(f"     ⚠ {issue.get('tool','ferramenta')}: {issue.get('reason','erro')}")
