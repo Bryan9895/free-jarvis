@@ -176,7 +176,10 @@ def _local_layout_reply(calls, outcomes):
         "geometry_unverified": "Posicionamento solicitado, mas a geometria final não foi confirmada.",
         "layout_unverified": "Organização parcialmente aplicada ou não confirmada. Confira as posições antes de repetir.",
     }
-    return failures.get(status)
+    message = failures.get(status)
+    if message and isinstance(state.get("reason"), str):
+        return message + " Detalhe: " + state["reason"][:160]
+    return message
 
 
 class Agent:
