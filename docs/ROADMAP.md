@@ -1,5 +1,8 @@
 # Plano de desenvolvimento — JARVIS FCC
 
+> **Estado atualizado em 21/10/2026:** para a situação real no Ubuntu, funções já validadas e a prioridade para o próximo dia, consulte [RETOMADA.md](RETOMADA.md). Este roadmap contém também etapas históricas e não deve ser interpretado como estado atual de implementação de cada recurso.
+
+
 ## Objetivo
 Assistente pessoal open-source em português, com FCC como gateway de modelos, execução local modular, permissões explícitas e suporte futuro a voz e desktop Wayland.
 
