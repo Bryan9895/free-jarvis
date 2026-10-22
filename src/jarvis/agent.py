@@ -18,8 +18,10 @@ SYSTEM = (
     "arquivos individuais e open_project para pastas. Para conferir se uma "
     "janela apareceu, consulte verify_app_window; resultado não observado "
     "não demonstra que o aplicativo esteja fechado. desktop_windows retorna "
-    "SOMENTE amostra PARCIAL de janelas acessíveis AT-SPI, nunca todas as janelas "
-    "abertas no GNOME. Ao responder, diga explicitamente que a lista é incompleta "
+    "uma lista PARCIAL: quando source for gnome_shell_extension, as janelas são "
+    "fornecidas pelo GNOME Shell; quando for atspi_accessibility_partial, são "
+    "fornecidas pela acessibilidade AT-SPI. Não confunda essas fontes. "
+    "Ao responder, diga explicitamente que a lista pode ser incompleta "
     "e não deduza que programas não listados estão fechados. Para colocar uma "
     "janela em primeiro plano, use focus_window somente com aprovação, após "
     "identificar nome e título; nunca presuma qual janela escolher se houver ambiguidades. "
@@ -152,8 +154,8 @@ class Agent:
                             safe = {}
                             if isinstance(detail, dict):
                                 safe = {key: detail[key] for key in
-                                        ("status", "path", "trash_path", "previous_path")
-                                        if isinstance(detail.get(key), str)}
+                                        ("status", "source", "complete", "path", "trash_path", "previous_path")
+                                        if isinstance(detail.get(key), (str, bool))}
                             record = {"name": call["name"],
                                       "outcome": {"result": safe,
                                                   "error": outcome.get("error") if isinstance(outcome, dict) else None}}
