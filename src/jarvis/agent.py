@@ -130,6 +130,13 @@ class Agent:
                             if call["name"] == "write_file" and isinstance(args.get("content"), str):
                                 record["expected_sha256"] = hashlib.sha256(
                                     args["content"].encode("utf-8")).hexdigest()
+                            if isinstance(detail, dict) and isinstance(detail.get("window_observation"), dict):
+                                observation = detail["window_observation"]
+                                record["window_observation"] = {
+                                    key: observation[key] for key in
+                                    ("status", "source", "windows_observed", "focused")
+                                    if key in observation
+                                }
                             tool_outcomes.append(record)
                     except (KeyError, ValueError, TypeError) as exc:
                         outcome = {"error": "Argumentos inválidos: " + str(exc)}
