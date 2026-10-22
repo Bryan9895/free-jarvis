@@ -671,3 +671,28 @@ Estados novos de etapa e plano:
 O painel `/plano` mostra ✓ para efeito verificado e ◇ para execução não verificada. Exemplo de teste: peça para criar uma pasta `TesteVerificacao` em `~/Downloads`, criar um `main.py` dentro dela com `print("hello world")` e depois abrir o arquivo no VS Code. A criação/escrita podem ser verificadas automaticamente; **a janela do VS Code ainda não**. A IA não deve tratar uma saída do lançador como confirmação de que a janela foi aberta.
 
 Limites: verificações são uma fotografia do estado logo após a operação, não garantem que outros processos não alterem o arquivo posteriormente. A abertura de aplicativos e interações com janelas GNOME continuam fora do escopo de verificação independente; esses passos impedem que um plano completo receba `completed_verified`.
+
+### GNOME Wayland: observar janelas abertas (AT-SPI)
+
+Esta etapa adiciona as ferramentas FCC `desktop_windows` e `verify_app_window` para consultar **somente aplicativos e títulos de janelas** expostos pelo serviço de acessibilidade do Ubuntu (AT-SPI). A consulta não move o mouse, não usa X11 e não requer contornar permissões do compositor. Segundo a documentação do Ubuntu, AT-SPI funciona via D-Bus e depende de cada aplicativo publicar objetos acessíveis.
+
+Pré-requisito no Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install python3-pyatspi at-spi2-core
+```
+
+A JARVIS pode continuar rodando dentro de `.venv`: ela usa o `/usr/bin/python3` do sistema apenas para consultar os bindings de acessibilidade em um subprocesso com timeout de 6 segundos. Não reinstale a venv. O GNOME deve estar com os serviços de acessibilidade em funcionamento; aplicativos Electron podem expor informações incompletas.
+
+Pedidos de teste na conversa:
+
+```text
+Jarvis, quais janelas do desktop você consegue identificar?
+Jarvis, verifique se há uma janela do VS Code aberta.
+Jarvis, confira se uma janela do Firefox aparece no GNOME.
+```
+
+Respostas possíveis: `window_observed` (janela acessível localizada), `not_observed` (nenhuma correspondência na árvore, **não comprova aplicativo fechado**) e `unavailable` (serviço/biblioteca sem resposta). A ferramenta **não verifica foco, conteúdo ou arquivo ativo**; mesmo quando um título contém `main.py`, isso é apenas uma indicação fornecida pelo aplicativo. Executar um programa continua retornando `launched_unverified`, pois localizar uma janela parecida não demonstra que o processo lançado foi a causa de sua aparição.
+
+Se o comando retornar `unavailable`, execute `/usr/bin/python3 -c "import pyatspi; print('AT-SPI OK')"` para conferir a dependência. Os títulos podem conter dados privados; evite encaminhá-los a provedores remotos se não deseja compartilhar essas informações.
