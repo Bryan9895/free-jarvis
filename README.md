@@ -1031,3 +1031,20 @@ Exemplos: `Jarvis, coloque o terminal no outro monitor` e `Jarvis, mova o Firefo
 Exemplos: `Jarvis, salve meu ambiente de programação com VS Code e Firefox` e `Jarvis, abra meu ambiente de programação`. A restauração retorna `profile_verified` somente após conferir todas as janelas e a área ativa. Em caso de falha, retorna `profile_partial` com estados por etapa. Uma abertura enviada sem janela observada é marcada no SQLite e não é repetida automaticamente; confira o aplicativo antes de tentar novamente. Os perfis guardam títulos e IDs de aplicativos **localmente** no banco `JARVIS_DB`; o histórico de ações continua sem títulos.
 
 No Ubuntu GNOME Wayland real, um perfil com duas XTerm descartáveis restaurou área e geometria após alterações, com `profile_verified`. Outro perfil salvou a Calculadora GNOME, fechou-a, abriu-a via `app_id=org.gnome.Calculator` e confirmou a restauração; a Calculadora foi fechada após o teste. Perfis em dois monitores ainda aguardam validação física com monitor adicional. O pacote permanece v0.4.0 até os critérios de lançamento pendentes serem concluídos.
+
+## v0.7.0 em desenvolvimento — registro e capacidades das ferramentas
+
+O catálogo de 48 ferramentas agora passa por `ToolRegistry` em `src/jarvis/registry.py`. Cada entrada associa esquema da API, capacidade e executor. O agente anuncia somente as ferramentas concedidas, e `Toolkit.execute` verifica novamente a capacidade antes de executar uma chamada, inclusive em `--auto-approve`. Ferramentas novas podem ser registradas explicitamente com um executor Python sem alterar o agente. O sistema não carrega plugins de terceiros automaticamente.
+
+`/metricas` inclui `tool_execution` com ferramenta, capacidade, estado e duração em milissegundos das chamadas do turno. O executor mantém no máximo 100 registros em memória; não armazena argumentos, conteúdo de arquivos ou texto dos erros nessa trilha. O histórico SQLite de ações de janelas permanece separado.
+
+Por padrão, as capacidades existentes continuam habilitadas para preservar o comportamento atual. Para limitar uma sessão, defina uma lista separada por vírgulas antes de iniciar:
+
+```bash
+export JARVIS_ENABLED_CAPABILITIES="filesystem.read,desktop.read"
+jarvis-fcc --auto-approve
+```
+
+Capacidades disponíveis: `filesystem.read`, `filesystem.write`, `command.read`, `browser.read`, `browser.control`, `desktop.read`, `desktop.control`, `desktop.capture` e `desktop.input`. Uma lista vazia desabilita todas; um nome desconhecido causa erro de configuração. `desktop.input` ainda exige `JARVIS_ENABLE_DESKTOP_INPUT=1` e as permissões do portal GNOME. Ao terminar, `unset JARVIS_ENABLED_CAPABILITIES` restaura o padrão na próxima sessão. As aprovações individuais, restrições de diretórios e verificações das ferramentas continuam aplicadas.
+
+Validação desta etapa: `python -m unittest discover -s tests -q`. Os testes de registro e autorização são automatizados; a restrição do catálogo deve ser conferida no notebook com uma sessão FCC real antes de considerá-la validada em uso diário.

@@ -5,7 +5,6 @@ import os
 import time
 
 from .router import route, tool_catalog
-from .tools import TOOL_SPECS
 
 SYSTEM = (
     "Você é JARVIS, assistente em português brasileiro. Use ferramentas quando necessário. "
@@ -322,9 +321,9 @@ class Agent:
         messages = [{"role": row["role"], "content": row["content"]}
                     for row in self.memory.recent(limit)]
         messages.append({"role": "user", "content": message})
-        available = [spec for spec in TOOL_SPECS
-                     if spec["name"] != "desktop_input"
-                     or os.getenv("JARVIS_ENABLE_DESKTOP_INPUT") == "1"]
+        available = self.toolkit.registry.available_specs(
+            self.toolkit.capabilities.enabled,
+            desktop_input=os.getenv("JARVIS_ENABLE_DESKTOP_INPUT") == "1")
         available = tool_catalog(message, available) if chosen == "tools" else []
         advertised_tool_count = len(available)
         timings = []
@@ -451,6 +450,8 @@ class Agent:
                 "model_rounds": len(timings),
                 "model_s": timings,
                 "tools_executed": calls_executed,
+                "tool_execution": list(self.toolkit.operation_log)[-calls_executed:]
+                                  if calls_executed else [],
                 "tools_advertised": advertised_tool_count,
                 "tool_problems": tool_problems,
                 "tool_outcomes": tool_outcomes,

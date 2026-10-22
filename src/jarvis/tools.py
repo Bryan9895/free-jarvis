@@ -9,7 +9,10 @@ import subprocess
 import tempfile
 import uuid
 import shutil
+import time
+from collections import deque
 from urllib.parse import urlparse
+from .registry import CapabilityPolicy, ToolRegistry
 
 MAX_FILE_BYTES = 100_000
 
@@ -17,11 +20,19 @@ class ToolError(ValueError):
     pass
 
 class Toolkit:
-    def __init__(self, workspace: Path, approve=None, layout_db=None):
+    def __init__(self, workspace: Path, approve=None, layout_db=None, registry=None,
+                 enabled_capabilities=None):
         self.workspace = workspace.expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.approve = approve or (lambda _action: False)
         self.layout_db = layout_db
+        self.operation_log = deque(maxlen=100)
+        self.registry = registry or DEFAULT_REGISTRY
+        if enabled_capabilities is None:
+            configured = os.getenv("JARVIS_ENABLED_CAPABILITIES")
+            if configured is not None:
+                enabled_capabilities = {item.strip() for item in configured.split(",") if item.strip()}
+        self.capabilities = CapabilityPolicy(self.registry, enabled_capabilities)
         self._browser = None
         from .process_manager import ProcessManager
         self._processes = ProcessManager()
@@ -442,53 +453,33 @@ class Toolkit:
         return agent_step(self.approve, action, dx=dx, dy=dy, text=text)
 
     def execute(self, name, arguments):
-        operations = {
-            "list_files": self.list_files, "read_file": self.read_file,
-            "write_file": self.write_file, "make_directory": self.make_directory,
-            "create_python_project": self.create_python_project,
-            "move_path": self.move_path, "delete_path": self.delete_path,
-            "run_command": self.run_command,
-            "browser_open": self.browser_open,
-            "browser_navigate": self.browser_navigate, "browser_inspect": self.browser_inspect,
-            "browser_click": self.browser_click, "browser_fill": self.browser_fill,
-            "browser_screenshot": self.browser_screenshot,
-            "desktop_info": self.desktop_info,
-            "desktop_windows": self.desktop_windows,
-            "verify_app_window": self.verify_app_window,
-            "focus_window": self.focus_window, "manage_window": self.manage_window,
-            "close_window": self.close_window, "focused_window": self.focused_window,
-            "desktop_spaces": self.desktop_spaces,
-            "activate_workspace": self.activate_workspace,
-            "move_window_to_workspace": self.move_window_to_workspace,
-            "move_window_to_monitor": self.move_window_to_monitor,
-            "save_desktop_profile": self.save_desktop_profile,
-            "list_desktop_profiles": self.list_desktop_profiles,
-            "restore_desktop_profile": self.restore_desktop_profile,
-            "place_window": self.place_window, "arrange_windows": self.arrange_windows,
-            "arrange_window_grid": self.arrange_window_grid,
-            "save_window_layout": self.save_window_layout,
-            "restore_window_layout": self.restore_window_layout,
-            "list_window_layouts": self.list_window_layouts,
-            "window_action_history": self.window_action_history,
-            "desktop_screenshot": self.desktop_screenshot,
-            "desktop_open_app": self.desktop_open_app,
-            "list_installed_apps": self.list_installed_apps,
-            "launch_installed_app": self.launch_installed_app,
-            "authorized_directories": self.authorized_directories,
-            "open_project": self.open_project, "open_file": self.open_file,
-            "launch_installed_app_and_focus": self.launch_installed_app_and_focus,
-            "open_project_and_focus": self.open_project_and_focus,
-            "open_file_and_focus": self.open_file_and_focus,
-            "verify_file": self.verify_file, "managed_processes": self.managed_processes,
-            "desktop_input": self.desktop_input,
-        }
-        if name not in operations:
-            return {"error": "Ferramenta desconhecida"}
+        started = time.monotonic()
+        def finish(outcome, capability=None):
+            detail = outcome.get("result") if isinstance(outcome, dict) else None
+            status = "error" if "error" in outcome else (
+                detail.get("status", "ok") if isinstance(detail, dict) else "ok")
+            self.operation_log.append({"tool": name, "capability": capability,
+                                       "status": status,
+                                       "duration_ms": round((time.monotonic() - started) * 1000, 2)})
+            return outcome
+
+        entry = self.registry.get(name)
+        if entry is None:
+            return finish({"error": "Ferramenta desconhecida"})
+        if not self.capabilities.permits(entry):
+            return finish({"error": "Capacidade não autorizada: " + entry.capability},
+                          entry.capability)
+        if name == "desktop_input" and os.getenv("JARVIS_ENABLE_DESKTOP_INPUT") != "1":
+            return finish({"error": "Entrada gráfica desativada"}, entry.capability)
+        if not isinstance(arguments, dict):
+            return finish({"error": "Argumentos devem formar um objeto JSON"}, entry.capability)
         if getattr(self.approve, "mode", None) == "revoked":
             outcome = {"result": {"status": "rejected", "reason": "Sessão revogada"}}
         else:
             try:
-                outcome = {"result": operations[name](**arguments)}
+                handler = getattr(self, entry.handler) if isinstance(entry.handler, str) else entry.handler
+                outcome = {"result": handler(**arguments) if isinstance(entry.handler, str)
+                           else handler(self, **arguments)}
             except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError, ValueError) as exc:
                 outcome = {"error": str(exc)}
             except RuntimeError as exc:
@@ -499,7 +490,7 @@ class Toolkit:
                 outcome["audit_id"] = record_window_action(self.layout_db, name, arguments, outcome)
             except (OSError, sqlite3.Error):
                 outcome["audit_error"] = "Histórico de janelas indisponível"
-        return outcome
+        return finish(outcome, entry.capability)
 
 TOOL_SPECS = [
     {"type":"function","name":"place_window","description":"Posiciona UMA janela na área útil: left, right, center, bottom_right ou custom. Percentuais opcionais definem tamanho relativo (10 a 100). custom exige x_px, y_px, width_px, height_px em pixels relativos à área útil e dentro dela. Revalida ID e confirma geometria GNOME após MoveResize e Move.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right","center","bottom_right","custom"]},"title":{"type":"string"},"width_percent":{"type":"integer"},"height_percent":{"type":"integer"},"x_px":{"type":"integer"},"y_px":{"type":"integer"},"width_px":{"type":"integer"},"height_px":{"type":"integer"}},"required":["app","position"],"additionalProperties":False}},
@@ -551,3 +542,52 @@ TOOL_SPECS = [
     {"type":"function","name":"run_command","description":"Comandos de inspeção limitados, sem argumentos livres.","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"}},"required":["command"],"additionalProperties":False}},
     {"type":"function","name":"browser_open","description":"Abre URL HTTP/HTTPS no navegador padrão após autorização.","parameters":{"type":"object","properties":{"url":{"type":"string"}},"required":["url"],"additionalProperties":False}},
 ]
+
+# Cada ferramenta pertence a uma única capacidade. A política pode ocultar a
+# capacidade no catálogo e também bloqueá-la no limite de execução.
+_CAPABILITY_TOOLS = {
+    "filesystem.read": {"list_files", "read_file", "verify_file", "authorized_directories"},
+    "filesystem.write": {"write_file", "make_directory", "move_path", "delete_path",
+                         "create_python_project"},
+    "command.read": {"run_command"},
+    "browser.read": {"browser_inspect"},
+    "browser.control": {"browser_open", "browser_navigate", "browser_click",
+                        "browser_fill", "browser_screenshot"},
+    "desktop.read": {"desktop_info", "desktop_windows", "verify_app_window",
+                     "focused_window", "desktop_spaces", "list_desktop_profiles",
+                     "list_window_layouts", "window_action_history", "list_installed_apps",
+                     "managed_processes"},
+    "desktop.control": {"place_window", "close_window", "activate_workspace",
+                        "move_window_to_workspace", "move_window_to_monitor",
+                        "save_desktop_profile", "restore_desktop_profile", "arrange_windows",
+                        "arrange_window_grid", "save_window_layout", "restore_window_layout",
+                        "manage_window", "focus_window", "launch_installed_app_and_focus",
+                        "open_project_and_focus", "open_file_and_focus", "open_file",
+                        "open_project", "launch_installed_app", "desktop_open_app"},
+    "desktop.capture": {"desktop_screenshot"},
+    "desktop.input": {"desktop_input"},
+}
+
+
+def _build_default_registry():
+    registry = ToolRegistry()
+    capabilities = {}
+    for capability, names in _CAPABILITY_TOOLS.items():
+        for name in names:
+            if name in capabilities:
+                raise ValueError(f"Ferramenta em duas capacidades: {name}")
+            capabilities[name] = capability
+    for spec in TOOL_SPECS:
+        name = spec["name"]
+        if name not in capabilities:
+            raise ValueError(f"Ferramenta sem capacidade: {name}")
+        if not callable(getattr(Toolkit, name, None)):
+            raise ValueError(f"Ferramenta sem executor: {name}")
+        registry.register(spec, capabilities[name], name)
+    missing = capabilities.keys() - {spec["name"] for spec in TOOL_SPECS}
+    if missing:
+        raise ValueError("Capacidades sem esquema: " + ", ".join(sorted(missing)))
+    return registry
+
+
+DEFAULT_REGISTRY = _build_default_registry()

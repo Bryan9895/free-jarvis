@@ -1,5 +1,12 @@
 # Histórico de alterações
 
+## Em desenvolvimento — v0.7.0
+
+- Registro central do catálogo com esquema, capacidade e executor de cada ferramenta; extensões Python exigem registro explícito.
+- Filtragem das ferramentas anunciadas e bloqueio no limite de execução por `JARVIS_ENABLED_CAPABILITIES`, inclusive no modo `--auto-approve`.
+- Entrada gráfica experimental permanece sujeita ao opt-in `JARVIS_ENABLE_DESKTOP_INPUT=1`; testes automatizados de registro, negação e extensibilidade.
+- Medições por chamada de ferramenta, com estado e duração, em trilha limitada a 100 registros sem argumentos; expostas em `/metricas`.
+
 ## Em desenvolvimento — v0.6.0
 
 - Ferramenta `desktop_spaces` para consultar monitores, áreas úteis e áreas de trabalho GNOME com resposta D-Bus validada; roteamento direto de pedidos informativos.

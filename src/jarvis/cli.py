@@ -142,7 +142,10 @@ def main():
             return
         auto.initialize()
         mem = Memory(c.db)
-        toolkit = Toolkit(c.workspace, approve=confirm, layout_db=c.db)
+        try:
+            toolkit = Toolkit(c.workspace, approve=confirm, layout_db=c.db)
+        except ValueError as exc:
+            parser.error(str(exc))
         agent = Agent(auto, toolkit, mem, auto.active_model)
         from .planner import TaskPlanner
         from .plan_store import PlanStore
