@@ -33,8 +33,18 @@ def verify_step(toolkit, outcomes):
         if name in _LAUNCHERS:
             if status == "launched_unverified":
                 saw_launch = True
+                observation = action.get("window_observation")
+                window_state = (observation or {}).get("status") if isinstance(observation, dict) else None
+                details = {
+                    "appeared_after_request": "Janela apareceu após o pedido; causalidade não comprovada",
+                    "already_observed": "Janela já existia antes da solicitação",
+                    "observed_unknown_origin": "Janela observada; estado anterior indisponível",
+                    "not_observed": "Janela não observada; não significa que abertura falhou",
+                    "unavailable": "Inventário de janelas indisponível",
+                }
                 evidence.append({"tool": name, "status": "unverified",
-                                 "detail": "Lançador iniciado; janela não confirmada"})
+                                 "detail": details.get(window_state, "Lançador iniciado; janela não confirmada"),
+                                 "window_status": window_state or "unknown"})
             continue
         if status not in ("created", "written", "moved", "trashed"):
             continue
