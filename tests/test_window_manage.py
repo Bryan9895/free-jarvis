@@ -79,6 +79,46 @@ class WindowManageTests(unittest.TestCase):
             result = manage_window("firefox", "", "maximize", lambda _: True, retries=1)
             self.assertEqual(result["status"], "state_unverified")
 
+
+    def test_maximized_but_minimized_firefox_must_restore_and_activate(self):
+        before = [win(minimized=True, maximized=True)]
+        after = [win(minimized=False, maximized=True)]
+        with patch("jarvis.window_manage._inventory",
+                   side_effect=[before, before, after]), patch(
+            "jarvis.window_manage._dbus",
+            return_value=Mock(returncode=0, stdout="(true,)")) as dbus:
+            result = manage_window("firefox", "", "maximize", lambda _: True)
+        self.assertEqual(result["status"], "state_verified")
+        self.assertEqual([call.args[0] for call in dbus.call_args_list],
+                         ["Unminimize", "Activate"])
+
+    def test_minimized_maximize_does_not_claim_success_if_still_hidden(self):
+        before = [win(minimized=True, maximized=True)]
+        with patch("jarvis.window_manage._inventory",
+                   return_value=before), patch(
+            "jarvis.window_manage._dbus",
+            return_value=Mock(returncode=0, stdout="(true,)")):
+            result = manage_window("firefox", "", "maximize",
+                                   lambda _: True, retries=1)
+        self.assertEqual(result["status"], "state_unverified")
+
+    def test_terminal_alias_finds_ptyxis_or_reports_ambiguity(self):
+        with patch("jarvis.window_manage._inventory",
+                   return_value=[win(app="org.gnome.Ptyxis",
+                                     title="Terminal JARVIS")]), patch(
+            "jarvis.window_manage._dbus",
+            return_value=Mock(returncode=0, stdout="(true,)")):
+            result = manage_window("terminal", "", "maximize",
+                                   lambda _: True, retries=1)
+        self.assertEqual(result["status"], "state_unverified")
+        with patch("jarvis.window_manage._inventory",
+                   return_value=[win(id=1, app="org.gnome.Ptyxis"),
+                                 win(id=2, app="org.gnome.Ptyxis")]), patch(
+            "jarvis.window_manage._dbus") as dbus:
+            result = manage_window("terminal", "", "maximize", lambda _: True)
+        self.assertEqual(result["status"], "ambiguous")
+        dbus.assert_not_called()
+
     def test_preexisting_state_is_noop(self):
         with patch("jarvis.window_manage._inventory",
                    return_value=[win(maximized=True)]), patch(
