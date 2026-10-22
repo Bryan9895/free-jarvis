@@ -245,6 +245,27 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(agent.last_metrics["direct_tool_reply"])
             memory.close()
 
+    def test_unadvertised_tool_is_blocked_at_execution_boundary(self):
+        with tempfile.TemporaryDirectory() as td:
+            call = {"type": "function_call", "name": "write_file",
+                    "call_id": "unauthorized-1",
+                    "arguments": '{"path":"unexpected.txt","content":"no"}'}
+            result = {"output": [call]}
+            final = {"output": [{"type": "message", "content": [
+                {"type": "output_text", "text": "Ferramenta indisponível."}]}]}
+            client = FakeClient([result, final])
+            kit = Toolkit(Path(td), approve=lambda _: True)
+            memory = Memory(Path(td) / "m.db")
+            with patch.object(kit, "execute", wraps=kit.execute) as execute:
+                agent = Agent(client, kit, memory, "fake")
+                agent.ask("Jarvis, coloque o Firefox em primeiro plano")
+                execute.assert_not_called()
+            self.assertFalse((Path(td) / "unexpected.txt").exists())
+            self.assertEqual(agent.last_metrics["tools_executed"], 0)
+            self.assertIn("não disponível",
+                          agent.last_metrics["tool_problems"][0]["reason"])
+            memory.close()
+
     def test_fast_mode_never_executes_tools(self):
         with tempfile.TemporaryDirectory() as td:
             call={"type":"function_call","name":"write_file","call_id":"c1",
