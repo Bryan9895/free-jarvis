@@ -8,6 +8,7 @@ from .fcc import FCCClient, FCCError, AutoModelClient
 from .tools import Toolkit
 from .memory import Memory
 from .agent import Agent
+from .approval import ApprovalPolicy
 
 def confirm(action):
     print(f"\n⚠️  AUTORIZAÇÃO NECESSÁRIA: {action}")
@@ -32,8 +33,12 @@ def main():
     parser.add_argument("--desktop-screenshot", action="store_true", help="Solicita captura de tela via portal Wayland com confirmação")
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
+    parser.add_argument("--auto-approve", action="store_true", help="Autorizar automaticamente ações das ferramentas desta sessão (não amplia permissões do SO)")
     args = parser.parse_args()
     c = Config.from_env()
+    # O modo automático deve ser escolhido explicitamente pelo operador.
+    approval = ApprovalPolicy(auto=args.auto_approve, manual_callback=confirm)
+    confirm = approval
     if args.doctor:
         from pathlib import Path
         import importlib.util
@@ -156,6 +161,10 @@ def main():
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
+        print("Autorizações: /permissoes auto | manual | status  (atual: " + approval.mode + ")")
+        if approval.auto:
+            print("⚡ AUTOAPROVAÇÃO ATIVA: ferramentas atuais executam sem pedir SIM. "
+                  "Limites do workspace, comandos e permissões GNOME continuam valendo.")
         print("Tarefas: /planejar OBJETIVO, /plano, /historico-planos, /selecionar-plano ID, /resolver-etapa skip|retry, /retomar-plano, /executar-plano")
         try:
             while True:
@@ -236,6 +245,23 @@ def main():
                     continue
                 if msg.lower() == "/historico-planos":
                     print(format_history(planner.history()))
+                    continue
+                if msg.lower() in ("/permissoes", "/permissões",
+                                   "/permissoes status", "/permissões status"):
+                    print("Autorizações:", approval.mode,
+                          "| automaticamente autorizadas:", approval.auto_approved)
+                    continue
+                if msg.lower() in ("/permissoes auto", "/permissões auto"):
+                    approval.set_mode("auto")
+                    print("⚡ Autoaprovação ativada nesta sessão; "
+                          "operações das ferramentas não pedirão SIM. "
+                          "Isso inclui alterações de arquivos e navegação. "
+                          "Restrições locais e permissões GNOME permanecem.")
+                    continue
+                if msg.lower() in ("/permissoes manual", "/permissões manual"):
+                    approval.set_mode("manual")
+                    print("Autorizações manuais restauradas. As próximas "
+                          "operações voltarão a pedir SIM.")
                     continue
                 if msg.lower() == "/rapido":
                     agent.mode = "fast"
