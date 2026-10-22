@@ -878,3 +878,37 @@ O modo padrão continua manual, salvo quando `--auto-approve` for usado. Cada ap
 **O que esse modo NÃO faz:** não confere permissões de administrador/root, não contorna diálogos de permissão do GNOME/Wayland, não adiciona execução genérica de shell, não modifica permissões Unix, não acessa pastas fora de `JARVIS_WORKSPACE` e `JARVIS_ALLOWED_DIRS`, nem amplia o catálogo de ferramentas permitido. O controle de escopo e validação dos caminhos permanece no `Toolkit`. A autorização automática vale somente para as solicitações de consentimento internas da JARVIS, não para permissões do sistema.
 
 Para o modo automático permanecer habilitado em novas sessões, use `jarvis-fcc --auto-approve` na forma habitual de iniciar. A autoaprovação é interrompida ao sair da sessão e só será reativada com uma escolha explícita do usuário.
+
+## JARVIS v0.3.0 — minimizar, restaurar e maximizar janelas no GNOME Wayland
+
+Adicionada a ferramenta `manage_window`, com operações `minimize`, `restore`, `maximize` e `unmaximize`, preservando `focus_window` para colocar janelas em primeiro plano.
+
+**Requisito opcional adicional:** [Window Control](https://extensions.gnome.org/extension/10886/window-control/) — extensão GNOME separada de Window Calls Extended e Activate Window By Title. É instalada e habilitada pelo usuário. Verifique a compatibilidade com `gnome-shell --version` e as extensões ativas via `gnome-extensions list --enabled`. O UUID usado pelo projeto é `window-control@carlo9890.github.io`. Após instalar uma extensão no GNOME Wayland, talvez seja necessário sair e entrar novamente na sessão para carregá-la.
+
+Essa extensão disponibiliza `org.gnome.Shell.Extensions.WindowControl.ListDetailed` e comandos `Minimize`, `Unminimize`, `Maximize`, `Unmaximize` via D-Bus. Nossa JARVIS **não** instala extensões automaticamente, não chama `Shell.Eval`, não usa `xdotool`/X11 para controlar janelas Wayland e não implementa fechamento de janelas nesta versão.
+
+A ferramenta consulta janelas por classe/título, exige uma única correspondência, obtém ID do GNOME (não o recebe da IA), pede confirmação ou usa `--auto-approve` quando habilitado, relê o inventário depois da autorização e chama o D-Bus do Window Control. Só retorna `state_verified` se o estado final for confirmado; quando impossível validar, retorna `state_unverified` ou outro estado de falha. Se a extensão não estiver carregada, retorna `unavailable` e não tenta contornar a ausência.
+
+Exemplos:
+
+```text
+Jarvis, minimize a janela do Firefox.
+Jarvis, maximize a janela do Firefox.
+Jarvis, restaure a janela do Firefox.
+Jarvis, desmaximize a janela do Firefox.
+```
+
+Para não precisar digitar `SIM`:
+
+```bash
+cd ~/free-jarvis
+git pull --ff-only origin main
+source .venv/bin/activate
+jarvis-fcc --auto-approve
+```
+
+O roteador anuncia apenas `manage_window` para pedidos de estado de janela inequívocos, evitando enviar o catálogo completo à IA. A resposta após uma ação isolada vem diretamente da ferramenta, sem outra chamada ao FCC, e `/metricas` registra `tools_advertised`, `model_rounds` e `direct_tool_reply`.
+
+**Aviso:** a interface D-Bus do Window Control não possui controle de acesso próprio dentro da sessão GNOME. Como qualquer programa da sessão pode potencialmente usá-la, avalie esse aspecto antes de instalar. O usuário controla a instalação e a ativação. O funcionamento real precisa ser testado no notebook; o CI valida apenas comportamentos simulados e não controla um GNOME físico.
+
+Referências técnicas da extensão: https://github.com/carlo9890/gnome-window-control e https://github.com/carlo9890/gnome-window-control/blob/main/window-control@carlo9890.github.io/dbus-interface.js
