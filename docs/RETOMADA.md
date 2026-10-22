@@ -95,3 +95,11 @@ Adicionadas `arrange_window_grid` (três janelas: esquerda + duas à direita; qu
 `place_window(position="custom")` recebe `x_px`, `y_px`, `width_px`, `height_px` relativos à área útil do monitor e recusa coordenadas fora dela. A trilha `window_action_history` registra ferramenta, status, aplicativo e geometria sanitizada em tabela própria de `JARVIS_DB`; títulos de janelas não são gravados. Testes automatizados foram adicionados. O teste real de posicionamento por pixels no Ubuntu e a conferência do histórico após ações reais ainda precisam ser feitos pelo usuário.
 
 No ambiente de desenvolvimento desta entrega, `jarvis-fcc --desktop-info` confirmou sessão Ubuntu GNOME Wayland e portais de captura/RemoteDesktop disponíveis. A extensão Window Control respondeu a `GetVersion` com `('4',)` e a `GetCapabilities` com `rules`, `rules-title-affix`, `keybindings`, `no-animation` e `activate-no-animation`. Essas consultas são somente leitura; não comprovam que `MoveResize` tenha aplicado a geometria de uma janela real.
+
+## Validação real da v0.5.0 com janelas descartáveis (22/10/2026)
+
+No GNOME Wayland ativo, XTerm descartável confirmou `geometry_verified` para centro e pixels, `focused_verified` para consulta de foco e `closed_verified` para fechamento. Três e quatro XTerm foram organizados em grade com `layout_verified`; perfil salvo, janela movida e perfil restaurado também retornaram `layout_verified`. Seleção de várias XTerm sem título retornou `ambiguous`. A trilha SQLite registrou as ações sem título de janela.
+
+O teste descobriu que `GetFocused` do `gdbus` traz `uint64` textual, corrigido no parser. Também mostrou que `MoveResize` redimensiona XTerm sem mover; `Move` separado aplica a posição. A verificação final permanece obrigatória. Uma janela GNOME Calculator recusou a altura pedida por limite do aplicativo e manteve `geometry_unverified`, sem falso sucesso.
+
+Próximo passo: validar aplicativos cotidianos e monitor adicional quando disponível; depois iniciar v0.6.0 com inventário de monitores e áreas de trabalho. Não marcar v0.5.0 como lançada antes dos critérios restantes.

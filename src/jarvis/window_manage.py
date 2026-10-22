@@ -6,6 +6,7 @@ título; nenhuma chamada ao Shell.Eval nem fallback para atalhos cegos.
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -217,7 +218,9 @@ def focused_window():
     if response is None or response.returncode or len(response.stdout) > 600:
         return {"status": "unavailable", "install_url": EXTENSION_URL}
     try:
-        value = ast.literal_eval(response.stdout.strip())
+        # gdbus imprime a anotação de tipo do primeiro campo uint64.
+        raw = re.sub(r"^\(uint64 ([0-9]+),", r"(\1,", response.stdout.strip())
+        value = ast.literal_eval(raw)
     except (ValueError, SyntaxError, TypeError, MemoryError):
         return {"status": "unavailable"}
     if (not isinstance(value, tuple) or len(value) != 3

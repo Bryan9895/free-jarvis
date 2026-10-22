@@ -132,7 +132,13 @@ def _place_one(chosen, rect):
         return False
     if chosen.get("is_maximized") is True and not _run("Unmaximize", wid):
         return False
-    return _run("MoveResize", wid, *rect)
+    if not _run("MoveResize", wid, *rect):
+        return False
+    # No GNOME real, MoveResize pode redimensionar sem mover (observado com
+    # XTerm). Move separado aplica a posição; a verificação posterior continua
+    # sendo a única fonte de sucesso da operação.
+    _run("Move", wid, rect[0], rect[1])
+    return True
 
 
 def place_window(app, position, approve, title="", width_percent=None, height_percent=None,

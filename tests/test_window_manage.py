@@ -30,6 +30,13 @@ class WindowManageTests(unittest.TestCase):
             "jarvis.window_manage._inventory", return_value=[win()]):
             self.assertEqual(focused_window()["status"], "unverified")
 
+    def test_focused_window_parses_real_gdbus_uint64_reply(self):
+        with patch("jarvis.window_manage._dbus", return_value=Mock(
+                returncode=0,
+                stdout="(uint64 17, 'Página — Firefox', 'firefox_firefox')")), patch(
+            "jarvis.window_manage._inventory", return_value=[win()]):
+            self.assertEqual(focused_window()["status"], "focused_verified")
+
     def test_close_revalidates_identity_and_observes_disappearance(self):
         before = [win()]
         with patch("jarvis.window_manage._inventory",

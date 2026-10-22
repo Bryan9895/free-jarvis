@@ -949,7 +949,7 @@ jarvis-fcc --auto-approve
 
 As chamadas isoladas de `manage_window`, `place_window` e `arrange_windows` respondem diretamente pelos resultados locais, sem esperar outra inferência no FCC. Use `/metricas` para conferir `tools_advertised:1` e `direct_tool_reply:true` quando o roteador reconhecer o pedido como uma operação de janela.
 
-**Limites:** GNOME Wayland com extensão Window Control ativa; o comportamento em notebook real deve ser confirmado. A função organiza janelas já existentes e não cria novas janelas do VS Code. Por ora não oferece fechamento de janelas, múltiplos monitores ou arranjo com mais de duas janelas. A extensão instalada é de terceiros e expõe controles D-Bus também a outros processos da sessão.
+**Limites desta etapa v0.4.0:** GNOME Wayland com extensão Window Control ativa. A função organiza janelas já existentes e não cria novas janelas do VS Code. As funções de fechamento e grades foram adicionadas na v0.5.0 abaixo. A extensão instalada é de terceiros e expõe controles D-Bus também a outros processos da sessão.
 
 ### Correção de interoperabilidade Window Control (22/10/2026)
 
@@ -973,7 +973,7 @@ Jarvis, feche a janela do Firefox.
 /metricas
 ```
 
-Confirme visualmente posição e tamanho, confira `geometry_verified` ou `closed_verified` e repita o fechamento com duas janelas Firefox para observar `ambiguous`. Os testes automatizados simulam a extensão; **essas ações ainda não foram validadas no Ubuntu real**. A v0.5.0 continua em desenvolvimento: tamanhos em pixels, histórico das ações de layout e validação física ainda faltam.
+Confirme visualmente posição e tamanho, confira `geometry_verified` ou `closed_verified` e repita o fechamento com duas janelas Firefox para observar `ambiguous`. A validação física controlada com XTerm descartável está descrita abaixo; o comportamento de aplicativos com tamanho mínimo ou diálogos de salvamento pode variar.
 
 ### Grade de janelas e perfis nomeados
 
@@ -990,7 +990,7 @@ Jarvis, liste meus perfis de janelas.
 Jarvis, restaure o perfil "programação".
 ```
 
-Antes de salvar, deixe as janelas nas posições desejadas. Se houver duas janelas do mesmo aplicativo, informe parte única do título. Confirme visualmente cada posição após restaurar e confira `/metricas`. Os testes automatizados cobrem a geometria e persistência, mas ainda não validam o GNOME físico.
+Antes de salvar, deixe as janelas nas posições desejadas. Se houver duas janelas do mesmo aplicativo, informe parte única do título. Confirme visualmente cada posição após restaurar e confira `/metricas`. As grades de três e quatro janelas, o perfil salvo e a restauração passaram por testes físicos controlados com XTerm descartável no GNOME Wayland.
 
 ### Posicionamento em pixels e histórico local
 
@@ -998,4 +998,10 @@ Antes de salvar, deixe as janelas nas posições desejadas. Se houver duas janel
 
 `window_action_history(limit=20)` consulta ações recentes de janela no SQLite de `JARVIS_DB`. O histórico inclui ferramenta, estado, aplicativo e geometria verificada quando disponível. Não grava títulos de janelas nem conteúdo de arquivos. Consulte com `Jarvis, mostre o histórico de ações das janelas.` Uma falha de gravação do histórico é indicada por `audit_error` no resultado da ferramenta; ela não converte uma ação de desktop em sucesso nem desfaz uma ação já enviada.
 
-O posicionamento em pixels e o histórico passaram por testes automatizados, mas **a v0.5.0 ainda aguarda validação física no Ubuntu GNOME Wayland**. Teste com janelas descartáveis antes de confiar no resultado para seu ambiente diário.
+### Validação física controlada no Ubuntu GNOME Wayland (22/10/2026)
+
+Com a extensão Window Control ativa, janelas XTerm descartáveis retornaram `geometry_verified` para centralização e posição em pixels; `focused_verified` para foco; `closed_verified` para fechamento; `layout_verified` para grades de três e quatro janelas e para restauração de perfil. Duas janelas XTerm sem título seletor retornaram `ambiguous`. Ações via `Toolkit.execute` apareceram no histórico SQLite com estado e geometria, sem título.
+
+O teste encontrou dois problemas corrigidos: `GetFocused` retorna o primeiro campo como `uint64` na saída textual do `gdbus`, e `MoveResize` do GNOME redimensionou XTerm sem alterar sua posição. Após `MoveResize`, a JARVIS também envia `Move` para a mesma janela e só confirma êxito quando o inventário mostra a geometria solicitada. O GNOME Calculator apresentou limite mínimo de altura, portanto uma geometria incompatível continuou `geometry_unverified`, como esperado.
+
+Ainda é necessário testar casos com múltiplos monitores, janelas com diálogo de salvamento e os aplicativos usados no fluxo diário. O código continua na versão 0.4.0 até que os critérios restantes de v0.5.0 sejam concluídos.

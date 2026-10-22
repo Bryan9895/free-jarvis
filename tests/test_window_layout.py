@@ -44,7 +44,7 @@ class LayoutTests(unittest.TestCase):
             if method == "GetWorkarea":
                 self.assertEqual(args, (0,))
                 return Mock(returncode=0, stdout="(0, 32, 1300, 700)")
-            if method == "MoveResize":
+            if method in ("MoveResize", "Move"):
                 return Mock(returncode=0, stdout="()")
             self.fail("Comando D-Bus inesperado: " + method)
         with patch("jarvis.window_manage._dbus", side_effect=dbus), patch(
@@ -97,7 +97,7 @@ class LayoutTests(unittest.TestCase):
             "jarvis.window_layout._run", return_value=True) as run:
             result = arrange_window_grid(selectors, lambda _: True)
         self.assertEqual(result["status"], "layout_verified")
-        self.assertEqual(len(run.call_args_list), 3)
+        self.assertEqual(len(run.call_args_list), 6)
 
     def test_grid_refuses_duplicate_and_changed_windows(self):
         original = [window(1, "code", "Code"), window(2, "firefox", "Firefox"),
@@ -158,7 +158,21 @@ class LayoutTests(unittest.TestCase):
             result = place_window("code", "custom", lambda _: True,
                                   x_px=150, y_px=80, width_px=500, height_px=400)
         self.assertEqual(result["status"], "geometry_verified")
-        action.assert_called_once_with("MoveResize", 15, 250, 100, 500, 400)
+        self.assertEqual([call.args for call in action.call_args_list], [
+            ("MoveResize", 15, 250, 100, 500, 400), ("Move", 15, 250, 100)])
+
+    def test_resize_without_move_does_not_claim_verified_geometry(self):
+        old = window(15, "XTerm", "Disposable")
+        resized = {**old, "width": 500, "height": 400}
+        with patch("jarvis.window_layout._inventory",
+                   side_effect=[[old], [old], *[[resized]] * 4]), patch(
+            "jarvis.window_layout._workarea", return_value=(0, 0, 1000, 900)), patch(
+            "jarvis.window_layout._run", side_effect=[True, False]) as action:
+            result = place_window("XTerm", "custom", lambda _: True,
+                                  x_px=250, y_px=100, width_px=500, height_px=400)
+        self.assertEqual(result["status"], "geometry_unverified")
+        self.assertEqual([call.args[0] for call in action.call_args_list],
+                         ["MoveResize", "Move"])
 
     def test_center_position_is_sent_and_verified(self):
         old = window(15, "code", "VS Code")
@@ -171,7 +185,8 @@ class LayoutTests(unittest.TestCase):
             result = place_window("code", "center", lambda _: True,
                                   width_percent=70, height_percent=100)
         self.assertEqual(result["status"], "geometry_verified")
-        action.assert_called_once_with("MoveResize", 15, 150, 0, 700, 900)
+        self.assertEqual([call.args for call in action.call_args_list], [
+            ("MoveResize", 15, 150, 0, 700, 900), ("Move", 15, 150, 0)])
 
     def test_one_window_moves_and_verifies(self):
         old = window(15, "firefox_firefox", "Mozilla Firefox")
@@ -182,7 +197,8 @@ class LayoutTests(unittest.TestCase):
             "jarvis.window_layout._run", return_value=True) as action:
             result = place_window("firefox", "right", lambda _: True)
         self.assertEqual(result["status"], "geometry_verified")
-        action.assert_called_once_with("MoveResize", 15, 500, 0, 500, 900)
+        self.assertEqual([call.args for call in action.call_args_list], [
+            ("MoveResize", 15, 500, 0, 500, 900), ("Move", 15, 500, 0)])
 
     def test_two_window_layout_verified(self):
         firefox = window(15, "firefox_firefox", "Mozilla Firefox")
@@ -198,7 +214,9 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(result["status"], "layout_verified")
         self.assertEqual([call.args for call in action.call_args_list], [
             ("MoveResize", 15, 0, 0, 500, 900),
-            ("MoveResize", 16, 500, 0, 500, 900)])
+            ("Move", 15, 0, 0),
+            ("MoveResize", 16, 500, 0, 500, 900),
+            ("Move", 16, 500, 0)])
 
     def test_ambiguous_and_missing_windows_do_nothing(self):
         firefox1 = window(15, "firefox_firefox", "Tab 1")
