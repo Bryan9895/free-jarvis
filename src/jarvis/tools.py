@@ -18,27 +18,41 @@ class Toolkit:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.approve = approve or (lambda _action: False)
         self._browser = None
+        roots = []
+        for value in os.getenv("JARVIS_ALLOWED_DIRS", "").split(os.pathsep):
+            if value.strip():
+                root = Path(value.strip()).expanduser().resolve()
+                if root.is_dir() and root != Path.home().resolve() and root != Path("/"):
+                    roots.append(root)
+        self.allowed_roots = [self.workspace] + [p for p in roots if p != self.workspace]
 
     def path(self, requested: str) -> Path:
         if not isinstance(requested, str):
             raise ToolError("Caminho inválido")
         p = (self.workspace / requested).resolve()
-        if not p.is_relative_to(self.workspace):
-            raise ToolError("Acesso fora do workspace bloqueado")
+        if not any(p.is_relative_to(root) for root in self.allowed_roots):
+            raise ToolError("Acesso fora dos diretórios autorizados bloqueado")
         return p
 
     def _safe_mutation_path(self, requested):
-        """Não permite usar links simbólicos em operações mutáveis."""
         if not isinstance(requested, str):
             raise ToolError("Caminho inválido")
-        raw = self.workspace / requested
-        # Inspeciona cada componente antes de resolve() para não seguir symlinks.
-        candidate = raw
-        while candidate != self.workspace and candidate.is_relative_to(self.workspace):
-            if candidate.is_symlink():
-                raise ToolError("Links simbólicos não são aceitos em alterações")
-            candidate = candidate.parent
-        return self.path(requested)
+        raw = Path(requested).expanduser()
+        if not raw.is_absolute():
+            raw = self.workspace / raw
+        raw = Path(os.path.abspath(raw))
+        for root in self.allowed_roots:
+            if raw.is_relative_to(root):
+                candidate = raw
+                while candidate != root:
+                    if candidate.is_symlink():
+                        raise ToolError("Links simbólicos não são aceitos em alterações")
+                    candidate = candidate.parent
+                return self.path(requested)
+        raise ToolError("Acesso fora dos diretórios autorizados bloqueado")
+
+    def _is_root(self, path):
+        return path in self.allowed_roots
 
     def list_files(self, path="."):
         p = self.path(path)
@@ -68,7 +82,7 @@ class Toolkit:
 
     def make_directory(self, path):
         destination = self._safe_mutation_path(path)
-        if destination == self.workspace or not destination.is_relative_to(self.workspace):
+        if self._is_root(destination):
             raise ToolError("Escolha uma subpasta do workspace")
         if destination.exists():
             raise ToolError("O caminho já existe")
@@ -81,7 +95,7 @@ class Toolkit:
 
     def move_path(self, source, destination):
         src, dst = self._safe_mutation_path(source), self._safe_mutation_path(destination)
-        if src == self.workspace or dst == self.workspace or src == self.workspace / ".jarvis-trash":
+        if self._is_root(src) or self._is_root(dst) or src == self.workspace / ".jarvis-trash":
             raise ToolError("Não é permitido mover a raiz do workspace nem a lixeira")
         if src == dst or not src.exists() or dst.exists():
             raise ToolError("Origem ausente, destino existente ou caminhos idênticos")
@@ -93,7 +107,7 @@ class Toolkit:
             raise ToolError("A pasta de destino precisa existir")
         if not self.approve(f"MOVER {src} PARA {dst}"):
             return {"status": "rejected"}
-        src, dst = self.path(source), self.path(destination)
+        src, dst = self._safe_mutation_path(source), self._safe_mutation_path(destination)
         if not src.exists() or dst.exists():
             raise ToolError("Os caminhos mudaram; operação cancelada")
         moved = shutil.move(str(src), str(dst))
@@ -103,13 +117,13 @@ class Toolkit:
         """Move para a lixeira interna do workspace, sem excluir definitivamente."""
         target = self._safe_mutation_path(path)
         trash = self.workspace / ".jarvis-trash"
-        if target == self.workspace or target == trash or target.is_relative_to(trash):
+        if self._is_root(target) or target == trash or target.is_relative_to(trash):
             raise ToolError("Não é permitido remover a raiz ou a lixeira")
         if target.is_symlink() or not target.exists():
             raise ToolError("Caminho inexistente ou link simbólico não permitido")
         if not self.approve(f"MOVER PARA LIXEIRA INTERNA {target}"):
             return {"status": "rejected"}
-        target = self.path(path)
+        target = self._safe_mutation_path(path)
         if not target.exists() or target.is_symlink():
             raise ToolError("Caminho alterado desde a autorização")
         trash.mkdir(exist_ok=True)
@@ -183,6 +197,18 @@ class Toolkit:
             self._browser.close()
             self._browser = None
 
+    def list_installed_apps(self, query="", limit=40):
+        from .apps import installed_applications
+        return installed_applications(limit=limit, query=query)
+
+    def launch_installed_app(self, app_id):
+        from .apps import launch_installed_app
+        return launch_installed_app(app_id, self.approve)
+
+    def authorized_directories(self):
+        return [{"path": str(root), "default": root == self.workspace}
+                for root in self.allowed_roots]
+
     def desktop_info(self):
         from .wayland import desktop_info
         return desktop_info()
@@ -211,6 +237,9 @@ class Toolkit:
             "browser_screenshot": self.browser_screenshot,
             "desktop_info": self.desktop_info, "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
+            "list_installed_apps": self.list_installed_apps,
+            "launch_installed_app": self.launch_installed_app,
+            "authorized_directories": self.authorized_directories,
             "desktop_input": self.desktop_input,
         }
         if name not in operations:
@@ -223,6 +252,9 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"list_installed_apps","description":"Pesquisa aplicativos gráficos instalados visíveis no menu Ubuntu/GNOME. Informe query por nome ou ID antes de abrir. Não executa programas.","parameters":{"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":120}},"additionalProperties":False}},
+    {"type":"function","name":"launch_installed_app","description":"Inicia um programa gráfico instalado pelo ID obtido em list_installed_apps, com autorização. Não executa comandos arbitrários nem confirma janela aberta.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
+    {"type":"function","name":"authorized_directories","description":"Lista as raízes de diretórios locais autorizados por JARVIS_ALLOWED_DIRS.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"make_directory","description":"Cria pasta dentro do workspace após confirmação.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"move_path","description":"Renomeia ou move arquivo/pasta dentro do workspace; destino não deve existir. Exige confirmação.","parameters":{"type":"object","properties":{"source":{"type":"string"},"destination":{"type":"string"}},"required":["source","destination"],"additionalProperties":False}},
     {"type":"function","name":"delete_path","description":"Remove arquivo ou pasta dentro do workspace movendo-o para .jarvis-trash, para permitir recuperação manual. Exige confirmação. Nunca faz exclusão permanente.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
