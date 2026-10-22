@@ -122,6 +122,7 @@ class Agent:
                      if spec["name"] != "desktop_input"
                      or os.getenv("JARVIS_ENABLE_DESKTOP_INPUT") == "1"]
         available = tool_catalog(message, available) if chosen == "tools" else []
+        advertised_tool_count = len(available)
         timings = []
         calls_executed = 0
         tool_problems = []
