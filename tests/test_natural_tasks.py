@@ -110,6 +110,8 @@ class NaturalTaskTests(unittest.TestCase):
     def test_intents_remain_conservative(self):
         self.assertEqual(classify("O que é Python?"), "normal")
         self.assertEqual(classify("Abra o gerenciador de arquivos"), "normal")
+        self.assertEqual(classify("Jarvis, identifique a janela do Firefox e coloque-a em primeiro plano."), "normal")
+        self.assertEqual(classify("Jarvis, coloque a janela do Firefox em primeiro plano."), "normal")
         self.assertEqual(classify("Liste arquivos e depois analise o projeto"), "plan_execute")
         self.assertEqual(classify("Continue de onde parou"), "resume")
         self.assertEqual(classify("Me mostre o histórico das tarefas"), "history")
