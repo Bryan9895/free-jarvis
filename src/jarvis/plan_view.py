@@ -5,12 +5,14 @@ from datetime import datetime
 _LABELS = {
     "ready": "Pronto para executar",
     "running": "Em execução",
-    "completed_unverified": "Etapas processadas (sem verificação independente)",
+    "completed_unverified": "Etapas processadas (verificação parcial ou indisponível)",
+    "completed_verified": "Todas as etapas verificadas",
     "stopped": "Interrompido por erro ou bloqueio",
     "cancelled": "Cancelado",
     "interrupted": "Interrompido ao encerrar a JARVIS",
     "pending": "Pendente",
     "reported_unverified": "Processada; resultado não verificado",
+    "verified": "Verificada no sistema de arquivos",
     "blocked": "Bloqueada",
     "failed": "Falhou",
     "skipped_unverified": "Ignorada manualmente (resultado desconhecido)",
@@ -21,7 +23,7 @@ def format_plan(plan, *, show_results=True):
     if not plan or plan.get("status") == "no_plan":
         return "Nenhum plano encontrado. Use /planejar <objetivo>."
     steps = plan.get("steps", [])
-    completed = sum(s.get("status") == "reported_unverified" for s in steps)
+    completed = sum(s.get("status") in ("reported_unverified", "verified") for s in steps)
     total = len(steps)
     width = 22
     progress = round(width * completed / total) if total else 0
@@ -37,7 +39,7 @@ def format_plan(plan, *, show_results=True):
         f"  Progresso: [{bar}] {completed}/{total} etapas",
         "  " + "─" * 55,
     ]
-    symbols = {"pending": "○", "running": "◌", "reported_unverified": "✓",
+    symbols = {"pending": "○", "running": "◌", "reported_unverified": "◇", "verified": "✓",
                "failed": "✕", "blocked": "!", "interrupted": "!",
                "skipped_unverified": "↷",}
     for step in steps:
@@ -47,6 +49,9 @@ def format_plan(plan, *, show_results=True):
         if show_results and step.get("result"):
             excerpt = " ".join(str(step["result"]).split())
             lines.append(f"     ↳ {excerpt[:220]}{'…' if len(excerpt) > 220 else ''}")
+        if show_results and step.get("verification"):
+            for evidence in step["verification"][:5]:
+                lines.append(f"     ↳ {evidence.get('tool', 'verificação')}: {evidence.get('status', '—')}")
         if show_results and step.get("problems"):
             for issue in step["problems"][:3]:
                 lines.append(f"     ⚠ {issue.get('tool','ferramenta')}: {issue.get('reason','erro')}")
@@ -54,7 +59,7 @@ def format_plan(plan, *, show_results=True):
         "  " + "─" * 55,
         "  /executar-plano • /cancelar-plano • /historico-planos",
         "  /selecionar-plano ID • /resolver-etapa skip|retry • /retomar-plano",
-        "  ✓ significa etapa processada; não é confirmação externa de êxito.",
+        "  ✓ confirmado no sistema de arquivos • ◇ executado, mas não verificado.",
         "╚" + "═" * 62,
     ])
     return "\n".join(lines)
@@ -66,7 +71,7 @@ def format_history(plans):
     lines = ["", "JARVIS • HISTÓRICO DE PLANOS", "─" * 66]
     for plan in plans:
         steps = plan.get("steps", [])
-        processed = sum(s.get("status") == "reported_unverified" for s in steps)
+        processed = sum(s.get("status") in ("reported_unverified", "verified") for s in steps)
         state = _LABELS.get(plan.get("status"), plan.get("status","—"))
         lines.append(f"  #{plan.get('id','?')}  {plan.get('goal','—')[:65]}")
         lines.append(f"       {state}  •  {processed}/{len(steps)} etapas")
