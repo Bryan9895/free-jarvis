@@ -111,7 +111,7 @@ class Agent:
                             outcome = self.toolkit.execute(call["name"], args)
                             seen[signature] = outcome
                             calls_executed += 1
-                            tool_outcomes.append({"name": call["name"], "arguments": args, "outcome": outcome})
+                            tool_outcomes.append({"name": call["name"], "outcome": {"result": {"status": outcome.get("result", {}).get("status")} if isinstance(outcome.get("result"), dict) else {}, "error": outcome.get("error")} if isinstance(outcome, dict) else {}})
                     except (KeyError, ValueError, TypeError) as exc:
                         outcome = {"error": "Argumentos inválidos: " + str(exc)}
                     # Preserve operational failures for the supervising planner.
