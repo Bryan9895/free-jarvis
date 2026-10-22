@@ -176,6 +176,14 @@ class AutoModelClient:
         if not self.candidates:
             self.initialize()
         candidates = [self.active_model] + [m for m in self.candidates if m != self.active_model]
+        # Um catálogo Responses não garante suporte a function calling. Em pedidos
+        # com ferramentas, não migrar automaticamente para modelos incompatíveis
+        # (por exemplo, de geração especializada) só porque são do mesmo provedor.
+        # Backups expressamente configurados pelo usuário continuam permitidos.
+        if payload.get("tools"):
+            candidates = [self.active_model] + [
+                model for model in candidates[1:] if model in self.backups
+            ]
         last_error = None
         for index, model in enumerate(candidates):
             if getattr(self, "_diagnosing", False):
