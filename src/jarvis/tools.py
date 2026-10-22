@@ -241,6 +241,19 @@ class Toolkit:
         file_path = self.path(path)
         return self._processes.open_file(file_path, editor, self.approve)
 
+    def launch_installed_app_and_focus(self, app_id):
+        """Abre aplicativo XDG, depois pede aprovação para focar janela única."""
+        from .apps import launch_installed_app
+        launched = launch_installed_app(app_id, self.approve)
+        if launched.get("status") != "launched_unverified":
+            return {"launch": launched, "focus": {"status": "not_attempted"}}
+        from .window_tracking import _aliases
+        # Alias único e específico à classe, sem escolher uma janela por título.
+        aliases = _aliases(app_id)
+        app_class = aliases[-1] if len(aliases) > 1 else aliases[0]
+        focused = self.focus_window(app_class)
+        return {"launch": launched, "focus": focused}
+
     def open_project_and_focus(self, path, editor="vscode"):
         """Abre projeto e tenta focar somente janela com título do projeto."""
         directory = self.path(path)
@@ -333,6 +346,7 @@ class Toolkit:
             "launch_installed_app": self.launch_installed_app,
             "authorized_directories": self.authorized_directories,
             "open_project": self.open_project, "open_file": self.open_file,
+            "launch_installed_app_and_focus": self.launch_installed_app_and_focus,
             "open_project_and_focus": self.open_project_and_focus,
             "open_file_and_focus": self.open_file_and_focus,
             "verify_file": self.verify_file, "managed_processes": self.managed_processes,
@@ -348,6 +362,7 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"launch_installed_app_and_focus","description":"Abre aplicativo XDG com autorização e tenta focar UMA janela correspondente com segunda aprovação, somente quando identificação no GNOME é inequívoca. Use o app_id obtido no catálogo; estados separados para abertura e foco.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"open_project_and_focus","description":"Abre projeto existente no editor, depois tenta trazer a janela desse projeto ao primeiro plano. Duas aprovações separadas e verificações GNOME; não afirma sucesso quando título do projeto não é encontrado.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"open_file_and_focus","description":"Abre arquivo existente no editor, depois tenta trazer a janela desse arquivo ao primeiro plano. Aprovações separadas, identificação por título e verificação via GNOME Shell; pode retornar not_observed.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"focus_window","description":"Com autorização explícita, solicita foco de UMA janela do GNOME Wayland usando a extensão opcional Activate Window By Title. Requer Window Calls Extended para identificar janela por app e título único. Confere foco depois; recusa ambiguidades. Não fecha, move ou redimensiona.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
