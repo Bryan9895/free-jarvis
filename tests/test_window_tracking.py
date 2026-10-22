@@ -49,6 +49,22 @@ class WindowTrackingTests(unittest.TestCase):
             self.assertEqual(evidence[0]["window_status"], "appeared_after_request")
             toolkit.close()
 
+    def test_gtk_launch_compares_firefox_before_after(self):
+        from jarvis.apps import launch_installed_app
+        before = windows([])
+        after = windows([{"app": "firefox_firefox", "title": "Firefox", "pid": 23}])
+        with patch("jarvis.apps.installed_applications", return_value=[
+            {"id": "firefox_firefox", "name": "Firefox"}]), patch(
+            "jarvis.apps.shutil.which", return_value="/usr/bin/gtk-launch"
+        ), patch("jarvis.apps.subprocess.Popen", return_value=Mock(pid=123)) as launched, patch(
+            "jarvis.window_tracking.snapshot", side_effect=[before, after]
+        ):
+            result = launch_installed_app("firefox_firefox", lambda _: True)
+        self.assertEqual(result["window_observation"]["status"], "appeared_after_request")
+        self.assertEqual(result["status"], "launched_unverified")
+        self.assertEqual(launched.call_args.args[0],
+                         ["/usr/bin/gtk-launch", "firefox_firefox"])
+
     def test_project_launch_reports_observation_to_managed_processes(self):
         with tempfile.TemporaryDirectory() as td:
             toolkit = Toolkit(Path(td), approve=lambda _: True)
