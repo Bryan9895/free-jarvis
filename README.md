@@ -637,3 +637,22 @@ jarvis-fcc
 ```
 
 Exemplo de caminho absoluto autorizado: `/home/bryan/Documentos/Exemplo`. Para comandos de ferramentas, selecione um modelo FCC compatível com `function_call`. Os estados de lançamento são `launched_unverified` até existir verificação independente. Esta etapa ainda não monitora janelas ou aplicativos iniciados fora da JARVIS.
+
+### Correções a partir dos testes reais do usuário (criar main.py, abrir VS Code)
+
+Os testes mostraram que o modelo podia responder `Posso criar, confirma?` e o planejador marcava uma etapa como processada sem alterações reais. Agora o agente registra `tool_outcomes` com os resultados estruturados de cada ferramenta executada e o planejador interrompe etapas de escrita/abertura se nenhuma ferramenta retornar evidência de operação. Isso **não** substitui uma verificação posterior do estado do sistema; `completed_unverified` continua indicando resultado não verificado independentemente.
+
+Novas ferramentas:
+- `open_file(path, editor="vscode")`: abre um **arquivo existente** individual em VS Code (ou alternativas previstas), ao contrário de `open_project` que abre pastas. Retorna `launched_unverified`; não confirma a janela.
+- `verify_file(path, content?)`: confirma a existência do arquivo ou compara seu conteúdo textual exato; retorna `verified`, `not_found` ou `content_mismatch` e não escreve nada.
+
+O prompt do agente recomenda `list_files` para buscar caminhos, em vez de tentar `run_command` com argumentos livres. O prompt do planejador distingue pasta do projeto e arquivo interno.
+
+Exemplo, iniciando com `JARVIS_ALLOWED_DIRS="$HOME/Documentos:$HOME/Downloads"`:
+
+```text
+Jarvis, crie a pasta TestJarvis em Downloads, crie TestJarvis/main.py
+com print("hello world") e abra o arquivo no VS Code.
+```
+
+A pasta `$HOME/Downloads/TestJarvis` será criada se estiver ausente, e o arquivo ficará dentro dela. Se faltar permissão ou ferramenta, a etapa deve ser mostrada como bloqueada, não concluída. O prompt sozinho não impede todo erro de interpretação de linguagem natural; confira as etapas exibidas antes de autorizar execução. A JARVIS ainda não tem inspeção de janelas do GNOME para atestar visualmente que o VS Code exibiu o arquivo.
