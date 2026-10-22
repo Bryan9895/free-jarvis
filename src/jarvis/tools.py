@@ -388,6 +388,18 @@ class Toolkit:
         from .monitor_control import move_window_to_monitor
         return move_window_to_monitor(app, self.approve, monitor_number, title)
 
+    def save_desktop_profile(self, name, windows):
+        from .desktop_profiles import save_desktop_profile
+        return save_desktop_profile(self.layout_db, name, windows, self.approve)
+
+    def list_desktop_profiles(self):
+        from .desktop_profiles import list_desktop_profiles
+        return list_desktop_profiles(self.layout_db)
+
+    def restore_desktop_profile(self, name):
+        from .desktop_profiles import restore_desktop_profile
+        return restore_desktop_profile(self.layout_db, name, self.approve)
+
     def arrange_windows(self, left_app, right_app, left_title="", right_title=""):
         from .window_layout import arrange_windows
         return arrange_windows(left_app, right_app, self.approve,
@@ -449,6 +461,9 @@ class Toolkit:
             "activate_workspace": self.activate_workspace,
             "move_window_to_workspace": self.move_window_to_workspace,
             "move_window_to_monitor": self.move_window_to_monitor,
+            "save_desktop_profile": self.save_desktop_profile,
+            "list_desktop_profiles": self.list_desktop_profiles,
+            "restore_desktop_profile": self.restore_desktop_profile,
             "place_window": self.place_window, "arrange_windows": self.arrange_windows,
             "arrange_window_grid": self.arrange_window_grid,
             "save_window_layout": self.save_window_layout,
@@ -494,6 +509,9 @@ TOOL_SPECS = [
     {"type":"function","name":"activate_workspace","description":"Ativa uma área de trabalho GNOME existente pelo número humano começando em 1. Revalida a área após autorização e só confirma sucesso se ListWorkspaces mostrar a área ativa.","parameters":{"type":"object","properties":{"workspace_number":{"type":"integer"}},"required":["workspace_number"],"additionalProperties":False}},
     {"type":"function","name":"move_window_to_workspace","description":"Move UMA janela inequívoca para uma área de trabalho GNOME existente. Use número humano começando em 1; título opcional desambigua janelas do mesmo aplicativo. Revalida identidade e workspace_index antes/depois.","parameters":{"type":"object","properties":{"app":{"type":"string"},"workspace_number":{"type":"integer"},"title":{"type":"string"}},"required":["app","workspace_number"],"additionalProperties":False}},
     {"type":"function","name":"move_window_to_monitor","description":"Move UMA janela inequívoca para outro monitor GNOME e verifica monitor_index. monitor_number opcional começa em 1; sem número só funciona se houver exatamente um outro monitor. Título opcional desambigua janelas do mesmo aplicativo.","parameters":{"type":"object","properties":{"app":{"type":"string"},"monitor_number":{"type":"integer"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
+    {"type":"function","name":"save_desktop_profile","description":"Salva perfil completo do ambiente com 1 a 4 janelas já abertas: aplicativo, monitor, área de trabalho e geometria relativa. app_id XDG opcional permite abrir aplicativo ausente na restauração. Título opcional desambigua; persiste localmente no SQLite.","parameters":{"type":"object","properties":{"name":{"type":"string"},"windows":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"},"app_id":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["name","windows"],"additionalProperties":False}},
+    {"type":"function","name":"list_desktop_profiles","description":"Lista nomes dos perfis completos de ambiente salvos localmente. Somente leitura.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+    {"type":"function","name":"restore_desktop_profile","description":"Restaura perfil completo: abre aplicativos ausentes somente se houver app_id XDG salvo, move janelas para monitor e área salvos, aplica geometria e ativa a área salva. Cada etapa exige autorização e verificação; informa resultado parcial e impede repetir abertura incerta.","parameters":{"type":"object","properties":{"name":{"type":"string"}},"required":["name"],"additionalProperties":False}},
     {"type":"function","name":"arrange_windows","description":"Organiza DUAS janelas GNOME no mesmo monitor, uma à esquerda e outra à direita. Só prossegue se ambas forem inequívocas. Informe left_app e right_app e títulos opcionais. Retorna layout_verified apenas se ambas as posições forem observadas.","parameters":{"type":"object","properties":{"left_app":{"type":"string"},"right_app":{"type":"string"},"left_title":{"type":"string"},"right_title":{"type":"string"}},"required":["left_app","right_app"],"additionalProperties":False}},
     {"type":"function","name":"arrange_window_grid","description":"Organiza exatamente três ou quatro janelas já abertas no mesmo monitor. Informe windows em ordem de leitura, cada uma com app e título opcional. Três: metade esquerda e duas à direita; quatro: grade 2x2. Recusa ambiguidades e verifica geometria de cada janela.","parameters":{"type":"object","properties":{"windows":{"type":"array","minItems":3,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["windows"],"additionalProperties":False}},
     {"type":"function","name":"save_window_layout","description":"Salva um perfil nomeado com a geometria atual de duas a quatro janelas já abertas no mesmo monitor. Informe seletores de app e título opcional, sem IDs inventados. Persiste em SQLite local.","parameters":{"type":"object","properties":{"name":{"type":"string"},"windows":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["name","windows"],"additionalProperties":False}},

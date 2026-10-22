@@ -42,6 +42,9 @@ SYSTEM = (
     "com workspace_verified ou window_workspace_verified. "
     "Para outro monitor use move_window_to_monitor; monitor_number começa em 1 "
     "e é opcional somente quando há um único outro monitor possível. "
+    "Use save_desktop_profile, list_desktop_profiles e restore_desktop_profile "
+    "para ambientes com aplicativos, monitores, áreas e geometria. Inclua app_id XDG "
+    "ao salvar se o aplicativo deve poder ser aberto quando estiver ausente. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
     "Para fechar uma janela use close_window; closed_verified exige ausência no inventário. "
@@ -174,7 +177,9 @@ def _local_layout_reply(calls, outcomes):
     if name not in ("place_window", "arrange_windows", "arrange_window_grid",
                     "save_window_layout", "restore_window_layout", "list_window_layouts",
                     "window_action_history", "desktop_spaces", "activate_workspace",
-                    "move_window_to_workspace", "move_window_to_monitor"):
+                    "move_window_to_workspace", "move_window_to_monitor",
+                    "save_desktop_profile", "list_desktop_profiles",
+                    "restore_desktop_profile"):
         return None
     payload = outcomes[0]
     if not isinstance(payload, dict):
@@ -185,6 +190,31 @@ def _local_layout_reply(calls, outcomes):
     if not isinstance(state, dict):
         return None
     status = state.get("status")
+    if name in ("save_desktop_profile", "list_desktop_profiles",
+                "restore_desktop_profile"):
+        if status == "saved":
+            return f"Ambiente '{state.get('name', '')}' salvo com {state.get('windows', 0)} janelas."
+        if status == "listed":
+            names = [str(item.get("name", "")) for item in state.get("profiles", [])]
+            return "Ambientes salvos: " + (", ".join(names) if names else "nenhum") + "."
+        if status == "profile_verified":
+            return f"Ambiente '{state.get('name', '')}' restaurado e verificado pelo GNOME."
+        if status == "profile_partial":
+            outcomes = state.get("outcomes", [])
+            last = outcomes[-1].get("steps", []) if outcomes else []
+            detail = (f" Última etapa: {last[-1].get('action')}={last[-1].get('status')}."
+                      if last else "")
+            return "Ambiente aplicado parcialmente; confira as janelas antes de repetir." + detail
+        failures = {
+            "unavailable": "Ambiente indisponível no GNOME ou no banco local.",
+            "not_found": "Ambiente ou destino salvo não encontrado.",
+            "not_observed": "Uma janela do ambiente não foi encontrada.",
+            "ambiguous": "Uma janela do ambiente é ambígua; informe parte do título.",
+            "launch_uncertain": "Abertura anterior não foi confirmada; verifique o aplicativo antes de repetir.",
+            "changed": "Desktop mudou durante a autorização; tente novamente.",
+            "rejected": "Operação de ambiente cancelada.",
+        }
+        return failures.get(status, "Não consegui confirmar o ambiente.")
     if name == "move_window_to_monitor":
         number = state.get("monitor_number")
         if status == "window_monitor_verified":

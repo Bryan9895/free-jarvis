@@ -60,6 +60,14 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
     if len(normalized) > 180 or "\n" in normalized:
         return available
+    if re.search(r"\b(?:ambiente|ambientes)\b", normalized):
+        if re.search(r"\b(?:salve|salvar|guarde|guardar)\b", normalized):
+            return [t for t in available if t.get("name") == "save_desktop_profile"]
+        if re.search(r"\b(?:liste|listar|mostre|mostrar|quais)\b", normalized):
+            return [t for t in available if t.get("name") == "list_desktop_profiles"]
+        if re.search(r"\b(?:abra|abrir|prepare|preparar|restaure|restaurar|"
+                      r"recupere|recuperar|carregue|carregar)\b", normalized):
+            return [t for t in available if t.get("name") == "restore_desktop_profile"]
     monitor_destination = re.search(
         r"\b(?:(?:outro|segundo|terceiro|externo|\d+) monitor|"
         r"monitor (?:\d+|externo))\b", normalized)

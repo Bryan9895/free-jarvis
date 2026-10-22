@@ -45,6 +45,8 @@ Os testes automatizados existentes simulam parte do desktop e do FCC. Uma funç�
 
 **Movimento entre monitores:** `move_window_to_monitor` implementado com identificação inequívoca, topologia estável e confirmação de `monitor_index` pelo GNOME. Teste real com monitor único confirmou `not_found`/`already_in_state`; testes simulados cobrem movimento entre monitores. A validação física com dois monitores permanece pendente. Próximo item de código: perfis de ambiente envolvendo aplicativos, áreas e monitores.
 
+**Perfis de ambiente:** `save_desktop_profile`, `list_desktop_profiles` e `restore_desktop_profile` salvam e restauram aplicativos, monitor, área e geometria com resultado por etapa. Aplicativo ausente só é aberto quando o perfil inclui `app_id` XDG; abertura enviada e não observada bloqueia repetição automática. Teste real confirmou duas XTerm e abertura/restauração da Calculadora GNOME. Validação com dois monitores segue pendente. Próxima prioridade de código: v0.7.0, registro central de ferramentas e permissões por capacidade.
+
 **Progresso da Fase 1 (22/10/2026):** `write_file` agora mostra um diff limitado na autorização, aceita `expected_sha256` para detectar conteúdo desatualizado, recusa mudanças concorrentes e substitui o arquivo por escrita temporária atômica. `/permissoes revogar` bloqueia novas chamadas de ferramenta até o usuário escolher novamente o modo de autorização. A suíte automatizada passou; auditoria persistente e os demais itens da fase seguem pendentes.
 
 ### Fase 1 — executor e verificações

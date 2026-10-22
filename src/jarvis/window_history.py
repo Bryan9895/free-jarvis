@@ -13,6 +13,7 @@ WINDOW_MUTATIONS = {
     "arrange_windows", "arrange_window_grid", "save_window_layout",
     "restore_window_layout",
     "activate_workspace", "move_window_to_workspace", "move_window_to_monitor",
+    "save_desktop_profile", "restore_desktop_profile",
 }
 
 
@@ -53,6 +54,18 @@ def record_window_action(db_path, tool, arguments, outcome):
     if (isinstance(geometry, (list, tuple)) and len(geometry) == 4
             and all(type(value) is int for value in geometry)):
         details["geometry"] = list(geometry)
+    if tool == "restore_desktop_profile" and isinstance(result, dict):
+        summaries = []
+        for item in result.get("outcomes", [])[:5]:
+            if not isinstance(item, dict):
+                continue
+            for step in item.get("steps", [])[:6]:
+                if (isinstance(step, dict) and isinstance(step.get("action"), str)
+                        and isinstance(step.get("status"), str)):
+                    summaries.append({"action": step["action"][:40],
+                                      "status": step["status"][:60]})
+        if summaries:
+            details["steps"] = summaries
     connection = _connection(db_path)
     try:
         cursor = connection.execute(
