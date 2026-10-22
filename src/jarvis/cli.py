@@ -252,6 +252,16 @@ def main():
                 if msg.lower() in ("/metricas", "/metrics"):
                     print(json.dumps(agent.last_metrics or {"status":"sem execução ainda"}, ensure_ascii=False, indent=2))
                     continue
+                # Comandos começando por / são controle local; nunca enviar
+                # erros de digitação à IA (poderia iniciar inferência lenta).
+                if msg.lower().startswith(("/modelos ", "/models ")):
+                    print("Para selecionar um modelo use /modelo ID (sem s). "
+                          "Para listar todos, digite /modelos.")
+                    continue
+                if msg.lower() in ("/modelo", "/modelos?", "/models?"):
+                    print("Uso: /modelo ID | /modelo atual | /modelo auto | "
+                          "/modelos (listar).")
+                    continue
                 if msg.lower() in ("/modelos", "/models"):
                     try:
                         for model_id in auto.available_models():
@@ -311,6 +321,11 @@ def main():
                         print("JARVIS (visão) >", observation.get("answer", observation), "\\n")
                     except (FCCError, WaylandError) as exc:
                         print("Erro na análise da tela:", exc, file=sys.stderr)
+                    continue
+                if msg.startswith("/"):
+                    print("Comando desconhecido. Digite /modelos para listar, "
+                          "/modelo ID para selecionar, /metricas para métricas, "
+                          "/plano para o plano atual.")
                     continue
                 try:
                     answer = natural_tasks.handle(msg)
