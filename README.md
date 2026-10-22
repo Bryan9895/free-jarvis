@@ -817,3 +817,24 @@ Jarvis, abra meu projeto TesteJanela no VS Code e coloque sua janela em primeiro
 ```
 
 Se os títulos diferirem, ou houver janelas duplicadas, o foco será recusado ou não observado — não há busca agressiva nem clique cego. É necessário manter **Window Calls Extended** e **Activate Window By Title** habilitadas. Os tempos totais também dependem da inferência do FCC: depois de uma interação execute `/metricas` para separar `model_s` (modelo) do tempo total. A validação física desses novos fluxos no notebook ainda está pendente.
+
+### FCC: NIM alternou para diffusiongemma e rejeitou assistant vazio (22/10/2026)
+
+Se aparecer `Empty content is not allowed for assistant messages` depois de uma chamada de ferramenta, o agente agora filtra mensagens do assistente sem conteúdo útil antes de reenviar o histórico ao FCC, mantendo os pares `function_call` e `function_call_output`. Essa correção evita um formato de histórico que certos provedores rejeitam.
+
+Em pedidos **com ferramentas**, a JARVIS não faz mais fallback implícito para modelos arbitrários do mesmo provedor anunciados no catálogo Responses — a lista não garante compatibilidade com function calling. Ela só tentará candidatos adicionais configurados explicitamente via `FCC_FALLBACK_MODELS`. Pedidos sem ferramentas mantêm a política de fallback anterior. Falhas reais do modelo continuam sendo exibidas.
+
+Se o padrão do FCC for `nvidia_nim/nvidia/nemotron-3-super-120b-a12b` e a JARVIS estiver lenta, primeiro compare modelos sem misturar provedores:
+
+```bash
+cd ~/free-jarvis
+git pull --ff-only origin main
+source .venv/bin/activate
+jarvis-fcc --models
+# Somente se o ID estiver anunciado e for autorizado na sua instalação:
+export FCC_MODEL='openai/gpt-5.6-luna'
+unset FCC_FALLBACK_MODELS FCC_ALLOW_CROSS_PROVIDER
+jarvis-fcc
+```
+
+Dentro do chat use `/metricas` **depois** de fazer uma pergunta. Compare `model_s` e `total_s`. Se o modelo explícito estiver indisponível, use `jarvis-fcc --models` para escolher outro ID real; não tente contornar erros de 400 repetidamente. A correção foi coberta por testes simulados; comportamento no FCC/NIM do notebook ainda requer validação.
