@@ -1,118 +1,150 @@
-# JARVIS FCC — MVP 0.1
+# JARVIS FCC — assistente local para Ubuntu GNOME
 
-Assistente pessoal em Python usando [Free Claude Code](https://github.com/Alishahryar1/free-claude-code) como gateway para modelos de IA.
+Assistente pessoal modular em Python conectado ao **Free Claude Code (FCC)** pela API Responses. Oferece chat, execução supervisionada de arquivos, abertura de apps e projetos no VS Code, planejamento persistente, verificações de arquivos e observação de janelas no GNOME Wayland.
 
-**Estado:** MVP de terminal. A integração real com FCC requer validação no computador do usuário.
+**Comece por este guia.** As notas detalhadas e experimentais permanecem ao final deste README. O [registro de continuidade](docs/RETOMADA.md) documenta exatamente onde paramos e o próximo objetivo.
 
-## Funcionalidades atuais
+## Instalação rápida no Ubuntu GNOME Wayland
 
-- Cliente HTTP para `/health`, `/v1/models` e `/v1/responses`.
-- Conversa com chamadas de ferramentas e histórico SQLite.
-- Workspace restrito para listagem, leitura e escrita autorizada.
-- Terminal apenas para inspeção, GitHub CLI (consulta) e abertura de URLs com confirmação.
+### 1. Pré-requisitos do sistema
 
-Há protótipos de voz, navegador e diagnóstico Wayland; o controle global de mouse e teclado continua pendente. Veja `docs/ROADMAP.md`.
-
-## Instalação para novos usuários — Ubuntu/Linux
-
-> **IMPORTANTE:** entre na pasta `free-jarvis` antes de criar o ambiente virtual
-> ou instalar os pacotes. Se você instalar a partir da pasta pai, o Python não
-> encontrará `pyproject.toml` e poderá executar outro software chamado `jarvis`.
-
-Se ainda não clonou o repositório:
+Abra um terminal no notebook Ubuntu e instale as dependências básicas:
 
 ```bash
-git clone git@github.com:Bryan9895/free-jarvis.git
-cd free-jarvis
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip python3-pyatspi at-spi2-core libgtk-3-bin
 ```
 
-Se já clonou em `~/Documentos/Projetos/Jarvis`:
+O `python3-pyatspi` é usado pelo **Python do sistema**, não pelo Python da `.venv`. O comando `gtk-launch` é usado para abrir aplicativos. O VS Code precisa estar instalado separadamente e ter o comando `code` no PATH caso você queira abrir projetos/arquivos pelo editor. Para conferir: `command -v code`.
+
+### 2. Baixar a JARVIS e instalar o ambiente Python
+
+Para uma instalação nova, use HTTPS (não precisa configurar chave SSH):
+
+```bash
+git clone https://github.com/Bryan9895/free-jarvis.git
+cd free-jarvis
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[desktop]'
+```
+
+Se você já tem o projeto, **não clone novamente**:
 
 ```bash
 cd ~/Documentos/Projetos/Jarvis/free-jarvis
-git pull origin main
-```
-
-Verifique a pasta correta; ambos os arquivos devem existir:
-
-```bash
-pwd
-ls -l pyproject.toml src/jarvis/cli.py
-```
-
-Crie o ambiente **dentro desse repositório** e instale:
-
-```bash
-python3 -m venv .venv
+git pull --ff-only origin main
 source .venv/bin/activate
-python -m pip install -e .
+python -m pip install -e '.[desktop]'
 ```
 
-### Verificar se esta JARVIS está instalada
+O módulo de voz, a visão por IA e o navegador automatizado são opcionais. Se quiser preparar também essas capacidades:
 
-Use o comando específico **`jarvis-fcc`**, e não o genérico `jarvis`,
-que pode pertencer a outro projeto (como OpenJarvis):
+```bash
+python -m pip install -e '.[browser,desktop,vision]'
+python -m playwright install chromium
+```
+
+Para voz (ainda experimental), `sudo apt install -y libportaudio2 alsa-utils` e `python -m pip install -e '.[voice]'`. Consulte as notas históricas abaixo para detalhes de modelos de voz, permissões e testes. Não é preciso instalar esses extras para a conversa normal ou o reconhecimento de janelas por GNOME Shell.
+
+Confirme a instalação **da versão deste repositório**:
 
 ```bash
 jarvis-fcc --doctor
 jarvis-fcc --help
 ```
 
-O diagnóstico mostra o caminho do módulo Python carregado e confirma a instalação
-sem exigir FCC, microfone ou interface gráfica. Alternativa equivalente:
+### 3. Iniciar o servidor FCC (é um serviço separado)
+
+A JARVIS **não inclui** o Free Claude Code, credenciais de provedor nem um modelo de IA. Instale e configure o [Free Claude Code](https://github.com/Alishahryar1/free-claude-code) conforme seu projeto oficial. Inicie o servidor `fcc-server` em **outro terminal** e configure um provedor/modelo com suporte ao endpoint Responses e chamadas de ferramentas. O endereço utilizado nos testes foi `http://127.0.0.1:8082`; ajuste conforme sua instalação.
+
+Na sessão da JARVIS, depois de ativar `.venv`:
 
 ```bash
-python -m jarvis --doctor
-```
-
-### Configurar e verificar o FCC
-
-Inicie `fcc-server` em outro terminal e configure um provedor/modelo no painel
-do Free Claude Code. Então:
-
-```bash
-mkdir -p "$HOME/Projetos"
-export FCC_URL=http://127.0.0.1:8082
-export JARVIS_WORKSPACE="$HOME/Projetos"
-
+export FCC_URL="http://127.0.0.1:8082"
 jarvis-fcc --health
 jarvis-fcc --models
+```
+
+Para escolher um modelo, **use um ID listado** por `--models`:
+
+```bash
+# Exemplo que funcionou em um notebook; pode não estar disponível na sua conta:
+export FCC_MODEL="openai/gpt-5.6-luna"
 jarvis-fcc --check-fcc
 ```
 
-`--health` só testa HTTP; `--check-fcc` faz uma **inferência real** usando o
-provedor configurado, sujeito a quotas e cobrança. `FCC_MODEL` é **opcional**;
-por padrão escolhemos o modelo anunciado pelo FCC e tentamos fallback em erros
-transitórios. Não coloque `ID_DO_MODELO` literalmente: escolha um ID real de
-`--models` caso queira fixar o principal.
+Se preferir o modelo padrão anunciado pelo FCC: `unset FCC_MODEL`. `--check-fcc` executa inferência real e pode consumir cota. Caso seu FCC precise de token, defina `FCC_TOKEN` **apenas no seu ambiente local**, nunca no Git.
 
-Iniciar chat:
+### 4. Autorizar pastas do notebook e usar o VS Code
+
+O workspace padrão é **`$HOME/Projetos`**, independentemente de onde o repositório foi clonado. Configure explicitamente os diretórios que deseja autorizar:
+
+```bash
+mkdir -p "$HOME/Projetos"
+export JARVIS_WORKSPACE="$HOME/Projetos"
+export JARVIS_ALLOWED_DIRS="$HOME/Documentos:$HOME/Downloads"
+```
+
+`JARVIS_ALLOWED_DIRS` usa `:` entre pastas e aceita apenas diretórios existentes. Pedidos relativos à pasta do projeto são resolvidos no workspace; para `Downloads` ou `Documentos`, a JARVIS pode usar **caminhos absolutos**, desde que estejam autorizados. **Nunca autorize a pasta home inteira ou diretórios do sistema para tentar ganhar acesso irrestrito.** Alterações locais continuam exigindo confirmação digitando `SIM`.
+
+O VS Code é opcional. Caso ele esteja instalado, valide `command -v code` para abrir arquivos/projetos diretamente. A JARVIS consegue abrir aplicativos do menu GNOME via `gtk-launch` mesmo que o VS Code não esteja instalado.
+
+### 5. Reconhecimento de janelas no GNOME Wayland
+
+O inventário confiável para aplicativos GNOME que testamos usa a extensão opcional **[Window Calls Extended](https://extensions.gnome.org/extension/4974/window-calls-extended/)**. Verifique se ela é compatível com sua versão (`gnome-shell --version`); **instale e habilite manualmente** no GNOME Extensions.
+
+```bash
+gnome-extensions info window-calls-extended@hseliger.eu
+jarvis-fcc --windows-diagnostic
+```
+
+Resultado esperado depois de habilitar a extensão:
+
+```json
+{"status": "observed", "source": "gnome_shell_extension", "complete": false}
+```
+
+Se aparecer `source: atspi_accessibility_partial`, a extensão não respondeu e a JARVIS voltou ao mecanismo de acessibilidade, que não lista todas as janelas. Consulte `fallback_reason` e `extension_diagnostic`. O campo `complete: false` significa que **nem a integração com o GNOME Shell garante todas as superfícies**. A observação de uma janela não comprova qual arquivo está ativo.
+
+### 6. Iniciar e testar
+
+Com **FCC ativo**, `.venv` ativa e as variáveis acima configuradas:
 
 ```bash
 jarvis-fcc
 ```
 
-Instale as capacidades extras somente depois do diagnóstico básico:
+Pedidos para testar: "Jarvis, quais janelas estão abertas?", "Jarvis, crie a pasta TesteJarvis dentro de Downloads, salve main.py com print('hello world') e abra no VS Code" e "Jarvis, mostre os programas que você iniciou nesta sessão".
+
+Comandos úteis no chat: `/modelos`, `/modelo atual`, `/acoes`, `/normal`, `/planejar OBJETIVO`, `/plano`, `/historico-planos`, `/metricas`. Para encerrar, digite `sair` ou pressione Ctrl+C (Ctrl+Z apenas suspende o processo).
+
+Diagnóstico sem FCC: `jarvis-fcc --doctor`, `jarvis-fcc --desktop-info`, `jarvis-fcc --windows-diagnostic`. Diagnóstico com FCC: `jarvis-fcc --health`, `jarvis-fcc --models`, `jarvis-fcc --check-fcc`.
+
+### 7. Atualizações e testes
 
 ```bash
-python -m pip install -e '.[browser,desktop]'
-python -m playwright install chromium
-jarvis-fcc --desktop-info
-```
-
-O modo de voz requer `python -m pip install -e '.[voice]'`, além das dependências
-de áudio descritas abaixo. **Não é necessário recriar outro ambiente virtual
-na pasta pai.** Nenhum teste do GitHub Actions acessa o FCC instalado em seu PC.
-
-## Testes
-
-```bash
+cd free-jarvis   # ou o caminho onde você clonou o projeto
+git pull --ff-only origin main
+source .venv/bin/activate
+python -m pip install -e '.[desktop]'
 PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-## Segurança
+O histórico SQLite e as configurações locais não são transferidos pelo Git. **Não** envie tokens, banco de histórico, prints de tela ou arquivos de trabalho ao GitHub. Os testes do GitHub Actions não abrem janelas no seu notebook nem acessam seu FCC; o funcionamento GNOME/FCC real deve ser validado localmente.
 
-Comandos arbitrários e `sudo` não estão habilitados. Escritas requerem confirmação. O histórico SQLite não é criptografado; não envie segredos nas conversas. O projeto não foi testado de ponta a ponta com um servidor FCC real.
+### Segurança e limites
+
+As ferramentas respeitam o workspace e pastas explicitamente autorizadas. Arquivos são gravados após confirmação; remoção é recuperável na lixeira interna. O agente não possui shell arbitrário, `sudo` nem controle total do GNOME. Verificações de escrita usam hash SHA-256; a presença/alteração de título de janela é evidência limitada e **não comprova a conclusão de uma ação no aplicativo**. Clique/teclado via RemoteDesktop são experimentais e ficam desabilitados por padrão (não habilite `JARVIS_ENABLE_DESKTOP_INPUT` sem uma sessão de testes supervisionada).
+
+**Amanhã:** continuar a partir do [ponto de retomada](docs/RETOMADA.md): verificar a correlação antes/depois no GNOME real e estudar foco/seleção de janelas por identificador, com aprovação e verificação posterior.
+
+---
+
+## Histórico de implementação e experimentos
+
+Abaixo estão as notas das etapas anteriores, preservadas para consulta. O guia acima é a referência recomendada para instalação nova.
 
 ## Etapa 3 — Navegador automatizado (Playwright)
 
