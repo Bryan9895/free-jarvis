@@ -44,6 +44,14 @@ class PlanStore:
         ).fetchone()
         return json.loads(row[0]) if row else None
 
+    def get(self, plan_id):
+        if type(plan_id) is not int or plan_id < 1:
+            raise ValueError("Identificador de plano inválido.")
+        row = self.conn.execute(
+            "SELECT payload FROM task_plans WHERE id=?", (plan_id,)
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
     def recent(self, limit=10):
         limit = max(1, min(30, int(limit)))
         rows = self.conn.execute(
