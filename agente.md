@@ -39,6 +39,8 @@ Os testes automatizados existentes simulam parte do desktop e do FCC. Uma funç�
 
 **Validação física (22/10/2026):** posição `custom`, centro, consulta de foco, fechamento, histórico SQLite, grades de três/quatro janelas e restauração de perfil passaram em GNOME Wayland com XTerm descartável. `MoveResize` exigiu `Move` separado para aplicar posição; `GetFocused` exigiu interpretar `uint64` do `gdbus`. A v0.5.0 ainda requer validação de aplicativos cotidianos, diálogo de salvamento e monitor adicional quando disponível antes de ser lançada. Em seguida, iniciar v0.6.0 pelo inventário de monitores e áreas de trabalho.
 
+**Início da v0.6.0 (22/10/2026):** `desktop_spaces` fornece inventário validado e somente leitura de monitores e áreas de trabalho via Window Control. Confirmado no GNOME real com um monitor e duas áreas. Próximos itens: alternar áreas, mover janelas entre áreas/monitores com revalidação e observação do resultado, criar perfis de ambientes e validar com monitor adicional quando disponível.
+
 **Progresso da Fase 1 (22/10/2026):** `write_file` agora mostra um diff limitado na autorização, aceita `expected_sha256` para detectar conteúdo desatualizado, recusa mudanças concorrentes e substitui o arquivo por escrita temporária atômica. `/permissoes revogar` bloqueia novas chamadas de ferramenta até o usuário escolher novamente o modo de autorização. A suíte automatizada passou; auditoria persistente e os demais itens da fase seguem pendentes.
 
 ### Fase 1 — executor e verificações

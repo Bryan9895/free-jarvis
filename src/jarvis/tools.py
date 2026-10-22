@@ -372,6 +372,10 @@ class Toolkit:
         from .window_manage import focused_window
         return focused_window()
 
+    def desktop_spaces(self):
+        from .desktop_spaces import desktop_spaces
+        return desktop_spaces()
+
     def arrange_windows(self, left_app, right_app, left_title="", right_title=""):
         from .window_layout import arrange_windows
         return arrange_windows(left_app, right_app, self.approve,
@@ -429,6 +433,7 @@ class Toolkit:
             "verify_app_window": self.verify_app_window,
             "focus_window": self.focus_window, "manage_window": self.manage_window,
             "close_window": self.close_window, "focused_window": self.focused_window,
+            "desktop_spaces": self.desktop_spaces,
             "place_window": self.place_window, "arrange_windows": self.arrange_windows,
             "arrange_window_grid": self.arrange_window_grid,
             "save_window_layout": self.save_window_layout,
@@ -470,6 +475,7 @@ TOOL_SPECS = [
     {"type":"function","name":"place_window","description":"Posiciona UMA janela na área útil: left, right, center, bottom_right ou custom. Percentuais opcionais definem tamanho relativo (10 a 100). custom exige x_px, y_px, width_px, height_px em pixels relativos à área útil e dentro dela. Revalida ID e confirma geometria GNOME após MoveResize e Move.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right","center","bottom_right","custom"]},"title":{"type":"string"},"width_percent":{"type":"integer"},"height_percent":{"type":"integer"},"x_px":{"type":"integer"},"y_px":{"type":"integer"},"width_px":{"type":"integer"},"height_px":{"type":"integer"}},"required":["app","position"],"additionalProperties":False}},
     {"type":"function","name":"close_window","description":"Solicita fechamento educado de UMA janela GNOME identificada sem ambiguidade. Sempre exige confirmação específica por risco de dados não salvos; só declara sucesso quando o ID desaparece do inventário.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"focused_window","description":"Consulta a janela atualmente em foco via Window Control GetFocused e confirma ID, classe e título no inventário GNOME. Somente leitura.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+    {"type":"function","name":"desktop_spaces","description":"Lista monitores conectados, dimensões, áreas úteis e áreas de trabalho GNOME, indicando qual está ativa. Usa Window Control por D-Bus, somente leitura; não move janelas nem troca de área.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
     {"type":"function","name":"arrange_windows","description":"Organiza DUAS janelas GNOME no mesmo monitor, uma à esquerda e outra à direita. Só prossegue se ambas forem inequívocas. Informe left_app e right_app e títulos opcionais. Retorna layout_verified apenas se ambas as posições forem observadas.","parameters":{"type":"object","properties":{"left_app":{"type":"string"},"right_app":{"type":"string"},"left_title":{"type":"string"},"right_title":{"type":"string"}},"required":["left_app","right_app"],"additionalProperties":False}},
     {"type":"function","name":"arrange_window_grid","description":"Organiza exatamente três ou quatro janelas já abertas no mesmo monitor. Informe windows em ordem de leitura, cada uma com app e título opcional. Três: metade esquerda e duas à direita; quatro: grade 2x2. Recusa ambiguidades e verifica geometria de cada janela.","parameters":{"type":"object","properties":{"windows":{"type":"array","minItems":3,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["windows"],"additionalProperties":False}},
     {"type":"function","name":"save_window_layout","description":"Salva um perfil nomeado com a geometria atual de duas a quatro janelas já abertas no mesmo monitor. Informe seletores de app e título opcional, sem IDs inventados. Persiste em SQLite local.","parameters":{"type":"object","properties":{"name":{"type":"string"},"windows":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}}},"required":["name","windows"],"additionalProperties":False}},

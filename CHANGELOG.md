@@ -1,5 +1,10 @@
 # Histórico de alterações
 
+## Em desenvolvimento — v0.6.0
+
+- Ferramenta `desktop_spaces` para consultar monitores, áreas úteis e áreas de trabalho GNOME com resposta D-Bus validada; roteamento direto de pedidos informativos.
+- Consulta confirmada no Ubuntu GNOME Wayland real com um monitor e duas áreas de trabalho. Operações de alternância e movimento ainda não foram implementadas.
+
 ## Em desenvolvimento — v0.5.0
 
 - Posicionamento de janelas por porcentagem ou pixels da área útil, grades de três/quatro janelas e perfis SQLite reutilizáveis.

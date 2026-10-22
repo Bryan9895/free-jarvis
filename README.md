@@ -1005,3 +1005,9 @@ Com a extensão Window Control ativa, janelas XTerm descartáveis retornaram `ge
 O teste encontrou dois problemas corrigidos: `GetFocused` retorna o primeiro campo como `uint64` na saída textual do `gdbus`, e `MoveResize` do GNOME redimensionou XTerm sem alterar sua posição. Após `MoveResize`, a JARVIS também envia `Move` para a mesma janela e só confirma êxito quando o inventário mostra a geometria solicitada. O GNOME Calculator apresentou limite mínimo de altura, portanto uma geometria incompatível continuou `geometry_unverified`, como esperado.
 
 Ainda é necessário testar casos com múltiplos monitores, janelas com diálogo de salvamento e os aplicativos usados no fluxo diário. O código continua na versão 0.4.0 até que os critérios restantes de v0.5.0 sejam concluídos.
+
+## v0.6.0 em desenvolvimento — inventário de monitores e áreas de trabalho
+
+`desktop_spaces` consulta `ListMonitors`, `GetWorkarea` e `ListWorkspaces` da extensão Window Control. A resposta informa resolução, coordenadas, escala, monitor principal, área útil, número de janelas por área de trabalho e qual área está ativa. A ferramenta é somente leitura e valida tamanho, tipos e índices da resposta D-Bus antes de usar os dados.
+
+Pedidos como `Jarvis, quais monitores estão conectados?` ou `Jarvis, mostre minhas áreas de trabalho` selecionam essa ferramenta diretamente. No Ubuntu GNOME Wayland usado para desenvolvimento, a consulta real retornou um monitor de 1366×768, área útil `(53, 32, 1313, 736)` e duas áreas de trabalho, com a primeira ativa. A JARVIS ainda não alterna áreas de trabalho nem move janelas entre elas ou entre monitores; esses são os próximos itens da v0.6.0. Um segundo monitor não estava conectado para validar inventário multimonitor físico.

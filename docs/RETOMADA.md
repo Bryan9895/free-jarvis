@@ -103,3 +103,7 @@ No GNOME Wayland ativo, XTerm descartável confirmou `geometry_verified` para ce
 O teste descobriu que `GetFocused` do `gdbus` traz `uint64` textual, corrigido no parser. Também mostrou que `MoveResize` redimensiona XTerm sem mover; `Move` separado aplica a posição. A verificação final permanece obrigatória. Uma janela GNOME Calculator recusou a altura pedida por limite do aplicativo e manteve `geometry_unverified`, sem falso sucesso.
 
 Próximo passo: validar aplicativos cotidianos e monitor adicional quando disponível; depois iniciar v0.6.0 com inventário de monitores e áreas de trabalho. Não marcar v0.5.0 como lançada antes dos critérios restantes.
+
+## v0.6.0 — primeiro passo: inventário GNOME somente leitura
+
+`desktop_spaces` foi integrado ao agente e roteador para listar monitores e áreas de trabalho por Window Control, sem modificar o desktop. A resposta D-Bus é limitada e validada; áreas úteis são incluídas somente quando cabem no monitor correspondente. No Ubuntu real, a ferramenta retornou monitor 0 de 1366×768, área útil `(53, 32, 1313, 736)` e áreas 0 (ativa) e 1 (inativa). O teste automatizado inclui dois monitores simulados, dados inválidos e roteamento de pedidos. Próximo item: alternar/mover entre áreas com confirmação do estado final; testar monitor adicional quando disponível.

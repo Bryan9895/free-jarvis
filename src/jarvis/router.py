@@ -17,7 +17,8 @@ _ACTION = re.compile(
     r"salve|salvar|escreva|edite|pesquise|pesquisar|busque|procure|leia|"
     r"arquivo|pasta|navegador|janela|tela|desktop|mouse|teclado|"
     r"minha|meu|meus|minhas|agora|hoje|atual|recentes|online|"
-    r"acesse|execute|terminal|crie|criar|liste|listar|encontre|verifique)\b",
+    r"acesse|execute|terminal|crie|criar|liste|listar|encontre|verifique|"
+    r"monitores?|workspaces?|(?:área|area)s? de trabalho)\b",
     re.IGNORECASE,
 )
 
@@ -59,6 +60,13 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
     if len(normalized) > 180 or "\n" in normalized:
         return available
+    if (re.search(r"\b(?:monitores?|workspaces?|areas? de trabalho)\b", normalized)
+            and re.search(r"\b(?:quais?|quantos?|liste|listar|mostre|mostrar|"
+                          r"identifique|identificar|em qual)\b", normalized)
+            and not re.search(r"\b(?:mova|mover|coloque|colocar|troque|trocar|"
+                              r"altere|alterar|abra|abrir|feche|fechar|depois|"
+                              r"tambem)\b", normalized)):
+        return [t for t in available if t.get("name") == "desktop_spaces"]
     if (re.search(r"\b(?:historico|acoes anteriores|operacoes anteriores)\b", normalized)
             and re.search(r"\b(?:janela|janelas|layout)\b", normalized)):
         return [t for t in available if t.get("name") == "window_action_history"]

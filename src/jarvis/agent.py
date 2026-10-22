@@ -36,6 +36,7 @@ SYSTEM = (
     "Use save_window_layout, list_window_layouts e restore_window_layout para perfis "
     "de janelas existentes; restauração não abre aplicativos ausentes. "
     "Use window_action_history para consultar resultados anteriores de ações de janela. "
+    "Use desktop_spaces para consultar monitores e áreas de trabalho sem alterá-los. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
     "Para fechar uma janela use close_window; closed_verified exige ausência no inventário. "
@@ -167,7 +168,7 @@ def _local_layout_reply(calls, outcomes):
     name = calls[0].get("name")
     if name not in ("place_window", "arrange_windows", "arrange_window_grid",
                     "save_window_layout", "restore_window_layout", "list_window_layouts",
-                    "window_action_history"):
+                    "window_action_history", "desktop_spaces"):
         return None
     payload = outcomes[0]
     if not isinstance(payload, dict):
@@ -178,6 +179,17 @@ def _local_layout_reply(calls, outcomes):
     if not isinstance(state, dict):
         return None
     status = state.get("status")
+    if name == "desktop_spaces":
+        if status != "observed":
+            return "Não consegui consultar monitores e áreas de trabalho no GNOME."
+        monitors = state.get("monitors", [])
+        workspaces = state.get("workspaces", [])
+        displays = ", ".join(
+            f"{item['index'] + 1}: {item['width']}×{item['height']}"
+            + (" (principal)" if item.get("is_primary") else "")
+            for item in monitors)
+        return (f"Monitores: {displays}. Áreas de trabalho: {len(workspaces)}; "
+                f"ativa: {state.get('active_workspace', 0) + 1}.")
     if status == "listed" and name == "window_action_history":
         actions = state.get("actions", [])
         if not actions:
