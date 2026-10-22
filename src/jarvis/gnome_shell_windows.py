@@ -67,7 +67,7 @@ def parse_gdbus_reply(raw):
     return output
 
 
-def shell_windows():
+def shell_windows(timeout=4):
     if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
         return {"status": "unavailable", "reason": "GNOME Wayland não detectado"}
     launcher = shutil.which("gdbus")
@@ -77,7 +77,7 @@ def shell_windows():
         proc = subprocess.run(
             [launcher, "call", "--session", "--dest", DEST,
              "--object-path", OBJECT, "--method", METHOD],
-            capture_output=True, text=True, timeout=4, check=False,
+            capture_output=True, text=True, timeout=timeout, check=False,
         )
         if proc.returncode:
             return {"status": "unavailable",
