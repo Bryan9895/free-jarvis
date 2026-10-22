@@ -204,7 +204,7 @@ class TaskPlanner:
                 break
             # Para operações de foco, não confiar no texto redigido pela IA.
             # Só o retorno da ferramenta confirma foco; ausência/bloqueio para o plano.
-            if re.search(r"\\b(?:foc[oa]r?|primeiro plano|ativar a janela|trazer a janela)\\b",
+            if re.search(r"\b(?:foc[oa]r?|primeiro plano|ativar a janela|trazer a janela)\\b",
                          step["description"].lower()):
                 actions = metrics.get("tool_outcomes", []) if isinstance(metrics, dict) else []
                 focus_results = [
