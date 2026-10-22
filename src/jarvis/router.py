@@ -60,6 +60,17 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
     if len(normalized) > 180 or "\n" in normalized:
         return available
+    workspace_target = re.search(r"\b(?:area(?:s)? de trabalho|workspace(?:s)?)\b", normalized)
+    if workspace_target and not re.search(r"\b(?:e depois|em seguida|tambem|por fim)\b", normalized):
+        if (re.search(r"\b(?:mova|mover|coloque|colocar|envie|enviar)\b", normalized)
+                and re.search(r"\b(?:janela|firefox|chrome|vscode|vs code|"
+                              r"terminal|ptyxis|code)\b", normalized)):
+            return [t for t in available if t.get("name") == "move_window_to_workspace"]
+        if (re.search(r"\b(?:ative|ativar|altere|alterar|troque|trocar|"
+                      r"mude|mudar|va para|ir para)\b", normalized)
+                and not re.search(r"\b(?:janela|firefox|chrome|vscode|vs code|"
+                                  r"terminal|ptyxis|code)\b", normalized)):
+            return [t for t in available if t.get("name") == "activate_workspace"]
     if (re.search(r"\b(?:monitores?|workspaces?|areas? de trabalho)\b", normalized)
             and re.search(r"\b(?:quais?|quantos?|liste|listar|mostre|mostrar|"
                           r"identifique|identificar|em qual)\b", normalized)

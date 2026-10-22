@@ -41,6 +41,8 @@ Os testes automatizados existentes simulam parte do desktop e do FCC. Uma funç�
 
 **Início da v0.6.0 (22/10/2026):** `desktop_spaces` fornece inventário validado e somente leitura de monitores e áreas de trabalho via Window Control. Confirmado no GNOME real com um monitor e duas áreas. Próximos itens: alternar áreas, mover janelas entre áreas/monitores com revalidação e observação do resultado, criar perfis de ambientes e validar com monitor adicional quando disponível.
 
+**Progresso da v0.6.0:** `activate_workspace` e `move_window_to_workspace` revalidam área e janela após autorização e exigem estado observado para confirmar sucesso. Teste real com XTerm descartável confirmou movimento para a segunda área e volta, além de alternância e restauração da área ativa. Próximo item: mover janelas entre monitores, depois perfis completos de ambiente e teste com monitor adicional.
+
 **Progresso da Fase 1 (22/10/2026):** `write_file` agora mostra um diff limitado na autorização, aceita `expected_sha256` para detectar conteúdo desatualizado, recusa mudanças concorrentes e substitui o arquivo por escrita temporária atômica. `/permissoes revogar` bloqueia novas chamadas de ferramenta até o usuário escolher novamente o modo de autorização. A suíte automatizada passou; auditoria persistente e os demais itens da fase seguem pendentes.
 
 ### Fase 1 — executor e verificações

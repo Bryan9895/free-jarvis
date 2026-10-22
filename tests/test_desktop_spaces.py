@@ -75,8 +75,9 @@ class DesktopSpacesTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.assertEqual([spec["name"] for spec in tool_catalog(prompt, TOOL_SPECS)],
                                  ["desktop_spaces"])
-        self.assertEqual(tool_catalog("Mova Firefox para a segunda área de trabalho",
-                                      TOOL_SPECS), TOOL_SPECS)
+        self.assertEqual([spec["name"] for spec in tool_catalog(
+            "Mova Firefox para a segunda área de trabalho", TOOL_SPECS)],
+            ["move_window_to_workspace"])
         with tempfile.TemporaryDirectory() as tmp, patch(
                 "jarvis.desktop_spaces.desktop_spaces", return_value={
                     "status": "observed", "monitors": MONITORS,

@@ -37,6 +37,9 @@ SYSTEM = (
     "de janelas existentes; restauração não abre aplicativos ausentes. "
     "Use window_action_history para consultar resultados anteriores de ações de janela. "
     "Use desktop_spaces para consultar monitores e áreas de trabalho sem alterá-los. "
+    "Para trocar de área use activate_workspace; para mover uma janela use "
+    "move_window_to_workspace. workspace_number começa em 1 e só declare sucesso "
+    "com workspace_verified ou window_workspace_verified. "
     "Para minimizar, restaurar, maximizar ou desfazer maximização use manage_window; "
     "não declare sucesso sem state_verified ou already_in_state. "
     "Para fechar uma janela use close_window; closed_verified exige ausência no inventário. "
@@ -168,7 +171,8 @@ def _local_layout_reply(calls, outcomes):
     name = calls[0].get("name")
     if name not in ("place_window", "arrange_windows", "arrange_window_grid",
                     "save_window_layout", "restore_window_layout", "list_window_layouts",
-                    "window_action_history", "desktop_spaces"):
+                    "window_action_history", "desktop_spaces", "activate_workspace",
+                    "move_window_to_workspace"):
         return None
     payload = outcomes[0]
     if not isinstance(payload, dict):
@@ -179,6 +183,27 @@ def _local_layout_reply(calls, outcomes):
     if not isinstance(state, dict):
         return None
     status = state.get("status")
+    if name in ("activate_workspace", "move_window_to_workspace"):
+        number = state.get("workspace_number")
+        if status == "workspace_verified":
+            return f"Área de trabalho {number} ativada e confirmada pelo GNOME."
+        if status == "window_workspace_verified":
+            return f"Janela movida para a área de trabalho {number}, confirmado pelo GNOME."
+        if status == "already_in_state":
+            return f"Já estava na área de trabalho {number}."
+        failures = {
+            "unavailable": "Controle de áreas de trabalho indisponível no GNOME.",
+            "not_found": "Área de trabalho solicitada não existe.",
+            "not_observed": "Não encontrei a janela solicitada.",
+            "ambiguous": "Há várias janelas possíveis; informe parte do título.",
+            "refused": "O GNOME recusou a operação.",
+            "rejected": "Operação de área de trabalho cancelada.",
+            "changed": "Área ou janela mudou antes da operação; tente novamente.",
+            "unverified": "A extensão não confirmou a solicitação.",
+            "workspace_unverified": "Alternância solicitada, mas a área ativa não foi confirmada.",
+            "window_workspace_unverified": "Movimento solicitado, mas a área da janela não foi confirmada.",
+        }
+        return failures.get(status, "Não consegui confirmar a operação de área de trabalho.")
     if name == "desktop_spaces":
         if status != "observed":
             return "Não consegui consultar monitores e áreas de trabalho no GNOME."
