@@ -310,6 +310,10 @@ class Toolkit:
         from .window_focus import focus_window
         return focus_window(app, title, self.approve)
 
+    def manage_window(self, app, action, title=""):
+        from .window_manage import manage_window
+        return manage_window(app, title, action, self.approve)
+
     def desktop_info(self):
         from .wayland import desktop_info
         return desktop_info()
@@ -340,7 +344,8 @@ class Toolkit:
             "desktop_info": self.desktop_info,
             "desktop_windows": self.desktop_windows,
             "verify_app_window": self.verify_app_window,
-            "focus_window": self.focus_window, "desktop_screenshot": self.desktop_screenshot,
+            "focus_window": self.focus_window, "manage_window": self.manage_window,
+            "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
             "list_installed_apps": self.list_installed_apps,
             "launch_installed_app": self.launch_installed_app,
@@ -362,6 +367,7 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"manage_window","description":"Minimiza, restaura, maximiza ou desfaz maximização de UMA janela GNOME Wayland identificada unicamente por app e título opcional. Requer extensão opcional Window Control; utiliza ID obtido do compositor, revalida janela e estado após comando, sem Shell.Eval. Não fecha janelas.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"},"action":{"type":"string","enum":["minimize","restore","maximize","unmaximize"]}},"required":["app","action"],"additionalProperties":False}},
     {"type":"function","name":"launch_installed_app_and_focus","description":"Abre aplicativo XDG com autorização e tenta focar UMA janela correspondente com segunda aprovação, somente quando identificação no GNOME é inequívoca. Use o app_id obtido no catálogo; estados separados para abertura e foco.","parameters":{"type":"object","properties":{"app_id":{"type":"string"}},"required":["app_id"],"additionalProperties":False}},
     {"type":"function","name":"open_project_and_focus","description":"Abre projeto existente no editor, depois tenta trazer a janela desse projeto ao primeiro plano. Duas aprovações separadas e verificações GNOME; não afirma sucesso quando título do projeto não é encontrado.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"open_file_and_focus","description":"Abre arquivo existente no editor, depois tenta trazer a janela desse arquivo ao primeiro plano. Aprovações separadas, identificação por título e verificação via GNOME Shell; pode retornar not_observed.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
