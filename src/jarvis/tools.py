@@ -263,6 +263,14 @@ class Toolkit:
         return [{"path": str(root), "default": root == self.workspace}
                 for root in self.allowed_roots]
 
+    def desktop_windows(self):
+        from .desktop_windows import desktop_windows
+        return desktop_windows()
+
+    def verify_app_window(self, app, title=""):
+        from .desktop_windows import verify_app_window
+        return verify_app_window(app, title)
+
     def desktop_info(self):
         from .wayland import desktop_info
         return desktop_info()
@@ -290,7 +298,9 @@ class Toolkit:
             "browser_navigate": self.browser_navigate, "browser_inspect": self.browser_inspect,
             "browser_click": self.browser_click, "browser_fill": self.browser_fill,
             "browser_screenshot": self.browser_screenshot,
-            "desktop_info": self.desktop_info, "desktop_screenshot": self.desktop_screenshot,
+            "desktop_info": self.desktop_info,
+            "desktop_windows": self.desktop_windows,
+            "verify_app_window": self.verify_app_window, "desktop_screenshot": self.desktop_screenshot,
             "desktop_open_app": self.desktop_open_app,
             "list_installed_apps": self.list_installed_apps,
             "launch_installed_app": self.launch_installed_app,
@@ -309,6 +319,8 @@ class Toolkit:
             return {"error": str(exc)}
 
 TOOL_SPECS = [
+    {"type":"function","name":"desktop_windows","description":"Consulta somente nomes de aplicativos e títulos de janelas que expõem acessibilidade AT-SPI no GNOME Wayland. Leitura, sem clique. Lista pode ser incompleta.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
+    {"type":"function","name":"verify_app_window","description":"Procura janela acessível de aplicativo por nome e título opcional no GNOME Wayland. window_observed atesta somente janela acessível, não foco ou arquivo aberto. not_observed não prova ausência.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"open_file","description":"Abre um arquivo INDIVIDUAL existente e autorizado no VS Code, VSCodium ou VS Code Insiders. Não abre diretórios; use open_project para pastas. Exige autorização.","parameters":{"type":"object","properties":{"path":{"type":"string"},"editor":{"type":"string","enum":["vscode","vscodium","vscode-insiders"]}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"verify_file","description":"Confere se um arquivo de texto existe dentro de diretórios autorizados e opcionalmente se seu conteúdo é exatamente igual a content. Não altera arquivos.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path"],"additionalProperties":False}},
     {"type":"function","name":"create_python_project","description":"Cria uma nova pasta com projeto Python básico (main.py, README.md, .gitignore), dentro de diretório autorizado. Não sobrescreve nem executa código. Use open_project depois para abrir no VS Code.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":False}},
