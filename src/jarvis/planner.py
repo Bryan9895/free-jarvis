@@ -195,6 +195,23 @@ class TaskPlanner:
                 self.plan["status"] = "stopped"
                 report("Execução interrompida: ferramenta recusada ou com erro.")
                 break
+            # Exige evidência de ferramenta em etapas que pedem escrita/abertura.
+            verb = re.search(r"\\b(?:criar|crie|escrever|escreva|salvar|salve|abrir|abra|inserir|insira|digitar|digite)\\b", step["description"].lower())
+            if verb and isinstance(metrics, dict) and "tools_executed" in metrics:
+                actions = metrics.get("tool_outcomes", [])
+                successful = {"written", "created", "moved", "trashed", "launched_unverified"}
+                if not any(
+                    isinstance(action, dict)
+                    and isinstance(action.get("outcome"), dict)
+                    and isinstance(action["outcome"].get("result"), dict)
+                    and action["outcome"]["result"].get("status") in successful
+                    for action in actions
+                ):
+                    step["status"] = "blocked"
+                    self.plan["status"] = "stopped"
+                    self._save()
+                    report("A etapa descreveu a ação mas não a executou; plano interrompido.")
+                    break
             # Uma resposta de linguagem do modelo não comprova execução.
             step["status"] = "reported_unverified"
             self._save()
