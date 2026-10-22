@@ -103,7 +103,7 @@ class NaturalTaskController:
             display = self._show(state)
             if kind == "plan":
                 return display + "\nDiga 'execute o plano' para iniciar."
-            return display + "\n" + self._show(
+            return self._show(
                 self.planner.execute(self.approve, report=self.report)
             )
         return None
