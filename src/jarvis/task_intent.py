@@ -72,7 +72,8 @@ def classify(message):
         return "plan"
     # Só planejar automaticamente sequências expressas com múltiplas operações
     # sobre recursos locais; frases comuns continuam sendo respondidas pelo agente.
-    if _TASK_TARGET.search(raw) and (_MULTI.search(raw) or len(_VERBS.findall(raw)) >= 2):
+    if _TASK_TARGET.search(raw) and (_MULTI.search(raw) or len(_VERBS.findall(raw)) >= 2
+                                     or re.search(r"\\b(?:analise|analisar|organize|organizar|revise|revisar|investigue|investigar)\\b", raw)):
         return "plan_execute"
     return "normal"
 
