@@ -18,6 +18,59 @@ def window(id, app, title, x=0, width=600):
 
 
 class LayoutTests(unittest.TestCase):
+    def test_real_window_control_nested_monitor_and_frame_rect(self):
+        """Contrato real do ListDetailed: monitor_index e frame_rect."""
+        import json
+        from unittest.mock import Mock
+        from jarvis.window_manage import _inventory
+        def raw(id, app, title, x, width):
+            return {"id": id, "wm_class": app, "title": title,
+                    "pid": id + 100, "monitor_index": 0,
+                    "frame_rect": {"x": x, "y": 32,
+                                   "width": width, "height": 700},
+                    "is_minimized": False, "is_maximized": False}
+        firefox = raw(15, "firefox_firefox", "Mozilla Firefox", 0, 1300)
+        vscode = raw(16, "code_code", "Visual Studio Code", 0, 1300)
+        first = repr((json.dumps([firefox, vscode]),))
+        moved_firefox = raw(15, "firefox_firefox", "Mozilla Firefox", 0, 650)
+        moved_vscode = raw(16, "code_code", "Visual Studio Code", 650, 650)
+        after_left = repr((json.dumps([moved_firefox, vscode]),))
+        after_both = repr((json.dumps([moved_firefox, moved_vscode]),))
+        state_calls = iter([first, first, after_left, after_both])
+        def dbus(method, *args, **kwargs):
+            if method == "ListDetailed":
+                return Mock(returncode=0, stdout=next(state_calls))
+            if method == "GetWorkarea":
+                self.assertEqual(args, (0,))
+                return Mock(returncode=0, stdout="(0, 32, 1300, 700)")
+            if method == "MoveResize":
+                return Mock(returncode=0, stdout="()")
+            self.fail("Comando D-Bus inesperado: " + method)
+        with patch("jarvis.window_manage._dbus", side_effect=dbus), patch(
+                "jarvis.window_layout._dbus", side_effect=dbus):
+            result = arrange_windows("firefox", "code", lambda _: True)
+        self.assertEqual(result["status"], "layout_verified")
+        self.assertEqual(_inventory.__module__, "jarvis.window_manage")
+
+    def test_real_window_control_contract_maps_monitor_and_geometry(self):
+        import json
+        from unittest.mock import Mock
+        from jarvis.window_manage import _inventory
+        payload = {"id": 321, "wm_class": "code_code",
+                   "title": "Visual Studio Code",
+                   "monitor_index": 1, "pid": 100,
+                   "frame_rect": {"x": 700, "y": 38,
+                                  "width": 650, "height": 690},
+                   "is_minimized": False, "is_maximized": False}
+        with patch("jarvis.window_manage._dbus",
+                   return_value=Mock(returncode=0,
+                                     stdout=repr((json.dumps([payload]),)))):
+            windows = _inventory()
+        self.assertEqual(windows[0]["monitor"], 1)
+        self.assertEqual([windows[0][k] for k in
+                          ("x", "y", "width", "height")],
+                         [700, 38, 650, 690])
+
     def test_half_geometry_preserves_odd_pixel(self):
         area = (5, 10, 1001, 800)
         self.assertEqual(_half(area, "left"), (5, 10, 500, 800))
