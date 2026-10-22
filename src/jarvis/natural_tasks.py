@@ -1,5 +1,5 @@
 """Conversa natural conectada ao planejador, histórico e execução supervisionada."""
-from .task_intent import classify, find_relevant
+from .task_intent import classify, find_relevant, keywords
 from .plan_view import format_plan, format_history
 
 
@@ -26,6 +26,8 @@ class NaturalTaskController:
             )
         current = self.planner.snapshot()
         if target is None:
+            if keywords(message):
+                return "Não encontrei plano correspondente ao assunto; indique o identificador do histórico."
             if current.get("status") in ("ready", "stopped", "interrupted"):
                 target = current
             else:
