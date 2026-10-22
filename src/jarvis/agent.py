@@ -183,6 +183,10 @@ class Agent:
                         signature = (call["name"], json.dumps(args, sort_keys=True, ensure_ascii=False))
                         if signature in seen:
                             outcome = {"reused_previous_result": True, **seen[signature]}
+                        elif call["name"] not in {spec["name"] for spec in available}:
+                            # Resolved tool grants are enforced at the execution
+                            # boundary, not merely advertised to the model.
+                            outcome = {"error": "Ferramenta não disponível para esta solicitação"}
                         else:
                             outcome = self.toolkit.execute(call["name"], args)
                             seen[signature] = outcome
