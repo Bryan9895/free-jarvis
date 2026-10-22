@@ -40,6 +40,8 @@ def desktop_windows():
     secondary = _atspi_windows()
     if secondary.get("status") == "observed":
         secondary["fallback_reason"] = primary.get("reason", "GNOME Shell indisponível")
+        if primary.get("extension"):
+            secondary["extension_diagnostic"] = primary["extension"]
         return secondary
     return {"status": "unavailable", "windows": [], "complete": False,
             "reason": "Sem extensão GNOME Shell e sem AT-SPI funcional",
