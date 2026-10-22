@@ -8,12 +8,35 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 DEST = "org.gnome.Shell"
 OBJECT = "/org/gnome/Shell/Extensions/WindowsExt"
 METHOD = "org.gnome.Shell.Extensions.WindowsExt.List"
 MAX_BYTES = 100_000
 MAX_WINDOWS = 150
+EXT_UUID = "window-calls-extended@hseliger.eu"
+
+
+def extension_diagnostic():
+    """Read-only diagnostic of GNOME extension installation and activation."""
+    folder = Path.home() / ".local/share/gnome-shell/extensions" / EXT_UUID
+    status = {"uuid": EXT_UUID, "directory_exists": folder.is_dir(),
+              "metadata_exists": (folder / "metadata.json").is_file()}
+    cli = shutil.which("gnome-extensions")
+    if cli:
+        try:
+            result = subprocess.run([cli, "info", EXT_UUID], capture_output=True,
+                                    text=True, timeout=3, check=False)
+            status["gnome_extensions_recognizes_it"] = result.returncode == 0
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if line.strip().lower().startswith("state:"):
+                        status["state"] = line.split(":", 1)[1].strip()[:80]
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return status
+
 
 
 def parse_gdbus_reply(raw):
@@ -58,7 +81,8 @@ def shell_windows():
         )
         if proc.returncode:
             return {"status": "unavailable",
-                    "reason": "Extensão Window Calls Extended ausente/inativa ou sem resposta"}
+                    "reason": "Interface D-Bus da extensão não responde",
+                    "extension": extension_diagnostic()}
         windows = parse_gdbus_reply(proc.stdout)
         return {"status": "observed", "source": "gnome_shell_extension",
                 "complete": False, "windows": windows,
