@@ -75,3 +75,13 @@ Automação **passou**: 401 testes em 7,159 s, incluindo negociação nativa/err
 Ensaio com artefato local (não distribuído): `modelos/piper/pt_BR-faber-medium.onnx`, SHA256 `858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7`. Piper instalado sintetizou frase controlada em WAV mono 22050 Hz, 57856 frames; retorno 0; 5,391 s incluindo processo/carga fria. Arquivo temporário apagado. Não foi reproduzido no fone; não é latência aquecida nem aceite de 2 s. Licença do artefato e download gerenciado continuam pendentes.
 
 Publicação anterior de preferências: `45bf7a8b34124a06b3630050412da08dc01d3b7a`. Matriz atual: endpoint/integridade/cache/preferências/layout automatizados passaram; detector Jarvis, VAD acústico, voz audível, Bluetooth, efeitos GNOME/FCC reais, escala GNOME e latência/RSS aquecidas permanecem pendentes. Nenhum arquivo de áudio ambiental foi avaliado.
+
+## Checkpoint 5 — Piper residente e cancelável
+
+Síntese usa um processo Piper CPU residente, separado do player. Uma voz por processo principal; chamadas sequenciais reutilizam worker. Troca de voz, cancelamento, erro e timeout encerram/recolhem o worker e invalidam a conexão. Próximo turno pode recarregar. Carregamento é tardio; não ocorre download no startup. ONNX telemetry é desativada no worker.
+
+Automação **passou**: 405 testes em 6,903 s, incluindo cache do worker, cancelamento, timeout e recuperação de voz inválida. `git diff --check` passou.
+
+Ensaio real de síntese, sem reprodução: mesma frase controlada, mesmo artefato local/hash do checkpoint 4, mesmo processo nas duas chamadas. WAVs mono 22050 Hz: primeira chamada 3,739 s (57600 frames), segunda 0,234 s (58112 frames). Variação de frames é possível na síntese; ambos os arquivos foram removidos. Tempos são geração de WAV incluindo carga fria na primeira chamada; não medem player, primeiro áudio no fone nem p95. Meta aquecida de saída audível continua pendente.
+
+Publicação anterior de formato/cache: `0317f93ce25076d602ebeee92c35c58bc112f384`.

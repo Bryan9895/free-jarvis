@@ -257,11 +257,12 @@ class VoiceTests(unittest.TestCase):
             model = Path(td) / "voice.onnx"
             model.write_bytes(b"mock")
             voice = VoiceIO(piper_model=str(model))
-            with patch("jarvis.voice.shutil.which", return_value="/bin/true"), patch.object(voice, '_run_audio') as run:
+            with patch("jarvis.voice.shutil.which", return_value="/bin/true"), patch.object(voice, '_run_audio') as run, patch('jarvis.tts_engine.synthesizer.synthesize') as synthesize:
                 self.assertEqual(voice.speak("Olá"), "spoken")
-                self.assertEqual(run.call_count, 2)
-                self.assertEqual(run.call_args_list[0].args[0][0], "piper")
-                self.assertEqual(run.call_args_list[1].args[0][0], "aplay")
+                self.assertEqual(run.call_count, 1)
+                synthesize.assert_called_once()
+                self.assertEqual(synthesize.call_args.args[1], 'Olá')
+                self.assertEqual(run.call_args_list[0].args[0][0], "aplay")
 
     def test_overflow_invalidates_turn_instead_of_transcribing_missing_audio(self):
         import numpy as np
@@ -358,9 +359,9 @@ class VoiceTests(unittest.TestCase):
             model.write_bytes(b'mock')
             voice = VoiceIO(piper_model=str(model))
             text = ' '.join('Frase completa.' for _ in range(300))
-            with patch('jarvis.voice.shutil.which', return_value='/bin/true'), patch.object(voice, '_run_audio') as run:
+            with patch('jarvis.voice.shutil.which', return_value='/bin/true'), patch.object(voice, '_run_audio'), patch('jarvis.tts_engine.synthesizer.synthesize') as run:
                 self.assertEqual(voice.speak(text), 'spoken')
-            spoken = ' '.join(call.kwargs['text'] for call in run.call_args_list if 'text' in call.kwargs)
+            spoken = ' '.join(call.args[1] for call in run.call_args_list)
             self.assertEqual(spoken, text)
 
 if __name__ == "__main__":

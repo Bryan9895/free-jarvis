@@ -185,8 +185,6 @@ class VoiceIO:
             return "disabled"
         if not self.piper_model.is_file():
             raise VoiceError("Modelo de voz Piper não encontrado em JARVIS_PIPER_MODEL")
-        if not shutil.which("piper"):
-            raise VoiceError("Executável 'piper' não está no PATH")
         if self.output_device and not shutil.which('paplay'):
             raise VoiceError('Saída selecionada requer paplay (pulseaudio-utils)')
         if not self.output_device and not shutil.which("aplay"):
@@ -196,8 +194,8 @@ class VoiceIO:
         wav_path = Path(location)
         try:
             for chunk in speech_chunks(text):
-                self._run_audio(["piper", "--model", str(self.piper_model), "--output_file", str(wav_path)],
-                                text=chunk)
+                from .tts_engine import synthesizer
+                synthesizer.synthesize(self.piper_model, chunk, wav_path, self._speech_cancel)
                 player = ['paplay', '--device=' + self.output_device, str(wav_path)] if self.output_device else ['aplay', '-q', str(wav_path)]
                 self._run_audio(player)
             return "spoken"
