@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--guided-click", metavar="ALVO", help="Clique visual supervisionado com cursor posicionado pelo usuário e verificação posterior")
     parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e permissões do portal")
     parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
+    parser.add_argument("--models-diagnostic", action="store_true", help="Comparar catálogos Responses, padrão e admin sem inferência")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
     parser.add_argument("--windows-diagnostic", action="store_true", help="Diagnóstico parcial de janelas acessíveis via AT-SPI, sem FCC")
@@ -149,6 +150,10 @@ def main():
             sys.exit(1)
         return
     try:
+        if args.models_diagnostic:
+            from .catalog_diagnostic import inspect_catalog
+            print(json.dumps(inspect_catalog(client), ensure_ascii=False, indent=2))
+            return
         if args.health:
             print(json.dumps(client.request("GET", "/health"), ensure_ascii=False))
             return

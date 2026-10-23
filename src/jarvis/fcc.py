@@ -69,7 +69,8 @@ class FCCClient:
         return self.request("GET", "/health")
 
     def models(self):
-        # A visualização padrão do FCC contém aliases Claude; Responses usa IDs específicos.
+        # A visão padrão contém aliases Claude. Responses anuncia IDs roteáveis;
+        # a listagem não comprova disponibilidade de inferência ou function calling.
         return self.request("GET", "/v1/models?view=responses")
 
     def responses(self, payload):

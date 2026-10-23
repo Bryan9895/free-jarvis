@@ -85,3 +85,7 @@ Pedido explícito do usuário: iniciar `jarvis-fcc` com voz e mensagens simultan
 Analisada árvore completa e amostra arquitetural da referência `FatihMakes/Mark-LVI` em `4d4035c`; plano e modelo registrados antes da implementação. Código próprio em gui_theme.py (tema) e gui_shell.py (navegação/HUD). GUI mantém serviço/backend, tarefas, abas, janelas e permissões; navegação lateral substitui a linha de abas. Voz automática após conexão, opção --text-only e alternância visível. Captura pausa durante pedidos digitados.
 
 Validação: 339 testes executados sem falhas, dois ignorados (Playwright e display gráfico). Tentativa de Xvfb isolado não concluiu inicialização do teclado virtual; não houve renderização real da janela. Modelo SVG é ilustrativo, não screenshot. Falta ensaio em GNOME 1366x768, contraste/fontes reais, aprovação e resposta falada. Dependências do produto permanecem as mesmas, sem PyQt6/Electron.
+
+## Comparação de catálogos FCC — 23/10/2026
+
+Adicionado --models-diagnostic: leitura Responses/padrão/admin, contagem por provedor e comparação por ref para não tratar aliases como modelos extras. Sem inferência, refresh ou escrita de configurações. Fonte oficial FCC `fc86d534`; servidor do usuário não acessível nesta sessão. Explicação e limites em CATALOGO_MODELOS.md. Não identificado filtro de modelos no cliente; hipótese de catálogo/provedor exige dados da instalação. Suíte: 343 testes sem falhas, dois ignorados.
