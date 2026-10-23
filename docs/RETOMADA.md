@@ -1,5 +1,9 @@
 # JARVIS — ponto de retomada (22 de outubro de 2026)
 
+## GUI e conversa de voz contínua
+
+A GUI adicionou um controle de escuta contínua na aba Voz. Após ativar uma vez, Whisper faz VAD/transcrição local e só envia ao serviço pedidos reconhecidos começando por Jarvis/Jarves. A resposta é falada quando Piper está configurado; depois Jarvis aceita continuação por 20 s e retorna ao wake word. A captura temporária é apagada após transcrição. Para economizar CPU, a escuta para ao desligar o botão ou fechar a janela. Testes automáticos cobrem filtragem da palavra-chave, segmentação por silêncio e o caminho GUI→serviço→voz. A transcrição sintética base confundiu Jarvis com “Davies”, coberto como variante; a suíte com 315 testes passou em Python 3.11 e 3.14. O teste com microfone, conversa encadeada e a precisão/carga no notebook real continuam pendentes. Próximo passo: ativar a escuta na GUI, testar “Jarvis, abra Firefox”, falar um segundo pedido sem wake word e medir CPU/RAM durante alguns minutos.
+
 ## Estado mais recente — início da v0.7.0
 
 **Atualização seguinte:** a CLI inicia em autoaprovação, sem pedir `SIM` por ação, inclusive ao fechar janela; `--manual-approve` é opt-in e `--auto-approve` continua aceito. O aplicativo ainda pode abrir seu próprio diálogo de alterações não salvas. Os esquemas foram separados em `tool_specs.py`, e módulos Python são carregados somente quando listados em `JARVIS_PLUGINS`, em uma cópia do registro. Testes automatizados cobrem os modos e o carregamento; falta ensaio integrado com FCC real. Próxima tarefa: proteção contra ciclos em tarefas compostas.

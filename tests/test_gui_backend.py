@@ -49,6 +49,29 @@ class GuiBackendTests(unittest.TestCase):
         backend._thread.join(timeout=2)
         self.assertTrue(service.closed)
 
+    def test_voice_turn_uses_service_and_resumes_listener(self):
+        service = FakeService()
+        backend = GuiBackend(None, service_factory=lambda *_a, **_kw: service)
+        class Listener:
+            resumed = False
+            def resume(self):
+                self.resumed = True
+        class Voice:
+            piper_model = object()
+            def speak(self, text):
+                return "spoken"
+        backend.service = service
+        backend._voice = Voice()
+        backend._voice_listener = Listener()
+        backend._dispatch("voice_ask", "abra o Firefox")
+        events = []
+        while not backend.events.empty():
+            events.append(backend.events.get_nowait())
+        self.assertIn(("voice_transcript", "abra o Firefox"), events)
+        self.assertIn(("answer", "Resposta: abra o Firefox"), events)
+        self.assertIn(("voice_status", "spoken"), events)
+        self.assertTrue(backend._voice_listener.resumed)
+
 
 if __name__ == "__main__":
     unittest.main()

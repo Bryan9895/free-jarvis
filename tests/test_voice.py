@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-from jarvis.voice import VoiceIO, VoiceError
+from jarvis.voice import VoiceIO, VoiceError, WakeWordConversation
 
 class VoiceTests(unittest.TestCase):
     def test_record_duration_bounds(self):
@@ -62,6 +62,54 @@ class VoiceTests(unittest.TestCase):
             voice.transcribe = Mock(return_value="Tudo bem")
             self.assertEqual(voice.listen_once(3), "Tudo bem")
             self.assertFalse(audio.exists())
+
+    def test_wake_word_variants_are_removed_before_submission(self):
+        examples = (("Jarvis, abra o Firefox", "abra o Firefox"),
+                    ("Hey Jarvis: organize as janelas", "organize as janelas"),
+                    ("Jarves feche o terminal", "feche o terminal"),
+                    ("Djarvis, abra o projeto", "abra o projeto"),
+                    ("Davies, abra o Firefox", "abra o Firefox"),
+                    ("De avis: abra o Firefox", "abra o Firefox"))
+        for transcript, expected in examples:
+            with self.subTest(transcript=transcript):
+                self.assertEqual(WakeWordConversation.remove_wake_word(transcript), expected)
+
+    def test_wake_word_only_becomes_empty_command(self):
+        self.assertEqual(WakeWordConversation.remove_wake_word("Hey Jarvis!"), "")
+
+    def test_wake_command_must_start_with_wake_word(self):
+        self.assertEqual(WakeWordConversation.extract_wake_command("Jarves, abra Firefox"),
+                         (True, "abra Firefox"))
+        self.assertEqual(WakeWordConversation.extract_wake_command("Hey Jarvis"),
+                         (True, ""))
+        self.assertEqual(WakeWordConversation.extract_wake_command("Davies."),
+                         (True, ""))
+        self.assertEqual(WakeWordConversation.extract_wake_command("Abra Firefox"),
+                         (False, "Abra Firefox"))
+
+    def test_voice_activity_capture_keeps_leading_speech_and_stops_at_silence(self):
+        import numpy as np
+        from types import SimpleNamespace
+        blocks = ([np.zeros((1280, 1), dtype=np.int16) for _ in range(4)] +
+                  [np.full((1280, 1), 600, dtype=np.int16) for _ in range(8)] +
+                  [np.zeros((1280, 1), dtype=np.int16) for _ in range(8)])
+
+        class InputStream:
+            def __init__(self, **kwargs):
+                self.callback = kwargs["callback"]
+            def __enter__(self):
+                for block in blocks:
+                    self.callback(block, len(block), None, None)
+                return self
+            def __exit__(self, *_args):
+                return False
+
+        listener = WakeWordConversation(VoiceIO(silence_rms=150), lambda _text: None,
+                                        silence_seconds=0.24)
+        samples = listener._listen_for_command(SimpleNamespace(InputStream=InputStream), np)
+        self.assertIsNotNone(samples)
+        self.assertGreater(int(samples.max()), 500)
+        self.assertEqual(len(samples), (4 + 8 + 3) * 1280)
 
     def test_piper_exec_and_cleanup(self):
         with tempfile.TemporaryDirectory() as td:

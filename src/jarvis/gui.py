@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
 import tkinter as tk
@@ -29,6 +30,8 @@ class GuiBackend:
         self.events = queue.Queue()
         self.service = None
         self._approval = None
+        self._voice = None
+        self._voice_listener = None
         self._closed = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
 
@@ -56,6 +59,8 @@ class GuiBackend:
 
     def close(self):
         self._closed.set()
+        if self._voice_listener is not None:
+            self._voice_listener.stop()
         self.cancel()
         self.submit("shutdown")
 
@@ -154,14 +159,49 @@ class GuiBackend:
             device = int(value.split(":", 1)[0]) if value else None
             voice = VoiceIO(device=device)
             self.events.put(("transcript", voice.listen_once(6)))
+        elif command == "voice_listen_start":
+            from .voice import VoiceIO, WakeWordConversation
+            device = int(value.split(":", 1)[0]) if value else None
+            self._voice = VoiceIO(model=os.getenv("JARVIS_WAKE_MODEL", "base"),
+                                  language=os.getenv("JARVIS_LANGUAGE", "pt"),
+                                  piper_model=os.getenv("JARVIS_PIPER_MODEL", ""),
+                                  device=device)
+            self._voice_listener = WakeWordConversation(
+                self._voice, on_command=lambda text: self.submit("voice_ask", text),
+                on_status=lambda text: self.events.put(("voice_status", text)),
+                device=device)
+            self._voice_listener.start()
+            self.events.put(("voice_listening", True))
+        elif command == "voice_listen_stop":
+            if self._voice_listener is not None:
+                self._voice_listener.stop()
+                self._voice_listener = None
+            self.events.put(("voice_listening", False))
+        elif command == "voice_ask":
+            self.events.put(("voice_transcript", value))
+            self.events.put(("busy", True))
+            try:
+                answer = service.ask(value)
+                self.events.put(("answer", answer))
+                if self._voice is not None:
+                    if self._voice.piper_model is None:
+                        self.events.put(("voice_status", "Resposta em texto; configure JARVIS_PIPER_MODEL para áudio."))
+                    else:
+                        self.events.put(("voice_status", "Falando a resposta…"))
+                        self.events.put(("voice_status", self._voice.speak(answer)))
+                self.events.put(("metrics", service.agent.last_metrics))
+                self.events.put(("plan", service.planner.snapshot()))
+            finally:
+                if self._voice_listener is not None:
+                    self._voice_listener.resume()
+                self.events.put(("busy", False))
         elif command == "voice_devices":
             from .voice import VoiceIO
             self.events.put(("voice_devices", [f"{index}: {name}"
                                              for index, name in VoiceIO.input_devices()]))
         elif command == "voice_speak":
             from .voice import VoiceIO
-            from os import getenv
-            voice = VoiceIO(piper_model=getenv("JARVIS_PIPER_MODEL", ""))
+            voice = VoiceIO(piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
             self.events.put(("voice_status", voice.speak(value)))
 
 
@@ -176,6 +216,7 @@ class JarvisWindow:
         self.model = tk.StringVar()
         self.approval_mode = tk.StringVar(value="auto")
         self.voice_device = tk.StringVar()
+        self.voice_listening = False
         self.capability_vars = {}
         self._build()
         root.protocol("WM_DELETE_WINDOW", self._close)
@@ -261,13 +302,22 @@ class JarvisWindow:
 
         voice = ttk.Frame(tabs, padding=8)
         tabs.add(voice, text="Voz")
-        ttk.Label(voice, text="Microfone; transcrição pode ser corrigida antes de enviar").pack(anchor="w")
+        ttk.Label(voice, text="Ative a escuta contínua e diga 'Jarvis' para conversar sem cliques.").pack(anchor="w")
         self.devices = ttk.Combobox(voice, textvariable=self.voice_device, width=40)
         self.devices.pack(fill="x", pady=5)
         ttk.Button(voice, text="Listar microfones", command=lambda: self.backend.submit(
             "voice_devices")).pack(fill="x")
         ttk.Button(voice, text="Gravar 6 segundos", command=lambda: self.backend.submit(
             "voice_record", self.voice_device.get())).pack(fill="x")
+        self.voice_toggle_button = ttk.Button(voice, text="Ativar escuta contínua",
+                                              command=self._toggle_voice)
+        self.voice_toggle_button.pack(fill="x", pady=(8, 2))
+        self.voice_status = tk.StringVar(value="Desativada")
+        ttk.Label(voice, textvariable=self.voice_status, wraplength=360).pack(anchor="w", pady=4)
+        ttk.Label(voice, text="Detecção e transcrição ocorrem localmente. "
+                             "Só falas iniciadas pela palavra de ativação são enviadas ao FCC. "
+                             "A resposta é falada se JARVIS_PIPER_MODEL estiver configurado.",
+                  wraplength=360).pack(anchor="w", pady=8)
 
     def _write(self, widget, value):
         widget.configure(state="normal")
@@ -291,6 +341,12 @@ class JarvisWindow:
     def _cancel(self):
         if self.backend.cancel():
             self._append_chat("Sistema", "Cancelamento solicitado; aguardando a chamada atual terminar.")
+
+    def _toggle_voice(self):
+        if self.voice_listening:
+            self.backend.submit("voice_listen_stop")
+        else:
+            self.backend.submit("voice_listen_start", self.voice_device.get())
 
     def _revoke(self):
         self.backend.revoke()
@@ -364,8 +420,17 @@ class JarvisWindow:
             self.message.delete(0, "end")
             self.message.insert(0, payload)
             self._append_chat("Voz", "Transcrição pronta para revisão antes de enviar.")
+        elif kind == "voice_transcript":
+            self._append_chat("Você (voz)", payload)
         elif kind == "voice_status":
-            self._append_chat("Voz", str(payload))
+            self.voice_status.set(str(payload))
+            if str(payload).startswith("Escuta contínua indisponível:"):
+                self.voice_listening = False
+                self.voice_toggle_button.configure(text="Ativar escuta contínua")
+        elif kind == "voice_listening":
+            self.voice_listening = bool(payload)
+            self.voice_toggle_button.configure(
+                text="Parar escuta contínua" if self.voice_listening else "Ativar escuta contínua")
         elif kind == "voice_devices":
             self.devices.configure(values=payload)
             if payload and not self.voice_device.get():

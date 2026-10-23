@@ -61,4 +61,4 @@ FCC e um modelo compatível com Responses/function calling; extensões GNOME Win
 
 A v1.0 exige os 15 critérios gerais da solicitação do usuário, instalação limpa, suíte e navegador controlado passando, GUI funcional e não bloqueante, voz opcional que não quebra texto, migração SQLite sem perda, cancelamento e retomada sem repetição cega. Cada resultado de ação deve distinguir recusa, indisponibilidade, ausência, ambiguidade, envio não verificado, parcial e sucesso verificado. Validação física de dois monitores e diálogos de salvamento será registrada separadamente; não declarar essas capacidades fisicamente validadas sem hardware/cenário. O número da versão só muda após esses gates.
 
-Ficam para depois: palavra de ativação contínua, outros sistemas operacionais, marketplace, cloud obrigatória e controle irrestrito.
+Ficam para depois: reduzir falsos positivos/consumo da ativação contínua com testes longos no ambiente acústico real, outros sistemas operacionais, marketplace, cloud obrigatória e controle irrestrito.
