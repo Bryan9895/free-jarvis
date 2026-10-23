@@ -40,7 +40,7 @@ class RegistryTests(unittest.TestCase):
             memory = Memory(Path(temp) / "memory.db")
             Agent(client, kit, memory, "fake").ask("Liste os arquivos")
             self.assertEqual({item["name"] for item in client.tools},
-                             {"list_files", "read_file", "verify_file", "authorized_directories"})
+                             {"list_files"})
             denied = kit.execute("write_file", {"path": "blocked.txt", "content": "x"})
             self.assertIn("Capacidade não autorizada", denied["error"])
             self.assertEqual(policy.auto_approved, 0)

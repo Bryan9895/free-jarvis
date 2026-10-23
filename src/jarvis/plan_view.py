@@ -45,6 +45,9 @@ def format_plan(plan, *, show_results=True):
     for step in steps:
         status = step.get("status", "pending")
         lines.append(f"  {symbols.get(status, '·')} {step.get('id','?')}. {step.get('description','—')}")
+        dependencies = step.get("depends_on", [])
+        if dependencies:
+            lines.append("     Depende de: " + ", ".join(f"etapa {item}" for item in dependencies))
         lines.append(f"     {_LABELS.get(status, status)}")
         if show_results and step.get("result"):
             excerpt = " ".join(str(step["result"]).split())

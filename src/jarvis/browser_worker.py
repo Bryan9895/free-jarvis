@@ -58,7 +58,12 @@ def handle(page, op, args, workspace):
         if target.count() != 1:
             raise ValueError("Seletor deve corresponder a exatamente um elemento")
         if op == "click":
+            before_url = page.url
+            before_text = page.locator("body").inner_text(timeout=7000)[:MAX_TEXT]
             target.click(timeout=7000)
+            popups = [popup for popup in page.context.pages if popup is not page]
+            for popup in popups:
+                popup.close()
         else:
             text = args["text"]
             if not isinstance(text, str) or len(text) > 2000:
@@ -67,11 +72,19 @@ def handle(page, op, args, workspace):
         # Checar URL caso ação navegue; interceptação de rede também se aplica a redirects.
         if page.url.startswith(("http:", "https:")):
             validate_url(page.url)
-        return {"status": "executed", "url": page.url}
+        if op == "fill":
+            observed = target.input_value(timeout=7000) == text
+            return {"status": "filled_verified" if observed else "sent_unverified",
+                    "url": page.url}
+        after_text = page.locator("body").inner_text(timeout=7000)[:MAX_TEXT]
+        return {"status": "executed", "url": page.url,
+                "observed_change": page.url != before_url or after_text != before_text,
+                "popups_closed": len(popups)}
     if op == "screenshot":
         target = workspace / "jarvis_screenshot.png"
         page.screenshot(path=str(target), full_page=False, timeout=10000)
-        return {"status": "saved", "path": str(target)}
+        return {"status": "screenshot_verified" if target.is_file() and target.stat().st_size
+                else "sent_unverified", "path": str(target)}
     raise ValueError("Operação desconhecida")
 
 def main():

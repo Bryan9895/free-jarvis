@@ -9,6 +9,7 @@ from .tools import Toolkit
 from .memory import Memory
 from .agent import Agent
 from .approval import ApprovalPolicy
+from .service import JarvisService
 from .plugins import load_plugins
 from .tools import DEFAULT_REGISTRY
 
@@ -35,6 +36,7 @@ def main():
     parser.add_argument("--desktop-screenshot", action="store_true", help="Solicita captura de tela via portal Wayland com confirmação")
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
+    parser.add_argument("--gui", action="store_true", help="Abrir interface gráfica leve")
     approval_group = parser.add_mutually_exclusive_group()
     approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
     approval_group.add_argument("--manual-approve", action="store_true", help="Pedir confirmação no terminal para cada ação")
@@ -42,6 +44,10 @@ def main():
     c = Config.from_env()
     approval = ApprovalPolicy(auto=not args.manual_approve, manual_callback=globals()["confirm"])
     confirm = approval
+    if args.gui:
+        from .gui import main_gui
+        main_gui(c, auto=not args.manual_approve)
+        return
     if args.doctor:
         from pathlib import Path
         import importlib.util
@@ -157,8 +163,7 @@ def main():
         from .plan_view import format_plan, format_history
         plan_store = PlanStore(c.db)
         planner = TaskPlanner(auto, agent, store=plan_store)
-        from .natural_tasks import NaturalTaskController
-        natural_tasks = NaturalTaskController(planner, confirm)
+        service = JarvisService(auto, agent, toolkit, mem, planner, approval)
         voice = None
         if args.voice:
             from .voice import VoiceIO
@@ -191,6 +196,12 @@ def main():
                                 print(f"Falha de gravação/transcrição: {exc}", file=sys.stderr)
                                 continue
                             print("Você (voz) >", msg or "[nenhuma fala reconhecida]")
+                            if msg:
+                                correction = input("Corrigir transcrição [Enter = enviar, /cancelar = descartar] > ").strip()
+                                if correction.casefold() == "/cancelar":
+                                    continue
+                                if correction:
+                                    msg = correction
                     else:
                         msg = input("Você > ").strip()
                 except (KeyboardInterrupt, EOFError):
@@ -367,9 +378,7 @@ def main():
                           "/plano para o plano atual.")
                     continue
                 try:
-                    answer = natural_tasks.handle(msg)
-                    if answer is None:
-                        answer = agent.ask(msg)
+                    answer = service.ask(msg)
                     print("JARVIS >", answer, "\n")
                     if os.getenv("JARVIS_SHOW_TIMING") == "1":
                         print("Tempo:", agent.last_metrics, "\n")
@@ -386,9 +395,7 @@ def main():
                     print("\\nRequisição interrompida. Uma ação local já autorizada pode ter ocorrido; "
                           "confira o resultado antes de repetir. Use /metricas para ver o tempo parcial.")
         finally:
-            toolkit.close()
-            plan_store.close()
-            mem.close()
+            service.close()
     except FCCError as exc:
         print("Erro:", exc, file=sys.stderr)
         sys.exit(1)

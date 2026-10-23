@@ -10,6 +10,19 @@ class PlannerTests(unittest.TestCase):
         plan = _extract_plan('Plano:\n```json\n{"steps":["Listar arquivos","Ler documento"]}\n```')
         self.assertEqual(len(plan), 2)
         self.assertEqual(plan[0]["status"], "pending")
+        self.assertEqual(plan[1]["depends_on"], [])
+
+    def test_validates_explicit_step_dependencies(self):
+        plan = _extract_plan('{"steps":[{"description":"Criar arquivo","depends_on":[]},'
+                             '{"description":"Abrir arquivo","depends_on":[1]}]}')
+        self.assertEqual(plan[1]["depends_on"], [1])
+        for invalid in (
+            '{"steps":[{"description":"Criar arquivo","depends_on":[1]}]}',
+            '{"steps":["Etapa um",{"description":"Etapa dois","depends_on":[2]}]}',
+            '{"steps":["Etapa um",{"description":"Etapa dois","depends_on":[1,1]}]}',
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                _extract_plan(invalid)
 
     def test_rejects_malformed_or_oversized_plans(self):
         bad = [
@@ -68,6 +81,18 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(result["status"], "stopped")
         self.assertEqual(result["steps"][0]["status"], "failed")
         self.assertEqual(result["steps"][1]["status"], "pending")
+        self.assertEqual(agent.ask.call_count, 1)
+
+    def test_unverified_dependency_blocks_dependent_step(self):
+        planner, client, agent = self.make_planner(
+            '{"steps":[{"description":"Inspecionar projeto","depends_on":[]},'
+            '{"description":"Editar arquivo encontrado","depends_on":[1]}]}')
+        agent.last_metrics = {"tool_problems": [], "tool_outcomes": [], "tools_executed": 0}
+        planner.prepare("Inspecionar e editar projeto")
+        result = planner.execute(lambda _: True, report=lambda _: None)
+        self.assertEqual(result["status"], "stopped")
+        self.assertEqual([s["status"] for s in result["steps"]],
+                         ["reported_unverified", "blocked"])
         self.assertEqual(agent.ask.call_count, 1)
 
     def test_tool_rejection_stops_following_steps(self):

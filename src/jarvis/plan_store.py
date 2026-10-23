@@ -2,20 +2,12 @@
 import json
 import sqlite3
 from pathlib import Path
+from .database import connect_database
 
 
 class PlanStore:
     def __init__(self, path):
-        db = Path(path).expanduser()
-        db.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(db)
-        self.conn.execute(
-            "CREATE TABLE IF NOT EXISTS task_plans ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "payload TEXT NOT NULL, status TEXT NOT NULL, "
-            "updated_at TEXT DEFAULT CURRENT_TIMESTAMP)"
-        )
-        self.conn.commit()
+        self.conn = connect_database(path)
 
     def save(self, plan):
         serialized = json.dumps(plan, ensure_ascii=False)

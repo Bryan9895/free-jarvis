@@ -45,6 +45,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(output)
 
 class HTTPIntegrationTests(unittest.TestCase):
+    def test_invalid_catalog_json_is_classified(self):
+        class InvalidResponse:
+            def __enter__(self):
+                return io.BytesIO(b"not json")
+            def __exit__(self, *_):
+                return False
+        with patch("jarvis.fcc.urlopen", return_value=InvalidResponse()):
+            with self.assertRaises(FCCError) as err:
+                FCCClient("http://127.0.0.1:8082").models()
+        self.assertEqual(err.exception.category, "invalid_response")
+
     def test_incomplete_sse_reports_reason_not_model_thoughts(self):
         class FakeHTTPResponse:
             def __enter__(self):

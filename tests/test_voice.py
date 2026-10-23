@@ -1,5 +1,7 @@
 """Testes locais de voz sem hardware nem downloads."""
 import tempfile
+import sys
+from array import array
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +14,21 @@ class VoiceTests(unittest.TestCase):
         for seconds in (0, -1, 16, 999):
             with self.subTest(seconds=seconds), self.assertRaises(VoiceError):
                 voice.record(seconds)
+
+    def test_silence_is_rejected_and_device_is_selected(self):
+        recorded = []
+        fake_sd = SimpleNamespace(
+            rec=lambda *args, **kwargs: recorded.append(kwargs) or
+                SimpleNamespace(tobytes=lambda: array("h", [0] * 160).tobytes()),
+            wait=lambda: None,
+            query_devices=lambda: [{"name": "Microfone USB", "max_input_channels": 1},
+                                   {"name": "Saída", "max_input_channels": 0}],
+        )
+        with patch.dict(sys.modules, {"sounddevice": fake_sd}):
+            self.assertEqual(VoiceIO.input_devices(), [(0, "Microfone USB")])
+            with self.assertRaisesRegex(VoiceError, "Nenhuma fala"):
+                VoiceIO(device=0).record(1)
+        self.assertEqual(recorded[0]["device"], 0)
 
     def test_transcribe_missing_file(self):
         with tempfile.TemporaryDirectory() as td:

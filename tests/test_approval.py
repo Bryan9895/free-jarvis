@@ -46,6 +46,18 @@ class ApprovalModeTests(unittest.TestCase):
         self.assertTrue(policy("ABRIR PROJETO"))
         self.assertEqual(policy.auto_approved, 2)
 
+    def test_auto_mode_keeps_one_confirmation_for_sensitive_close(self):
+        prompts = []
+        policy = ApprovalPolicy(auto=True,
+                                manual_callback=lambda action: prompts.append(action) or False,
+                                report=lambda _: None)
+        self.assertTrue(policy("FOCAR FIREFOX"))
+        self.assertFalse(policy.confirm_sensitive("FECHAR janela com dados não salvos"))
+        self.assertEqual(len(prompts), 1)
+        policy.revoke()
+        self.assertFalse(policy.confirm_sensitive("FECHAR outra janela"))
+        self.assertEqual(len(prompts), 1)
+
     def test_auto_does_not_bypass_workspace_boundary(self):
         with tempfile.TemporaryDirectory() as temp:
             policy = ApprovalPolicy(auto=True, report=lambda _: None)

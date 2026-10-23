@@ -1,13 +1,12 @@
 """Memória conversacional local de sessão, sem gravação de segredos intencional."""
 import sqlite3
 from pathlib import Path
+from .database import connect_database
 
 class Memory:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
-        self.conn.execute("CREATE TABLE IF NOT EXISTS turns (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
-        self.conn.commit()
+        self.conn = connect_database(path)
 
     def add(self, role: str, content: str):
         self.conn.execute("INSERT INTO turns(role,content) VALUES (?,?)", (role, content))

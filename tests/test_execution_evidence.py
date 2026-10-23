@@ -34,7 +34,7 @@ class ExecutionEvidenceTests(unittest.TestCase):
         self.assertEqual(result["steps"][1]["status"], "pending")
         self.assertEqual(agent.ask.call_count, 1)
 
-    def test_successful_write_file_is_counted(self):
+    def test_write_report_without_independent_verification_stops_next_step(self):
         outcome = {"result": {"status": "written", "path": "/tmp/main.py"}}
         planner, agent = self.make_plan(
             "Criar main.py",
@@ -44,8 +44,10 @@ class ExecutionEvidenceTests(unittest.TestCase):
             "Arquivo gravado.",
         )
         result = planner.execute(lambda _: True, report=lambda _: None)
-        self.assertEqual(result["status"], "completed_unverified")
-        self.assertEqual(agent.ask.call_count, 2)
+        self.assertEqual(result["status"], "stopped")
+        self.assertEqual(result["steps"][0]["status"], "reported_unverified")
+        self.assertEqual(result["steps"][1]["status"], "pending")
+        self.assertEqual(agent.ask.call_count, 1)
 
     def test_open_file_and_verify_content(self):
         with tempfile.TemporaryDirectory() as td:

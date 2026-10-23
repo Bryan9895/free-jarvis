@@ -4,10 +4,15 @@ from .plan_view import format_plan, format_history
 
 
 class NaturalTaskController:
-    def __init__(self, planner, approve, report=print):
+    def __init__(self, planner, approve, report=print, cancel_token_provider=None):
         self.planner = planner
         self.approve = approve
         self.report = report
+        self.cancel_token_provider = cancel_token_provider or (lambda: None)
+
+    def _execute(self):
+        return self.planner.execute(self.approve, report=self.report,
+                                    cancel_token=self.cancel_token_provider())
 
     def _show(self, plan):
         return format_plan(plan)
@@ -64,7 +69,7 @@ class NaturalTaskController:
                 return str(exc)
         state = self.planner.snapshot()
         if state["status"] == "ready":
-            return self._show(self.planner.execute(self.approve, report=self.report))
+            return self._show(self._execute())
         return self._show(state)
 
     def handle(self, message):
@@ -79,7 +84,7 @@ class NaturalTaskController:
         if kind == "cancel":
             return self._show(self.planner.cancel())
         if kind == "execute":
-            return self._show(self.planner.execute(self.approve, report=self.report))
+            return self._show(self._execute())
         if kind in ("resolve_skip", "resolve_retry"):
             choice = "skip" if kind == "resolve_skip" else "retry"
             state = self.planner.snapshot()
@@ -104,6 +109,6 @@ class NaturalTaskController:
             if kind == "plan":
                 return display + "\nDiga 'execute o plano' para iniciar."
             return self._show(
-                self.planner.execute(self.approve, report=self.report)
+                self._execute()
             )
         return None

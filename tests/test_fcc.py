@@ -7,6 +7,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from jarvis.fcc import FCCClient, FCCError, AutoModelClient, may_fallback
 from jarvis.config import Config
+from jarvis.providers import ModelProvider
 
 class HTTPResponse:
     def __init__(self, payload):
@@ -29,6 +30,16 @@ class FakeClient:
         return {"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}
 
 class FCCTests(unittest.TestCase):
+    def test_model_adapter_implements_provider_contract(self):
+        adapter = AutoModelClient(FakeClient())
+        self.assertIsInstance(adapter, ModelProvider)
+
+    def test_error_categories_distinguish_auth_rate_and_invalid_response(self):
+        self.assertEqual(FCCError("token recusado", 401).category, "authentication")
+        self.assertEqual(FCCError("cota", 429).category, "rate_limit")
+        self.assertEqual(FCCError("FCC indisponível").category, "unavailable")
+        self.assertEqual(FCCError("Evento SSE inválido do FCC").category, "invalid_response")
+
     def test_documentation_placeholder_uses_default_model(self):
         with patch.dict(os.environ, {"FCC_MODEL": "ID_DO_MODELO"}):
             self.assertEqual(Config.from_env().model, "")
@@ -95,6 +106,8 @@ class FCCTests(unittest.TestCase):
         self.assertEqual(capture.last_payload["reasoning"], {"effort": "none"})
         self.assertGreaterEqual(capture.last_payload["max_output_tokens"], 512)
         self.assertTrue(capture.last_payload["stream"])
+        self.assertEqual(capture.last_payload["input"],
+                         [{"role": "user", "content": "Responda somente: OK"}])
 
     def test_switch_to_any_listed_fcc_model(self):
         backend = FakeClient()

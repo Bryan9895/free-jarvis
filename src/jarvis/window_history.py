@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from .database import connect_database
 
 WINDOW_MUTATIONS = {
     "focus_window", "manage_window", "close_window", "place_window",
@@ -18,14 +19,7 @@ WINDOW_MUTATIONS = {
 
 
 def _connection(db_path):
-    path = Path(db_path).expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
-    connection.execute("CREATE TABLE IF NOT EXISTS window_action_history ("
-                       "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                       "tool TEXT NOT NULL, status TEXT NOT NULL, "
-                       "details TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)")
-    return connection
+    return connect_database(db_path)
 
 
 def record_window_action(db_path, tool, arguments, outcome):

@@ -22,9 +22,22 @@ def may_fallback(error):
     return False
 
 class FCCError(RuntimeError):
-    def __init__(self, message, status=None):
+    def __init__(self, message, status=None, category=None):
         super().__init__(message)
         self.status = status
+        self.category = category or self._category(status, message)
+
+    @staticmethod
+    def _category(status, message):
+        if status in (401, 403):
+            return "authentication"
+        if status == 429:
+            return "rate_limit"
+        if status in (500, 502, 503, 504) or status is None and "indisponível" in message.lower():
+            return "unavailable"
+        if "inválid" in message.lower() or "sem evento response.completed" in message.lower():
+            return "invalid_response"
+        return "request"
 
 class FCCClient:
     def __init__(self, base_url: str, token: str = "", timeout: int = 100):
@@ -42,10 +55,15 @@ class FCCClient:
             with urlopen(req, timeout=self.timeout) as response:
                 return json.load(response)
         except HTTPError as exc:
-            detail = exc.read(700).decode(errors="replace")
+            try:
+                detail = exc.read(700).decode(errors="replace")
+            finally:
+                exc.close()
             raise FCCError(f"HTTP {exc.code} em {path}: {detail}", exc.code) from exc
         except (URLError, TimeoutError, ConnectionError) as exc:
             raise FCCError(f"FCC indisponível: {exc}") from exc
+        except ValueError as exc:
+            raise FCCError("Resposta JSON inválida do FCC", category="invalid_response") from exc
 
     def health(self):
         return self.request("GET", "/health")
@@ -104,7 +122,10 @@ class FCCClient:
                     raise FCCError("Streaming encerrado sem evento response.completed válido")
                 return final
         except HTTPError as exc:
-            detail = exc.read(700).decode(errors="replace")
+            try:
+                detail = exc.read(700).decode(errors="replace")
+            finally:
+                exc.close()
             raise FCCError(f"HTTP {exc.code} em /v1/responses: {detail}", exc.code) from exc
         except (URLError, TimeoutError, ConnectionError) as exc:
             raise FCCError(f"Conexão FCC interrompida: {exc}") from exc
@@ -222,7 +243,8 @@ class AutoModelClient:
         try:
             print("Diagnóstico: modelos candidatos: " + ", ".join(self.candidates), file=sys.stderr, flush=True)
             response = self.responses({
-            "model": self.active_model, "input": "Responda somente: OK",
+            "model": self.active_model,
+            "input": [{"role": "user", "content": "Responda somente: OK"}],
             "max_output_tokens": 768, "reasoning": {"effort": "none"}, "stream": True
             })
         finally:

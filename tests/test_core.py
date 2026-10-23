@@ -17,6 +17,40 @@ class FakeClient:
         return next(self.sequence)
 
 class CoreTests(unittest.TestCase):
+    def test_unstructured_tool_text_is_not_treated_as_execution(self):
+        with tempfile.TemporaryDirectory() as td:
+            client = FakeClient([{"output": [{"type": "message", "content": [{
+                "type": "output_text",
+                "text": 'to=functions.write_file 由 json {"path":"x","content":"bad"}',
+            }]}]}])
+            memory = Memory(Path(td) / "m.db")
+            toolkit = Toolkit(Path(td))
+            with patch.object(toolkit, "execute", wraps=toolkit.execute) as execute:
+                agent = Agent(client, toolkit, memory, "fake")
+                answer = agent.ask("Crie o arquivo x", mode="tools")
+            self.assertIn("sem chamadas estruturadas", answer)
+            self.assertTrue(agent.last_metrics["invalid_tool_response"])
+            self.assertEqual(agent.last_metrics["tools_executed"], 0)
+            execute.assert_not_called()
+            memory.close()
+
+    def test_agent_verifies_written_file_before_classifying_success(self):
+        with tempfile.TemporaryDirectory() as td:
+            call = {"type": "function_call", "name": "write_file", "call_id": "write-1",
+                    "arguments": '{"path":"proof.txt","content":"verified"}'}
+            final = {"output": [{"type": "message", "content": [
+                {"type": "output_text", "text": "Arquivo criado."}]}]}
+            client = FakeClient([{"output": [call]}, final])
+            memory = Memory(Path(td) / "m.db")
+            toolkit = Toolkit(Path(td), approve=lambda _action: True)
+            agent = Agent(client, toolkit, memory, "fake")
+            agent.ask("Crie proof.txt com verified", mode="tools")
+            outcome = agent.last_metrics["tool_outcomes"][0]
+            self.assertEqual(outcome["execution"]["state"], "verified")
+            self.assertEqual(outcome["verification"]["status"], "verified")
+            self.assertEqual(outcome["verification"]["evidence"][0]["status"], "verified")
+            memory.close()
+
     def test_desktop_input_is_hidden_by_default(self):
         with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {"JARVIS_ENABLE_DESKTOP_INPUT": ""}):
             client = FakeClient([{"output":[{"type":"message","content":[{"type":"output_text","text":"ok"}]}]}])
@@ -245,6 +279,22 @@ class CoreTests(unittest.TestCase):
             self.assertTrue(agent.last_metrics["direct_tool_reply"])
             memory.close()
 
+    def test_simple_file_requests_get_a_small_catalog(self):
+        from jarvis.router import tool_catalog
+        from jarvis.tools import TOOL_SPECS
+        cases = {
+            "Crie o arquivo notas.txt": {"write_file"},
+            "Leia o arquivo notas.txt": {"read_file"},
+            "Liste os arquivos da pasta": {"list_files"},
+            "Crie uma pasta rascunhos": {"make_directory"},
+            "Crie um projeto Python": {"create_python_project"},
+            "Edite o arquivo notas.txt": {"read_file", "write_file"},
+        }
+        for prompt, expected in cases.items():
+            with self.subTest(prompt=prompt):
+                self.assertEqual({item["name"] for item in tool_catalog(prompt, TOOL_SPECS)}, expected)
+        self.assertEqual(tool_catalog("Crie o arquivo notas.txt e abra no VS Code", TOOL_SPECS), TOOL_SPECS)
+
     def test_unadvertised_tool_is_blocked_at_execution_boundary(self):
         with tempfile.TemporaryDirectory() as td:
             call = {"type": "function_call", "name": "write_file",
@@ -313,15 +363,18 @@ class CoreTests(unittest.TestCase):
             result = Toolkit(Path(td)).execute("run_command", {"command":"pwd"})
             self.assertEqual(result["result"]["exit_code"], 0)
 
-    def test_rejection_after_limit(self):
+    def test_repeated_tool_cycle_stops_before_round_limit(self):
         with tempfile.TemporaryDirectory() as td:
             call = {"type":"function_call", "name":"list_files", "call_id":"c1", "arguments":"{}"}
             client = FakeClient([{"output":[call]} for _ in range(7)])
             memory = Memory(Path(td)/"m.db")
-            answer = Agent(client, Toolkit(Path(td)), memory, "fake").ask("Repita")
-            self.assertIn("Limite", answer)
+            agent = Agent(client, Toolkit(Path(td)), memory, "fake")
+            answer = agent.ask("Repita")
+            self.assertIn("ciclo", answer)
             self.assertEqual(len(memory.recent()), 2)
-            self.assertEqual(client.requests[-1]["tools"], [])
+            self.assertEqual(len(client.requests), 3)
+            self.assertTrue(agent.last_metrics["loop_guard_triggered"])
+            self.assertEqual(agent.last_metrics["tools_executed"], 1)
             memory.close()
 
 if __name__ == "__main__":

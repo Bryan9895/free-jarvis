@@ -2,9 +2,15 @@
 import json
 import hashlib
 import os
+import re
 import time
+import uuid
+import sqlite3
 
 from .router import route, tool_catalog
+from .execution_result import classify_tool_outcome, ResultState
+from .loop_guard import LoopGuard
+from .providers import ModelProvider
 
 SYSTEM = (
     "Você é JARVIS, assistente em português brasileiro. Use ferramentas quando necessário. "
@@ -307,15 +313,16 @@ def _local_layout_reply(calls, outcomes):
 
 
 class Agent:
-    def __init__(self, client, toolkit, memory, model: str):
+    def __init__(self, client: ModelProvider, toolkit, memory, model: str):
         self.client, self.toolkit, self.memory, self.model = client, toolkit, memory, model
         self.mode = "auto"
         self.last_metrics = {}
 
-    def ask(self, message: str, mode=None):
+    def ask(self, message: str, mode=None, cancel_token=None, task_id=None, step_id=None):
         if not message.strip():
             return "Envie uma mensagem."
         started = time.monotonic()
+        task_id = task_id or uuid.uuid4().hex[:16]
         chosen = route(message, mode or self.mode)
         limit = 4 if chosen == "fast" else 10
         messages = [{"role": row["role"], "content": row["content"]}
@@ -331,10 +338,16 @@ class Agent:
         tool_problems = []
         tool_outcomes = []
         seen = {}
+        loop_guard = LoopGuard()
         direct_result = None
+        limit_reached = False
+        loop_guard_triggered = False
+        invalid_tool_response = False
         try:
             rounds = 1 if chosen == "fast" else MAX_TOOL_ROUNDS + 1
             for round_index in range(rounds):
+                if cancel_token is not None:
+                    cancel_token.check()
                 tools = available if round_index < MAX_TOOL_ROUNDS and chosen == "tools" else []
                 payload = {
                     "model": self.model,
@@ -352,6 +365,8 @@ class Agent:
                     payload["reasoning"] = {"effort": "none"}
                 t0 = time.monotonic()
                 result = self.client.responses(payload)
+                if cancel_token is not None:
+                    cancel_token.check()
                 timings.append(round(time.monotonic() - t0, 3))
                 if not isinstance(result, dict) or not isinstance(result.get("output"), list):
                     raise ValueError("Resposta do FCC inválida: campo output ausente")
@@ -360,6 +375,13 @@ class Agent:
                          if isinstance(item, dict) and item.get("type") == "function_call"]
                 if not calls:
                     answer = _output_text(result) or "O modelo não forneceu resposta textual."
+                    if chosen == "tools" and available and re.search(
+                            r"(?:to=functions\.|\bfunctions\.[a-z_]+\s*\{)", answer,
+                            flags=re.IGNORECASE):
+                        invalid_tool_response = True
+                        answer = ("O modelo emitiu chamadas de ferramenta como texto, sem chamadas "
+                                  "estruturadas. Nenhuma ação foi executada; selecione um modelo "
+                                  "compatível com ferramentas e repita.")
                     self.memory.add("user", message)
                     self.memory.add("assistant", answer)
                     return answer
@@ -368,6 +390,7 @@ class Agent:
                     answer = "O modelo tentou chamar ferramenta no modo rápido; use /normal e repita."
                     return answer
                 if round_index == MAX_TOOL_ROUNDS:
+                    limit_reached = True
                     answer = "Limite de execução atingido. Nenhuma ferramenta adicional foi executada."
                     self.memory.add("user", message)
                     self.memory.add("assistant", answer)
@@ -375,6 +398,8 @@ class Agent:
                 messages.extend(_valid_history_output(output))
                 round_outcomes = []
                 for call in calls:
+                    if cancel_token is not None:
+                        cancel_token.check()
                     call_id = call.get("call_id")
                     if not isinstance(call_id, str) or not call_id:
                         raise ValueError("FCC retornou chamada sem call_id")
@@ -384,6 +409,13 @@ class Agent:
                             raise ValueError("Argumentos devem formar um objeto JSON")
                         # Deduplicação por turno: somente uma execução por assinatura.
                         signature = (call["name"], json.dumps(args, sort_keys=True, ensure_ascii=False))
+                        if loop_guard.observe(signature):
+                            loop_guard_triggered = True
+                            answer = ("Interrompi um ciclo de chamadas repetidas. "
+                                      "Confira o último resultado antes de tentar novamente.")
+                            self.memory.add("user", message)
+                            self.memory.add("assistant", answer)
+                            return answer
                         if signature in seen:
                             outcome = {"reused_previous_result": True, **seen[signature]}
                         elif call["name"] not in {spec["name"] for spec in available}:
@@ -391,9 +423,15 @@ class Agent:
                             # boundary, not merely advertised to the model.
                             outcome = {"error": "Ferramenta não disponível para esta solicitação"}
                         else:
-                            outcome = self.toolkit.execute(call["name"], args)
+                            outcome = (self.toolkit.execute(call["name"], args,
+                                                            cancel_token=cancel_token)
+                                       if cancel_token is not None else
+                                       self.toolkit.execute(call["name"], args))
                             seen[signature] = outcome
                             calls_executed += 1
+                            entry = self.toolkit.registry.get(call["name"])
+                            classified = classify_tool_outcome(
+                                outcome, capability=entry.capability if entry else "")
                             # Metadados para verificação; nunca registrar texto do arquivo.
                             detail = outcome.get("result") if isinstance(outcome, dict) else None
                             safe = {}
@@ -414,16 +452,47 @@ class Agent:
                                     ("status", "source", "windows_observed", "focused")
                                     if key in observation
                                 }
+                            if call["name"] in {"write_file", "make_directory", "create_python_project",
+                                                 "move_path", "delete_path"}:
+                                from .verification import verify_step
+                                state, evidence = verify_step(self.toolkit, [record])
+                                record["verification"] = {
+                                    "status": state,
+                                    "evidence": evidence,
+                                }
+                                classified = classify_tool_outcome(
+                                    {**record["outcome"], "verification": record["verification"]},
+                                    capability=entry.capability if entry else "")
+                            record["execution"] = classified.as_dict()
                             tool_outcomes.append(record)
+                            if self.toolkit.layout_db is not None:
+                                from .database import record_execution_event
+                                try:
+                                    duration = (self.toolkit.operation_log[-1]["duration_ms"]
+                                                if self.toolkit.operation_log else None)
+                                    record["event_id"] = record_execution_event(
+                                        self.toolkit.layout_db, task_id, step_id,
+                                        call["name"], classified.state.value,
+                                        classified.raw_status, duration)
+                                except (OSError, sqlite3.Error):
+                                    record["audit_error"] = "Histórico de execução indisponível"
                     except (KeyError, ValueError, TypeError) as exc:
                         outcome = {"error": "Argumentos inválidos: " + str(exc)}
                     # Preserve operational failures for the supervising planner.
                     # Model narrative alone must not overwrite a rejected action.
                     if isinstance(outcome, dict):
                         issue = outcome.get("error")
-                        if issue is None and isinstance(outcome.get("result"), dict):
-                            if outcome["result"].get("status") in ("rejected", "failed"):
-                                issue = outcome["result"]["status"]
+                        if issue is None:
+                            entry = self.toolkit.registry.get(call.get("name"))
+                            classified = classify_tool_outcome(
+                                outcome, capability=entry.capability if entry else "")
+                            if classified.state in (ResultState.REJECTED,
+                                                    ResultState.UNAVAILABLE,
+                                                    ResultState.NOT_FOUND,
+                                                    ResultState.AMBIGUOUS,
+                                                    ResultState.PARTIAL,
+                                                    ResultState.FAILED):
+                                issue = classified.raw_status
                         if issue is not None:
                             tool_problems.append({"tool": call.get("name", "?"),
                                                   "reason": str(issue)[:240]})
@@ -445,6 +514,7 @@ class Agent:
         finally:
             self.last_metrics = {
                 "route": chosen,
+                "task_id": task_id,
                 "model": getattr(self.client, "active_model", self.model),
                 "total_s": round(time.monotonic() - started, 3),
                 "model_rounds": len(timings),
@@ -456,4 +526,8 @@ class Agent:
                 "tool_problems": tool_problems,
                 "tool_outcomes": tool_outcomes,
                 "direct_tool_reply": direct_result is not None,
+                "limit_reached": limit_reached,
+                "loop_guard_triggered": loop_guard_triggered,
+                "invalid_tool_response": invalid_tool_response,
+                "cancelled": bool(cancel_token and cancel_token.cancelled),
             }

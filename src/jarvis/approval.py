@@ -38,8 +38,10 @@ class ApprovalPolicy:
         self.set_mode("revoked")
 
     def confirm_sensitive(self, action):
-        """Respeita o modo da sessão também para ações sensíveis."""
-        return self(action)
+        """Exige uma aprovação pontual para ações que podem perder dados."""
+        if self.mode == "revoked":
+            return self(action)
+        return bool(self.manual_callback(action))
 
     @property
     def mode(self):
