@@ -156,12 +156,13 @@ class GuiBackend:
                 "turns": service.memory.recent(30), "plans": service.planner.history(10)}))
         elif command == "voice_record":
             from .voice import VoiceIO
-            device = int(value.split(":", 1)[0]) if value else None
-            voice = VoiceIO(device=device)
+            device = value.split(": ", 1)[-1] if value else None
+            voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL", "tiny"),
+                            language=os.getenv("JARVIS_LANGUAGE", "pt"), device=device)
             self.events.put(("transcript", voice.listen_once(6)))
         elif command == "voice_listen_start":
             from .voice import VoiceIO, WakeWordConversation
-            device = int(value.split(":", 1)[0]) if value else None
+            device = value.split(": ", 1)[-1] if value else None
             self._voice = VoiceIO(model=os.getenv("JARVIS_WAKE_MODEL", "base"),
                                   language=os.getenv("JARVIS_LANGUAGE", "pt"),
                                   piper_model=os.getenv("JARVIS_PIPER_MODEL", ""),
@@ -433,8 +434,6 @@ class JarvisWindow:
                 text="Parar escuta contínua" if self.voice_listening else "Ativar escuta contínua")
         elif kind == "voice_devices":
             self.devices.configure(values=payload)
-            if payload and not self.voice_device.get():
-                self.voice_device.set(payload[0])
         elif kind == "approval_request":
             accepted = messagebox.askyesno("Autorizar operação", payload.action,
                                            parent=self.root)

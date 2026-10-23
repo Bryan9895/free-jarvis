@@ -11,7 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 browser = ["playwright>=1.48"]
-voice = ["sounddevice>=0.4.6", "numpy>=1.24", "faster-whisper>=1.1", "piper-tts>=1.3"]
+voice = ["sounddevice>=0.4.6", "numpy>=1.24", "faster-whisper>=1.1", "av>=11,<19", "piper-tts>=1.3"]
 desktop = ["dbus-next>=0.2.3"]
 vision = ["Pillow>=10.0"]
 

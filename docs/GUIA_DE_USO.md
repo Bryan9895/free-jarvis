@@ -33,3 +33,19 @@ Uma etapa interrompida ou com efeito incerto não é repetida automaticamente. I
 ## Validação física pendente
 
 Em Ubuntu GNOME Wayland do usuário: verificar Firefox e VS Code lado a lado com janelas únicas, aplicativo com tamanho mínimo, janela com diálogo de salvamento, restauração parcial de perfil e cancelamento durante tarefa. O movimento real entre dois monitores exige dois monitores conectados. Registrar versão do GNOME, extensões, resoluções, comando, estado antes/depois e resultado; não marcar como validado somente pela suíte ou por simulação.
+
+## Captura de voz e Bluetooth
+
+`JARVIS_AUDIO_DEVICE` seleciona a entrada SoundDevice por nome (prefira um nome inequívoco; índices podem mudar). A escuta contínua herda essa seleção. No backend PulseAudio, `PULSE_SOURCE` pode selecionar a fonte Bluetooth; confirme o nome atual com `pactl list short sources`. Entradas com `.monitor` capturam saída, e `snd_aloop` é virtual.
+
+A captura curta aguarda a duração pedida mais três segundos de tolerância para receber quadros. Se não houver áudio suficiente, informa tempo limite e libera o stream; isso não confirma que o driver sempre responde ao abrir ou fechar. Não aumente sensibilidade antes de ouvir a captura e conferir a fonte.
+
+Se ocorrer `open() got an unexpected keyword argument 'metadata_errors'`, confira `python -m pip show faster-whisper av`. O extra voice restringe PyAV a versões anteriores à 19; para atualizar uma instalação existente, use `python -m pip install -e '.[voice]'` e `python -m pip check`.
+
+### Escolher a entrada sem FCC
+
+Execute `jarvis-fcc --audio-devices` para listar microfones sem iniciar o servidor ou carregar Whisper. Para selecionar um nome inequívoco, use `jarvis-fcc --voice --audio-device 'NOME DA ENTRADA'`; a mesma opção funciona com `--gui`. Se houver nomes duplicados, SoundDevice rejeita a seleção ambígua; não presuma que o primeiro seja o correto. A lista também pode conter monitores e entradas virtuais.
+
+Na GUI, **Listar microfones** não escolhe mais o primeiro item automaticamente: o campo vazio mantém a entrada padrão/configurada. Ao escolher um item, o nome é usado na captura, evitando índices antigos após reconexão. A gravação curta respeita `JARVIS_WHISPER_MODEL` e `JARVIS_LANGUAGE`, como a CLI.
+
+Uma falha de transcrição na escuta contínua descarta o WAV e retorna ao modo de espera por “Jarvis”, sem enviar a fala ao FCC. Se nenhum quadro de áudio chegar por três segundos, a escuta para com diagnóstico; reconecte/selecione a entrada e reative a escuta. Isso não limita o tempo de carregamento/inferência do Whisper nem chamadas bloqueadas do próprio driver.

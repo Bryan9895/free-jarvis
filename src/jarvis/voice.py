@@ -48,11 +48,35 @@ class VoiceIO:
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         try:
-            audio = sd.rec(int(self.sample_rate * seconds), samplerate=self.sample_rate,
-                           channels=1, dtype="int16", device=self.device)
-            sd.wait()
+            chunks = []
+            completed = threading.Event()
+            remaining = int(self.sample_rate * seconds)
+
+            def receive(indata, _count, _timing, _status):
+                nonlocal remaining
+                take = min(remaining, len(indata))
+                if take:
+                    chunks.append(indata[:take].tobytes())
+                    remaining -= take
+                if remaining == 0:
+                    completed.set()
+                    raise sd.CallbackStop
+
+            stream = sd.InputStream(samplerate=self.sample_rate, channels=1,
+                                    dtype="int16", device=self.device, callback=receive)
+            try:
+                stream.start()
+                if not completed.wait(seconds + 3):
+                    raise VoiceError("Tempo limite de captura: o dispositivo não entregou áudio. "
+                                     "Confira o microfone selecionado e evite entradas monitor/loopback.")
+                audio_bytes = b"".join(chunks)
+            finally:
+                try:
+                    stream.abort()
+                finally:
+                    stream.close()
             frames = array("h")
-            frames.frombytes(audio.tobytes())
+            frames.frombytes(audio_bytes)
             if not frames or sqrt(sum(sample * sample for sample in frames) / len(frames)) < self.silence_rms:
                 raise VoiceError("Nenhuma fala detectada; gravação descartada")
         except VoiceError:
@@ -66,7 +90,7 @@ class VoiceIO:
                     wav.setnchannels(1)
                     wav.setsampwidth(2)
                     wav.setframerate(self.sample_rate)
-                    wav.writeframes(audio.tobytes())
+                    wav.writeframes(audio_bytes)
             return Path(location)
         except BaseException:
             Path(location).unlink(missing_ok=True)
@@ -151,7 +175,7 @@ class WakeWordConversation:
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
-        self.device = device
+        self.device = voice.device if device is None else device
         self.silence_seconds = silence_seconds
         self.max_command_seconds = max_command_seconds
         self._stop = threading.Event()
@@ -216,6 +240,10 @@ class WakeWordConversation:
                         activated, transcript = self.extract_wake_command(transcript)
                         if not activated:
                             continue
+                except VoiceError as exc:
+                    conversation = False
+                    self.on_status(f"Fala não reconhecida: {exc}. Aguardando Jarvis novamente…")
+                    continue
                 finally:
                     recording.unlink(missing_ok=True)
                 if transcript:
@@ -261,6 +289,7 @@ class WakeWordConversation:
                                 channels=1, dtype="int16", device=self.device,
                                 callback=receive):
                 idle_started = time.monotonic()
+                last_frame = idle_started
                 voiced = False
                 quiet_frames = 0
                 silence_limit = max(1, round(self.silence_seconds * self.voice.sample_rate / self.FRAME_SAMPLES))
@@ -270,9 +299,13 @@ class WakeWordConversation:
                     try:
                         chunk = frames.get(timeout=0.2)
                     except queue.Empty:
+                        if time.monotonic() - last_frame >= 3:
+                            raise VoiceError("Dispositivo sem entregar áudio por 3 segundos; "
+                                             "confira a conexão e a entrada selecionada")
                         if idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
                             return None
                         continue
+                    last_frame = time.monotonic()
                     recent.append(chunk)
                     rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
                     if not voiced and rms >= speech_threshold:

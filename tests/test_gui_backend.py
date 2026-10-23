@@ -2,6 +2,7 @@
 import queue
 import threading
 import unittest
+from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 from jarvis.gui import GuiBackend
@@ -48,6 +49,15 @@ class GuiBackendTests(unittest.TestCase):
         backend.close()
         backend._thread.join(timeout=2)
         self.assertTrue(service.closed)
+
+    def test_record_selection_uses_name_and_configured_model(self):
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        with patch("jarvis.voice.VoiceIO") as voice, patch.dict(
+                "os.environ", {"JARVIS_WHISPER_MODEL": "small", "JARVIS_LANGUAGE": "pt"}):
+            backend._dispatch("voice_record", "14: Bluetooth mic")
+            self.assertEqual(voice.call_args.kwargs,
+                             {"model": "small", "language": "pt", "device": "Bluetooth mic"})
 
     def test_voice_turn_uses_service_and_resumes_listener(self):
         service = FakeService()

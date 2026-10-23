@@ -34,3 +34,28 @@ Cada item recebe commit local após testes pertinentes. A ordem pode mudar quand
 - Próxima ação concreta no ambiente físico: validar diálogo real de salvamento e push-to-talk com fala do usuário. GUI com tarefa longa/cancelamento via FCC segue como ensaio pendente. Nesta continuação, navegador E2E local, retomada e backend GUI passaram novamente. Instalação de CLI foi verificada fora do diretório do projeto nas duas versões de Python.
 - 22/10/2026 — GUI/voz autônoma: aba Voz agora oferece ativação contínua por sessão. VAD segmenta fala e Whisper base verifica a palavra localmente; apenas transcrições iniciadas por Jarvis/Jarves (incluindo formas fonéticas vistas no Whisper) são enviadas ao FCC. A fala é temporária e seu WAV é removido após transcrição. Após a resposta, há até 20 s para continuar sem wake word; Piper fala a resposta se configurado. Adicionados testes de segmentação, filtragem de wake word e caminho do comando pela GUI. O detector pré-treinado Hey Jarvis foi avaliado com áudio Piper e não reconheceu “Jarvis” isolado; por isso a versão atual usa STT local em vez desse detector. O teste sintético Piper + Whisper base transcreveu como “Davies abrou Firefox”, reconhecido como wake word; precisão com a voz real e custo de CPU/RAM precisam de validação pelo usuário. Ainda não há validação física desse fluxo com microfone.
 - Validação automatizada da mudança de voz: 14 testes focados passaram no Python principal; a suíte completa com 315 testes passou em Python 3.11 e 3.14. Pendente: captura com voz real, conversa encadeada e reprodução física da resposta Piper. O modelo base está no cache após o ensaio sintético; custo de CPU/RAM não foi medido.
+
+## Continuação — 23/10/2026: confiabilidade da captura de voz
+
+Branch: `work/voice-capture-reliability`; referência: `bf5e580`.
+
+- Base: 315 testes executados com sucesso (um ignorado).
+- Relatos do usuário: entrada virtual selecionada por índice variável; captura sem retorno; incompatibilidade faster-whisper 1.2.1/PyAV 19; áudio Bluetooth reproduzido com clareza, mas transcrição tiny/base imprecisa.
+- Captura curta passa a usar callback e prazo de duração + 3 segundos. Dispositivo sem entrega de quadros retorna erro recuperável e o stream é abortado/fechado. O prazo cobre a espera por quadros; abertura/fechamento ainda dependem do backend de áudio.
+- Escuta contínua herda o dispositivo da instância VoiceIO quando não há substituição explícita.
+- Extra voice limita PyAV a >=11,<19 para evitar o argumento metadata_errors removido na versão 19. Validar novamente o limite ao atualizar faster-whisper.
+- Não houve teste de microfone, Bluetooth, Piper ou FCC nesta máquina; testes de captura usam backend simulado. Nenhuma melhoria de precisão foi comprovada.
+
+Próximas entregas, em ordem:
+1. Recuperação da escuta contínua após erro de STT e diagnóstico de entrada sem quadros; seleção de dispositivo por nome inequívoco nas interfaces.
+2. Ensaio de qualidade com áudio do usuário: comparar base/small sobre a mesma gravação e medir latência, sem enviar áudio ao FCC.
+3. Cancelamento GUI/FCC e retomada após encerramento real, preservando operações incertas.
+4. Perfil em dois monitores e diálogo de salvamento; atualizar matriz de aceite e decidir versão somente após evidências.
+
+## Próxima entrega — recuperação e seleção de entrada (23/10/2026)
+
+- Escuta contínua captura `VoiceError` da transcrição por fala, remove o WAV e retorna à espera da palavra de ativação. Não encerra a sessão por um trecho sem reconhecimento e não o envia ao FCC.
+- Captura contínua informa erro se não recebe quadros por três segundos; stream é fechado pelo contexto. Backend travado na abertura/fechamento ainda não possui isolamento em subprocesso.
+- CLI: `--audio-devices` sem inicializar FCC e `--audio-device NOME` para CLI/GUI. GUI usa nome em vez de índice exibido, mantém entrada padrão até escolha explícita e respeita modelo/idioma configurados na gravação curta.
+- Suíte: 324 testes executados sem falhas, um ignorado. Inclui recuperação após erro com remoção dos WAVs, falta de quadros, seleção por nome e enumeração sem FCC. Hardware/FCC/GUI gráfica não foram ensaiados neste ambiente.
+- Próximo passo: validação física Bluetooth nas duas interfaces e comparação base/small sobre o mesmo áudio. Depois, cancelamento com FCC e retomada após queda real; não declarar v1 concluída antes da matriz de aceite.

@@ -35,12 +35,24 @@ def main():
     parser.add_argument("--desktop-remote-test", action="store_true", help="Solicita permissão RemoteDesktop e testa pequeno movimento de ponteiro")
     parser.add_argument("--desktop-screenshot", action="store_true", help="Solicita captura de tela via portal Wayland com confirmação")
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
+    parser.add_argument("--audio-devices", action="store_true", help="Listar entradas de áudio sem conectar ao FCC")
+    parser.add_argument("--audio-device", metavar="NOME", help="Nome inequívoco da entrada SoundDevice")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
     parser.add_argument("--gui", action="store_true", help="Abrir interface gráfica com conversa de voz opcional")
     approval_group = parser.add_mutually_exclusive_group()
     approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
     approval_group.add_argument("--manual-approve", action="store_true", help="Pedir confirmação no terminal para cada ação")
     args = parser.parse_args()
+    if args.audio_devices:
+        from .voice import VoiceIO, VoiceError
+        try:
+            for index, name in VoiceIO.input_devices():
+                print(f"{index}: {name}")
+        except VoiceError as exc:
+            parser.exit(1, str(exc) + "\n")
+        return
+    if args.audio_device is not None:
+        os.environ["JARVIS_AUDIO_DEVICE"] = args.audio_device
     c = Config.from_env()
     approval = ApprovalPolicy(auto=not args.manual_approve, manual_callback=globals()["confirm"])
     confirm = approval

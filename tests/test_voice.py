@@ -15,20 +15,66 @@ class VoiceTests(unittest.TestCase):
             with self.subTest(seconds=seconds), self.assertRaises(VoiceError):
                 voice.record(seconds)
 
+    def _capture_backend(self, samples):
+        stream = Mock()
+        backend = SimpleNamespace(InputStream=Mock(return_value=stream),
+                                  CallbackStop=type("CallbackStop", (Exception,), {}))
+        def start():
+            callback = backend.InputStream.call_args.kwargs["callback"]
+            try:
+                callback(samples, len(samples), None, None)
+            except backend.CallbackStop:
+                pass
+        stream.start.side_effect = start
+        return backend, stream
+
     def test_silence_is_rejected_and_device_is_selected(self):
-        recorded = []
-        fake_sd = SimpleNamespace(
-            rec=lambda *args, **kwargs: recorded.append(kwargs) or
-                SimpleNamespace(tobytes=lambda: array("h", [0] * 160).tobytes()),
-            wait=lambda: None,
-            query_devices=lambda: [{"name": "Microfone USB", "max_input_channels": 1},
-                                   {"name": "Saída", "max_input_channels": 0}],
-        )
-        with patch.dict(sys.modules, {"sounddevice": fake_sd}):
-            self.assertEqual(VoiceIO.input_devices(), [(0, "Microfone USB")])
+        backend, stream = self._capture_backend(array("h", [0] * 16000))
+        with patch.dict(sys.modules, {"sounddevice": backend}):
             with self.assertRaisesRegex(VoiceError, "Nenhuma fala"):
-                VoiceIO(device=0).record(1)
-        self.assertEqual(recorded[0]["device"], 0)
+                VoiceIO(device="pulse").record(1)
+        self.assertEqual(backend.InputStream.call_args.kwargs["device"], "pulse")
+        stream.abort.assert_called_once()
+        stream.close.assert_called_once()
+
+    def test_capture_without_callbacks_times_out_and_releases_device(self):
+        backend, stream = self._capture_backend(array("h"))
+        stream.start.side_effect = None
+        with patch.dict(sys.modules, {"sounddevice": backend}), patch(
+                "jarvis.voice.threading.Event") as event:
+            event.return_value.wait.return_value = False
+            with self.assertRaisesRegex(VoiceError, "Tempo limite de captura"):
+                VoiceIO().record(6)
+            event.return_value.wait.assert_called_once_with(9)
+        stream.abort.assert_called_once()
+        stream.close.assert_called_once()
+
+    def test_capture_writes_exact_duration_and_closes_stream(self):
+        import wave
+        backend, stream = self._capture_backend(array("h", [600] * 17000))
+        with patch.dict(sys.modules, {"sounddevice": backend}):
+            recording = VoiceIO().record(1)
+        try:
+            with wave.open(str(recording)) as wav:
+                self.assertEqual(wav.getnframes(), 16000)
+                self.assertEqual(wav.getframerate(), 16000)
+                self.assertEqual(wav.getsampwidth(), 2)
+        finally:
+            recording.unlink()
+        stream.close.assert_called_once()
+
+    def test_capture_start_failure_releases_device(self):
+        backend, stream = self._capture_backend(array("h"))
+        stream.start.side_effect = RuntimeError("disconnected")
+        with patch.dict(sys.modules, {"sounddevice": backend}):
+            with self.assertRaisesRegex(VoiceError, "Microfone indisponível"):
+                VoiceIO().record(1)
+        stream.close.assert_called_once()
+
+    def test_continuous_listener_inherits_voice_device(self):
+        voice = VoiceIO(device="Bluetooth microphone")
+        self.assertEqual(WakeWordConversation(voice, lambda _: None).device, voice.device)
+        self.assertEqual(WakeWordConversation(voice, lambda _: None, device=0).device, 0)
 
     def test_transcribe_missing_file(self):
         with tempfile.TemporaryDirectory() as td:
@@ -110,6 +156,39 @@ class VoiceTests(unittest.TestCase):
         self.assertIsNotNone(samples)
         self.assertGreater(int(samples.max()), 500)
         self.assertEqual(len(samples), (4 + 8 + 3) * 1280)
+
+    def test_continuous_listener_recovers_after_transcription_error(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as td:
+            files = [Path(td) / "first.wav", Path(td) / "second.wav"]
+            for path in files:
+                path.write_bytes(b"audio")
+            voice = VoiceIO()
+            voice.transcribe = Mock(side_effect=[VoiceError("silêncio"), "Jarvis, olá"])
+            commands, statuses = [], []
+            listener = WakeWordConversation(voice, lambda text: (
+                commands.append(text), listener._stop.set()), statuses.append)
+            listener._listen_for_command = Mock(return_value=np.array([600], dtype=np.int16))
+            listener._write_recording = Mock(side_effect=files)
+            with patch.dict(sys.modules, {"sounddevice": SimpleNamespace()}):
+                listener._run()
+            self.assertEqual(commands, ["olá"])
+            self.assertTrue(any("Aguardando Jarvis novamente" in x for x in statuses))
+            self.assertTrue(all(not path.exists() for path in files))
+
+    def test_continuous_capture_without_frames_has_deadline(self):
+        import numpy as np
+        stream = Mock()
+        stream.__enter__ = Mock(return_value=stream)
+        stream.__exit__ = Mock(return_value=False)
+        backend = SimpleNamespace(InputStream=Mock(return_value=stream))
+        listener = WakeWordConversation(VoiceIO(), lambda _: None)
+        with patch("jarvis.voice.time.monotonic", side_effect=[0, 4]), patch(
+                "jarvis.voice.queue.Queue") as frames:
+            frames.return_value.get.side_effect = __import__("queue").Empty
+            with self.assertRaisesRegex(VoiceError, "sem entregar áudio"):
+                listener._listen_for_command(backend, np)
+        stream.__exit__.assert_called_once()
 
     def test_piper_exec_and_cleanup(self):
         with tempfile.TemporaryDirectory() as td:
