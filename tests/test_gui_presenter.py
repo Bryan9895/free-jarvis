@@ -1,8 +1,17 @@
 import unittest
-from jarvis.gui_presenter import plan_progress, plan_details, action_summary, status_label
+from jarvis.gui_presenter import plan_progress, plan_details, action_summary, status_label, error_message
 
 
 class PresenterTests(unittest.TestCase):
+    def test_provider_error_is_separate_from_audio(self):
+        text = error_message('HTTP 404 em /v1/responses: Upstream provider NIM returned HTTP 404. account secret')
+        self.assertIn('Modelos', text)
+        self.assertIn('não é do microfone', text)
+        self.assertNotIn('account', text)
+        self.assertIn('limite', error_message('HTTP 429 em /v1/responses'))
+        self.assertIn('credenciais', error_message('HTTP 401 em /v1/responses'))
+        self.assertEqual(error_message('Microfone desconectado'), 'Microfone desconectado')
+
     def test_unverified_steps_do_not_inflate_progress(self):
         plan = {'steps':[{'id':1,'status':'verified'}, {'id':2,'status':'reported_unverified'}]}
         self.assertEqual(plan_progress(plan), (1,2))

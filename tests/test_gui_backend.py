@@ -1,6 +1,8 @@
 """GUI mantém operações no worker, sem depender de servidor X ou FCC real."""
 import queue
 import threading
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 from types import SimpleNamespace
@@ -32,6 +34,43 @@ class FakeService:
 
 
 class GuiBackendTests(unittest.TestCase):
+    def test_push_to_talk_transcribes_sends_and_removes_wav(self):
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        with tempfile.TemporaryDirectory() as td, patch('jarvis.voice.VoiceIO') as factory:
+            recording = Path(td) / 'sample.wav'
+            recording.write_bytes(b'audio')
+            voice = factory.return_value
+            voice.record.return_value = recording
+            voice.transcribe.return_value = 'Quanto é dois mais dois?'
+            voice.piper_model = None
+            voice.model_name = 'small'
+            voice.device = 'Bluetooth mic'
+            backend._dispatch('voice_push_to_talk', {'device':'14: Bluetooth mic', 'model':'small'})
+            self.assertEqual(factory.call_args.kwargs['device'], 'Bluetooth mic')
+            self.assertEqual(factory.call_args.kwargs['model'], 'small')
+            self.assertFalse(recording.exists())
+            events = list(backend.events.queue)
+            self.assertIn(('voice_transcript', 'Quanto é dois mais dois?'), events)
+            self.assertIn(('answer', 'Resposta: Quanto é dois mais dois?'), events)
+            recording.write_bytes(b'second audio')
+            backend._dispatch('voice_push_to_talk', {'device':'14: Bluetooth mic', 'model':'small'})
+            factory.assert_called_once()
+            self.assertFalse(recording.exists())
+
+    def test_push_to_talk_does_not_send_failed_transcription(self):
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        with tempfile.TemporaryDirectory() as td, patch('jarvis.voice.VoiceIO') as factory:
+            recording = Path(td) / 'sample.wav'
+            recording.write_bytes(b'audio')
+            factory.return_value.record.return_value = recording
+            factory.return_value.transcribe.side_effect = RuntimeError('sem fala')
+            with self.assertRaisesRegex(RuntimeError, 'sem fala'):
+                backend._dispatch('voice_push_to_talk', {'model':'small'})
+            self.assertFalse(recording.exists())
+            self.assertIsNone(backend.service.called_in)
+
     def test_message_runs_on_worker_and_returns_plan_and_metrics(self):
         service = FakeService()
         backend = GuiBackend(None, service_factory=lambda *_a, **_kw: service)
@@ -190,6 +229,8 @@ class GuiBackendTests(unittest.TestCase):
             self.assertEqual(voice.call_args.kwargs["device"], "Bluetooth mic")
             listener.return_value.start.assert_called_once()
             listener.call_args.kwargs["on_status"]("Aguardando Jarvis")
+            listener.call_args.kwargs["on_transcript"]("Olá mundo")
+            self.assertIn(("voice_heard", "Olá mundo"), list(backend.events.queue))
             self.assertIn(("voice_status", "Whisper small: Aguardando Jarvis"), list(backend.events.queue))
 
     def test_model_change_waits_for_old_listener_to_stop(self):

@@ -38,6 +38,10 @@ def apply_theme(root):
     style.configure('TEntry', fieldbackground=PANEL, foreground=TEXT, insertcolor=ACCENT, padding=7)
     style.configure('TCombobox', fieldbackground=PANEL, foreground=TEXT, arrowcolor=ACCENT, padding=5)
     style.map('TCombobox', fieldbackground=[('readonly', PANEL)], foreground=[('readonly', TEXT)])
+    style.configure('TNotebook', background=BG, borderwidth=0)
+    style.configure('TNotebook.Tab', background=SURFACE, foreground=MUTED, padding=(10, 7))
+    style.map('TNotebook.Tab', background=[('selected', PANEL), ('active', BORDER)],
+              foreground=[('selected', ACCENT), ('active', TEXT)])
     style.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=TEXT,
                     rowheight=29, borderwidth=0)
     style.map('Treeview', background=[('selected', BORDER)], foreground=[('selected', TEXT)])

@@ -108,6 +108,8 @@ class VoiceTests(unittest.TestCase):
             voice._stt = Mock()
             voice._stt.transcribe.return_value = ([SimpleNamespace(text=" Olá "), SimpleNamespace(text=" JARVIS ")], None)
             self.assertEqual(voice.transcribe(audio), "Olá JARVIS")
+            self.assertEqual(voice._stt.transcribe.call_args.kwargs['beam_size'], 5)
+            self.assertFalse(voice._stt.transcribe.call_args.kwargs['condition_on_previous_text'])
 
     def test_disabled_tts_no_cloud(self):
         self.assertEqual(VoiceIO().speak("Olá"), "disabled")

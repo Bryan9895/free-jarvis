@@ -16,6 +16,7 @@ class WindowTests(unittest.TestCase):
         backend.submit.return_value = True
         backend.service = SimpleNamespace(toolkit=SimpleNamespace(registry=DEFAULT_REGISTRY))
         root = tk.Tk()
+        root.tk.call('tk', 'scaling', 1.3333)
         try:
             with patch.dict('os.environ', {'JARVIS_GUI_VOICE':'0'}):
                 window = JarvisWindow(root, backend)
@@ -57,11 +58,45 @@ class WindowTests(unittest.TestCase):
                     'device':'14: Bluetooth mic', 'model':'small'})
                 window._handle('voice_status', 'Whisper small: Escuta contínua indisponível: desconectado')
                 self.assertFalse(window.voice_listening)
+                window._push_to_talk()
+                backend.submit.assert_called_with('voice_push_to_talk', {
+                    'device':'14: Bluetooth mic', 'model':'small'})
+                window._handle('models', ['openai/example', 'nvidia_nim/example'])
+                window.model_filter.set('openai')
+                self.assertEqual(tuple(window.models['values']), ('openai/example',))
+                window._show_model('nvidia_nim/example')
+                window.model_choice.set('openai/example')
+                self.assertEqual(window.model.get(), 'nvidia_nim/example')
+                with patch.dict('os.environ', {'JARVIS_GUI_VOICE':'1'}):
+                    window._handle('connected', {'model':'openai/example', 'approval':'auto', 'capabilities':[]})
+                backend.submit.assert_called_with('voice_listen_start', {
+                    'device':'14: Bluetooth mic', 'model':'small'})
+                window._handle('busy', True)
+                window._handle('error', 'HTTP 404 em /v1/responses: NIM not found')
+                window._handle('busy', False)
+                self.assertIn('Modelos', window.chat.get('1.0', 'end'))
+                self.assertEqual(window.hud.label, 'PEDIDO NÃO CONCLUÍDO')
+                window.voice_status.set('Whisper small: Aguardando Jarvis; detecção e transcrição são locais…')
                 root.update()
                 panel = window.workspace_panels.panels[-1]
                 for widget in panel.winfo_children():
                     if widget.winfo_ismapped():
                         self.assertLessEqual(widget.winfo_rooty()+widget.winfo_height(),
                                              root.winfo_rooty()+root.winfo_height())
+                def check_bounds(parent):
+                    for widget in parent.winfo_children():
+                        if widget.winfo_ismapped():
+                            self.assertLessEqual(widget.winfo_rooty()+widget.winfo_height(),
+                                                 root.winfo_rooty()+root.winfo_height())
+                            self.assertLessEqual(widget.winfo_rootx()+widget.winfo_width(),
+                                                 root.winfo_rootx()+root.winfo_width())
+                            check_bounds(widget)
+                for page in window.voice_pages.tabs():
+                    window.voice_pages.select(page)
+                    root.update()
+                    check_bounds(window.voice_pages)
+                window.workspace_panels.select(window.models_panel_index)
+                root.update()
+                check_bounds(window.workspace_panels.panels[window.models_panel_index])
         finally:
             root.destroy()

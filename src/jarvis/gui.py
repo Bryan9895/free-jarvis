@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from tkinter import messagebox, scrolledtext, ttk
 
 from .service import JarvisService
-from .gui_presenter import status_label, plan_progress, plan_details, action_summary
+from .gui_presenter import status_label, plan_progress, plan_details, action_summary, error_message
 
 
 @dataclass
@@ -25,7 +25,7 @@ class GuiBackend:
 
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
-                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear"})
+                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk"})
 
     def __init__(self, config, *, auto=True, service_factory=None):
         self.config = config
@@ -137,7 +137,7 @@ class GuiBackend:
                     if action:
                         self.events.put(("busy", True))
                         if self._voice_listener is not None:
-                            if command.startswith("voice_test_"):
+                            if command.startswith("voice_test_") or command == "voice_push_to_talk":
                                 if not self._voice_listener.pause(timeout=2):
                                     raise RuntimeError("A captura contínua não liberou o microfone. Pare a escuta e tente novamente.")
                             else:
@@ -151,6 +151,8 @@ class GuiBackend:
                 except Exception as exc:
                     if command.startswith("voice_test_"):
                         self.events.put(("voice_test_error", str(exc)))
+                    elif command.startswith("voice_"):
+                        self.events.put(("voice_status", error_message(exc)[:220]))
                     self.events.put(("connection_error" if command == "retry" else "error", str(exc)))
                 finally:
                     if action:
@@ -264,7 +266,7 @@ class GuiBackend:
             self.events.put(("transcript", voice.listen_once(6)))
         elif command == "voice_listen_start":
             options = value if isinstance(value, dict) else {"device": value}
-            model = options.get("model") or os.getenv("JARVIS_WAKE_MODEL", "base")
+            model = options.get("model") or os.getenv("JARVIS_WAKE_MODEL", "small")
             if not isinstance(model, str) or not model.strip():
                 raise ValueError("Escolha um modelo Whisper válido para a escuta.")
             if self._voice_listener is not None:
@@ -280,6 +282,7 @@ class GuiBackend:
             self._voice_listener = WakeWordConversation(
                 self._voice, on_command=lambda text: self.submit("voice_ask", text),
                 on_status=lambda text: self.events.put(("voice_status", f"Whisper {model}: {text}")),
+                on_transcript=lambda text: self.events.put(("voice_heard", text)),
                 device=device)
             self.events.put(("voice_listening", True))
             self._voice_listener.start()
@@ -288,6 +291,26 @@ class GuiBackend:
                 self._voice_listener.stop()
                 self._voice_listener = None
             self.events.put(("voice_listening", False))
+        elif command == "voice_push_to_talk":
+            from .voice import VoiceIO
+            device = value.get("device")
+            device = device.split(": ", 1)[-1] if device else None
+            model = value.get("model") or "small"
+            configured_device = device if device is not None else os.getenv("JARVIS_AUDIO_DEVICE")
+            voice = self._voice
+            if voice is None or voice.model_name != model or voice.device != configured_device:
+                voice = VoiceIO(model=model, language=os.getenv("JARVIS_LANGUAGE", "pt"),
+                                piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), device=device)
+            self.events.put(("voice_status", "Fale agora: gravando por 6 segundos. O pedido será enviado automaticamente."))
+            recording = voice.record(6, on_level=lambda level: self.events.put(("voice_capture_level", level)))
+            try:
+                self.events.put(("voice_status", f"Whisper {model}: transcrevendo seu pedido…"))
+                transcript = voice.transcribe(recording)
+                self.events.put(("voice_heard", transcript))
+            finally:
+                recording.unlink(missing_ok=True)
+            self._voice = voice
+            self._dispatch("voice_ask", transcript)
         elif command == "voice_ask":
             self.events.put(("voice_transcript", value))
             self.events.put(("busy", True))
@@ -327,9 +350,13 @@ class JarvisWindow:
         root.minsize(1040, 640)
         self.connection = tk.StringVar(value="Conectando ao FCC…")
         self.model = tk.StringVar()
+        self.model_choice = tk.StringVar()
+        self.model_summary = tk.StringVar(value="Modelo de conversa: conectando…")
         self.approval_mode = tk.StringVar(value="auto")
         self.voice_device = tk.StringVar()
+        self.voice_heard = tk.StringVar(value="Última fala: aguardando áudio")
         self.voice_listening = False
+        self._operation_error = False
         self.capability_vars = {}
         self._build()
         root.protocol("WM_DELETE_WINDOW", self._close)
@@ -344,12 +371,7 @@ class JarvisWindow:
         ttk.Label(header, text="J /", style="Brand.TLabel").pack(side="left", padx=(0, 16))
         ttk.Label(header, textvariable=self.connection, style="Muted.TLabel").pack(side="left", padx=4)
         ttk.Button(header, text="Reconectar", command=lambda: self.backend.submit("retry")).pack(side="left")
-        ttk.Label(header, text="Modelo:").pack(side="left", padx=(18, 4))
-        self.models = ttk.Combobox(header, textvariable=self.model, width=24)
-        self.models.pack(side="left")
-        ttk.Button(header, text="Listar", command=lambda: self.backend.submit("models")).pack(side="left")
-        ttk.Button(header, text="Selecionar", command=lambda: self.backend.submit(
-            "select_model", self.model.get())).pack(side="left")
+        ttk.Label(header, textvariable=self.model_summary, style="Muted.TLabel").pack(side="left", padx=12)
 
         body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True, padx=12, pady=(0, 8))
@@ -369,6 +391,8 @@ class JarvisWindow:
         self.hud = AssistantHud(conversation)
         self.hud.pack(fill="x")
         ttk.Label(conversation, text="CONVERSA", style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(conversation, textvariable=self.voice_heard, wraplength=380,
+                  style="Muted.TLabel").pack(anchor="w", pady=(0, 6))
         self.chat = scrolledtext.ScrolledText(conversation, wrap="word", state="disabled",
             width=42, height=8, background=PANEL, foreground=TEXT, insertbackground=ACCENT,
             relief="flat", borderwidth=0, padx=16, pady=14, font=("DejaVu Sans", 10))
@@ -385,6 +409,8 @@ class JarvisWindow:
         audio_controls.pack(fill="x", pady=(0, 5))
         self.voice_quick = ttk.Button(audio_controls, text="Voz: desligada", command=self._toggle_voice)
         self.voice_quick.pack(side="left")
+        self.push_to_talk_quick = ttk.Button(send, text="Falar 6 s", command=self._push_to_talk)
+        self.push_to_talk_quick.pack(side="left")
         ttk.Button(audio_controls, text="Ler resposta", command=lambda: self.backend.submit(
             "voice_speak", self.last_answer)).pack(side="left")
         ttk.Button(audio_controls, text="Cancelar pedido", command=self._cancel).pack(side="left")
@@ -509,48 +535,11 @@ class JarvisWindow:
         self.metrics = scrolledtext.ScrolledText(metrics, width=35, wrap="word", state="disabled")
         self.metrics.pack(fill="both", expand=True)
 
-        from .voice_diagnostics import TEST_PHRASE
-        voice = ttk.Frame(tabs, padding=8)
-        tabs.add(voice, text="Voz")
-        ttk.Label(voice, text="Microfone e reconhecimento", font=("DejaVu Sans", 12, "bold")).pack(anchor="w")
-        ttk.Label(voice, text="Bluetooth: selecione a entrada do fone, não uma saída .monitor.",
-                  wraplength=350, style="Muted.TLabel").pack(anchor="w")
-        self.devices = ttk.Combobox(voice, textvariable=self.voice_device, width=35)
-        self.devices.pack(fill="x", pady=4)
-        device_controls = ttk.Frame(voice)
-        device_controls.pack(fill="x")
-        ttk.Button(device_controls, text="Listar entradas", command=lambda: self.backend.submit("voice_devices")).pack(side="left")
-        ttk.Button(device_controls, text="Verificar entrada", command=lambda: self._voice_test_action("probe")).pack(side="left")
-        self.voice_toggle_button = ttk.Button(voice, text="Ativar escuta contínua", command=self._toggle_voice)
-        self.voice_toggle_button.pack(fill="x", pady=4)
-        self.voice_status = tk.StringVar(value="Desativada")
-        ttk.Label(voice, textvariable=self.voice_status, wraplength=350).pack(anchor="w")
-        ttk.Label(voice, text="Leia a frase abaixo durante o teste:", style="Muted.TLabel").pack(anchor="w", pady=(8, 2))
-        self.voice_reference = ttk.Entry(voice)
-        self.voice_reference.insert(0, TEST_PHRASE)
-        self.voice_reference.pack(fill="x")
-        model_row = ttk.Frame(voice)
-        model_row.pack(fill="x", pady=3)
-        ttk.Label(model_row, text="Whisper:").pack(side="left")
-        configured_model = os.getenv("JARVIS_WAKE_MODEL", os.getenv("JARVIS_WHISPER_MODEL", "base"))
-        self.voice_test_model = tk.StringVar(value=configured_model if configured_model in ("tiny", "base", "small") else "base")
-        ttk.Combobox(model_row, textvariable=self.voice_test_model, values=("tiny", "base", "small"),
-                     width=9, state="readonly").pack(side="left", padx=5)
-        ttk.Button(model_row, text="Aplicar à escuta", command=self._apply_voice_settings).pack(side="left")
-        test_controls = ttk.Frame(voice)
-        test_controls.pack(fill="x")
-        for action, label in (("capture", "Gravar 6 s"), ("replay", "Ouvir amostra"), ("transcribe", "Transcrever")):
-            ttk.Button(test_controls, text=label, command=lambda action=action: self._voice_test_action(action)).pack(side="left")
-        self.voice_level = ttk.Progressbar(voice, maximum=100, mode="determinate")
-        self.voice_level.pack(fill="x", pady=5)
-        self.voice_test_status = tk.StringVar(value="Verifique a entrada, grave, ouça e transcreva a mesma amostra.")
-        ttk.Label(voice, textvariable=self.voice_test_status, wraplength=350).pack(anchor="w")
-        self.voice_test_result = scrolledtext.ScrolledText(voice, height=8, width=35, wrap="word", state="disabled")
-        self.voice_test_result.pack(fill="both", expand=True, pady=4)
-        ttk.Button(voice, text="Apagar amostra", command=lambda: self._voice_test_action("clear")).pack(anchor="w")
-        ttk.Label(voice, text="Testes locais: não enviam comandos ao FCC. Similaridade vale só para a frase testada. "
-                             "Áudio temporário apagado ao gravar outra amostra ou fechar.",
-                  wraplength=350, style="Muted.TLabel").pack(anchor="w", pady=4)
+        from .gui_models import build_models_panel
+        from .gui_voice import build_voice_panel
+        self.models_panel_index = len(tabs.panels)
+        build_models_panel(self, tabs)
+        build_voice_panel(self, tabs)
 
     def _write(self, widget, value):
         widget.configure(state="normal")
@@ -619,6 +608,22 @@ class JarvisWindow:
         self.backend.submit("voice_listen_start", {
             "device": self.voice_device.get(), "model": self.voice_test_model.get()})
 
+    def _push_to_talk(self):
+        if self.backend.submit("voice_push_to_talk", {
+                "device": self.voice_device.get(), "model": self.voice_test_model.get()}):
+            self.voice_capture_level.configure(value=0)
+            self.voice_status.set("Preparando gravação. Aguarde Fale agora…")
+
+    def _filter_models(self):
+        query = self.model_filter.get().casefold().strip()
+        self.models.configure(values=[model for model in self.model_catalog if query in model.casefold()])
+
+    def _show_model(self, model):
+        self.model.set(model)
+        self.model_choice.set(model)
+        short = model if len(model) <= 48 else model[:45] + '…'
+        self.model_summary.set('Conversa: ' + short)
+
     def _revoke(self):
         self.backend.revoke()
         self.approval_mode.set("manual")
@@ -649,16 +654,16 @@ class JarvisWindow:
     def _handle(self, kind, payload):
         if kind == "connected":
             self.connection.set("FCC conectado · pronto para conversar")
-            self.model.set(payload["model"])
+            self._show_model(payload["model"])
             self.approval_mode.set(payload["approval"])
             self._set_capabilities(payload["capabilities"])
             self.backend.submit("snapshot")
             self.hud.set_state("PRONTO", "Digite ou diga Jarvis seguido do pedido")
             if os.getenv("JARVIS_GUI_VOICE", "1") != "0":
-                self.backend.submit("voice_listen_start", self.voice_device.get())
+                self._apply_voice_settings()
         elif kind == "reconnected":
             self.connection.set("Catálogo FCC atualizado · inferência ainda não testada")
-            self.model.set(payload)
+            self._show_model(payload)
             self._append_chat("Sistema", "Conexão restabelecida; catálogo atualizado.")
         elif kind == "connection_error":
             self.connection.set("FCC indisponível")
@@ -669,13 +674,23 @@ class JarvisWindow:
             self.hud.set_state("RESPOSTA RECEBIDA", "Conversa e operações no mesmo lugar")
             self._append_chat("JARVIS", payload)
         elif kind == "error":
-            self._append_chat("Erro", payload)
+            self._operation_error = True
+            self._append_chat("Erro", error_message(payload))
+            self._write(self.error_details, str(payload))
+            self.hud.set_state("PEDIDO NÃO CONCLUÍDO", "Confira o erro na conversa")
+            if 'http 404' in str(payload).casefold() and '/v1/responses' in str(payload):
+                self.voice_status.set("Modelo de conversa indisponível (HTTP 404). Abra Modelos e escolha outro.")
         elif kind == "progress":
             self._append_chat("Etapa", payload)
         elif kind == "busy":
-            self.hud.set_state("PROCESSANDO" if payload else "PRONTO",
-                               "Executando seu pedido" if payload else "Aguardando seu próximo pedido", active=bool(payload))
+            if payload:
+                self._operation_error = False
+            if payload or not self._operation_error:
+                self.hud.set_state("PROCESSANDO" if payload else "PRONTO",
+                                   "Executando seu pedido" if payload else "Aguardando seu próximo pedido", active=bool(payload))
             self.send_button.configure(state="disabled" if payload else "normal")
+            for button in (self.push_to_talk_button, self.push_to_talk_quick):
+                button.configure(state="disabled" if payload else "normal")
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))
         elif kind == "plan":
@@ -705,9 +720,11 @@ class JarvisWindow:
                 for tab in payload["tabs"]:
                     self.browser_tabs.insert("", "end", values=(tab["id"], tab["title"], tab["url"]))
         elif kind == "models":
-            self.models.configure(values=payload)
+            self.model_catalog = list(payload)
+            self._filter_models()
         elif kind == "model":
-            self.model.set(payload)
+            self._show_model(payload)
+            self._append_chat("Sistema", "Modelo de conversa selecionado: " + payload + ". Repita o pedido para testar a resposta.")
         elif kind == "approval_mode":
             self.approval_mode.set(payload)
         elif kind == "capabilities":
@@ -724,6 +741,8 @@ class JarvisWindow:
             self._append_chat("Voz", "Transcrição pronta para revisão antes de enviar.")
         elif kind == "voice_transcript":
             self._append_chat("Você (voz)", payload)
+        elif kind == "voice_heard":
+            self.voice_heard.set("Última fala: " + str(payload)[:140])
         elif kind == "voice_status":
             self.voice_status.set(str(payload))
             if "Aguardando Jarvis" in str(payload):
@@ -744,9 +763,13 @@ class JarvisWindow:
             self.voice_level.configure(value=0)
             self.voice_test_status.set("Teste não concluído")
             self._write(self.voice_test_result, str(payload))
+            self._write(self.voice_device_result, str(payload))
         elif kind == "voice_test_level":
             self.voice_level.configure(value=max(0, min(100, (payload["dbfs"] + 60) / 60 * 100)))
             self.voice_test_status.set(f"Gravando: {payload['elapsed']:.1f}/6 s · nível {payload['dbfs']:.1f} dBFS")
+        elif kind == "voice_capture_level":
+            self.voice_capture_level.configure(value=max(0, min(100, (payload["dbfs"] + 60) / 60 * 100)))
+            self.voice_status.set(f"Fale agora: {payload['elapsed']:.1f}/6 s · nível {payload['dbfs']:.1f} dBFS")
         elif kind in ("voice_test_probe", "voice_test_capture"):
             text = f"Entrada: {payload['device']}\nFonte PulseAudio: {payload['pulse_source']}\nCaptura: {payload['sample_rate']} Hz, mono\n"
             for warning in payload.get("warnings", []):
@@ -762,6 +785,7 @@ class JarvisWindow:
                 text += "\n\nEntrada compatível. Isso ainda não confirma que sua fala está chegando."
                 self.voice_test_status.set("Entrada verificada. Grave uma amostra para medir o sinal.")
             self._write(self.voice_test_result, text)
+            self._write(self.voice_device_result, text)
         elif kind == "voice_test_replay":
             self.voice_test_status.set(payload["note"])
         elif kind == "voice_test_transcript":
@@ -771,7 +795,7 @@ class JarvisWindow:
                 text += f"\n\nSimilaridade textual: {comparison['similarity_percent']}%"
                 text += f"\nEdições por palavra: {comparison['word_edits']} em {comparison['reference_words']} palavras de referência."
             text += "\n\nTeste outro modelo para comparar a MESMA gravação. Isso não mede a precisão geral do Jarvis."
-            text += "\n\nPara conversar com este modelo e entrada, clique Aplicar à escuta e diga Jarvis seguido do pedido."
+            text += "\n\nPara conversar, abra Conversar, aplique modelo e microfone e diga Jarvis seguido do pedido."
             self._write(self.voice_test_result, text)
             self.voice_test_status.set("Transcrição concluída; confira o texto reconhecido.")
         elif kind == "voice_devices":

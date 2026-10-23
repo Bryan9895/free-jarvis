@@ -112,7 +112,8 @@ class VoiceIO:
                 from faster_whisper import WhisperModel
                 self._stt = WhisperModel(self.model_name, device="cpu", compute_type="int8")
             segments, _ = self._stt.transcribe(str(filename), language=self.language,
-                                                vad_filter=True, beam_size=1)
+                                                vad_filter=True, beam_size=5,
+                                                condition_on_previous_text=False)
             text = " ".join(segment.text.strip() for segment in segments).strip()
             if not text:
                 raise VoiceError("Nenhuma fala reconhecida")
@@ -178,10 +179,11 @@ class WakeWordConversation:
 
     def __init__(self, voice: VoiceIO, on_command, on_status=lambda _message: None,
                  *, device=None, silence_seconds=1.0,
-                 max_command_seconds=15):
+                 max_command_seconds=15, on_transcript=lambda _text: None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
+        self.on_transcript = on_transcript
         self.device = voice.device if device is None else device
         self.silence_seconds = silence_seconds
         self.max_command_seconds = max_command_seconds
@@ -256,6 +258,7 @@ class WakeWordConversation:
                 recording = self._write_recording(samples)
                 try:
                     transcript = self.voice.transcribe(recording)
+                    self.on_transcript(transcript)
                     if woke:
                         activated, transcript = self.extract_wake_command(transcript)
                         if not activated:

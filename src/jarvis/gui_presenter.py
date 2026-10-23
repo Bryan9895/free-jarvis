@@ -20,6 +20,20 @@ def status_label(status):
     return LABELS.get(status, f'Estado informado: {status}')
 
 
+def error_message(error):
+    text = str(error)
+    lowered = text.casefold()
+    if 'http 404' in lowered and '/v1/responses' in lowered:
+        return ('O modelo de conversa não está disponível (HTTP 404). '
+                'Abra Modelos, atualize o catálogo e selecione outro modelo. '
+                'Seu pedido não recebeu resposta; o erro não é do microfone.')
+    if '/v1/responses' in lowered and ('http 401' in lowered or 'http 403' in lowered):
+        return 'A API recusou o acesso ao modelo. Confira as credenciais do FCC e as permissões do provedor.'
+    if '/v1/responses' in lowered and 'http 429' in lowered:
+        return 'O provedor atingiu o limite de uso. Aguarde ou selecione outro modelo em Modelos.'
+    return text[:800]
+
+
 def plan_progress(plan):
     steps = plan.get('steps', [])
     return sum(step.get('status') == 'verified' for step in steps), len(steps)
