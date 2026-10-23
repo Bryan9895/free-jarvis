@@ -45,6 +45,7 @@ class GuiBackend:
         self._capture_cancel = threading.Event()
         self._capture_finish = threading.Event()
         self._capturing = threading.Event()
+        self._conversation = None
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
 
     def start(self):
@@ -66,6 +67,8 @@ class GuiBackend:
 
     def cancel(self):
         self._capture_cancel.set()
+        if self._conversation is not None:
+            self._conversation.cancel()
         service = self.service
         cancelled = service.cancel_current() if service is not None else False
         if self._action_pending.is_set():
@@ -238,8 +241,7 @@ class GuiBackend:
                 self._voice_listener.pause()
             self.events.put(("busy", True))
             try:
-                answer = service.ask(value)
-                self.events.put(("answer", answer))
+                self._conversation_turn(value)
                 self.events.put(("metrics", service.agent.last_metrics))
                 self.events.put(("plan", service.planner.snapshot()))
             finally:
@@ -320,12 +322,14 @@ class GuiBackend:
                                 piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), device=device)
             self._capture_finish.clear()
             self._capturing.set()
+            self.events.put(("voice_capturing", True))
             self.events.put(("voice_status", "Ouvindo. Termine com um segundo de silêncio ou clique novamente para enviar."))
             try:
                 recording = voice.record_turn(cancel=self._capture_cancel, finish=self._capture_finish,
                     on_level=lambda level: self.events.put(("voice_capture_level", level)))
             finally:
                 self._capturing.clear()
+                self.events.put(("voice_capturing", False))
             try:
                 self.events.put(("voice_status", f"Whisper {model}: transcrevendo seu pedido…"))
                 transcript = voice.transcribe(recording)
@@ -340,14 +344,7 @@ class GuiBackend:
             self.events.put(("voice_transcript", value))
             self.events.put(("busy", True))
             try:
-                answer = service.ask(value)
-                self.events.put(("answer", answer))
-                if self._voice is not None:
-                    if self._voice.piper_model is None:
-                        self.events.put(("voice_status", "Resposta em texto; configure JARVIS_PIPER_MODEL para áudio."))
-                    else:
-                        self.events.put(("voice_status", "Falando a resposta…"))
-                        self.events.put(("voice_status", self._voice.speak(answer)))
+                self._conversation_turn(value, voice=self._voice)
                 self.events.put(("metrics", service.agent.last_metrics))
                 self.events.put(("plan", service.planner.snapshot()))
             finally:
@@ -362,6 +359,14 @@ class GuiBackend:
             from .voice import VoiceIO
             voice = VoiceIO(piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
             self.events.put(("voice_status", voice.speak(value)))
+
+    def _conversation_turn(self, message, *, voice=None):
+        from .conversation import ConversationController
+        if self._conversation is None or self._conversation.service is not self.service:
+            self._conversation = ConversationController(self.service,
+                emit=lambda event: self.events.put(("conversation_event", event)))
+        return self._conversation.run(message, voice=voice,
+            display=lambda answer: self.events.put(("answer", answer)))
 
 
 class JarvisWindow:
@@ -434,7 +439,7 @@ class JarvisWindow:
         audio_controls.pack(fill="x", pady=(0, 5))
         self.voice_quick = ttk.Button(audio_controls, text="Voz: desligada", command=self._toggle_voice)
         self.voice_quick.pack(side="left")
-        self.push_to_talk_quick = ttk.Button(send, text="Falar 6 s", command=self._push_to_talk)
+        self.push_to_talk_quick = ttk.Button(send, text="Falar / terminar", command=self._push_to_talk)
         self.push_to_talk_quick.pack(side="left")
         ttk.Button(audio_controls, text="Ler resposta", command=lambda: self.backend.submit(
             "voice_speak", self.last_answer)).pack(side="left")
@@ -770,6 +775,18 @@ class JarvisWindow:
             self._append_chat("Você (voz)", payload)
         elif kind == "voice_heard":
             self.voice_heard.set("Última fala: " + str(payload)[:140])
+        elif kind == "voice_capturing":
+            for button in (self.push_to_talk_button, self.push_to_talk_quick):
+                button.configure(state='normal' if payload else 'disabled')
+        elif kind == "conversation_event":
+            labels = {'executando': 'Executando', 'falando': 'Falando',
+                      'aguardando_seguimento': 'Aguardando seguimento',
+                      'cancelado': 'Cancelado', 'erro': 'Erro'}
+            label = labels.get(payload.state, payload.state)
+            self.voice_status.set(label + ': ' + payload.reason)
+            self.hud.set_state(label, payload.reason)
+            if payload.state == 'erro':
+                self._operation_error = True
         elif kind == "voice_status":
             self.voice_status.set(str(payload))
             if "Aguardando Jarvis" in str(payload):

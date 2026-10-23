@@ -245,7 +245,7 @@ class VoiceTests(unittest.TestCase):
             model = Path(td) / "voice.onnx"
             model.write_bytes(b"mock")
             voice = VoiceIO(piper_model=str(model))
-            with patch("jarvis.voice.shutil.which", return_value="/bin/true"), patch("jarvis.voice.subprocess.run", return_value=Mock(returncode=0, stderr="")) as run:
+            with patch("jarvis.voice.shutil.which", return_value="/bin/true"), patch.object(voice, '_run_audio') as run:
                 self.assertEqual(voice.speak("Olá"), "spoken")
                 self.assertEqual(run.call_count, 2)
                 self.assertEqual(run.call_args_list[0].args[0][0], "piper")
@@ -300,6 +300,41 @@ class VoiceTests(unittest.TestCase):
         with patch('jarvis.voice.time.monotonic', side_effect=range(0, 1000, 30)):
             samples = listener._listen_for_command(SimpleNamespace(InputStream=Stream), np, idle_timeout=20)
         self.assertEqual(len(samples), 18 * 1280)
+
+    def test_cancelled_player_is_terminated_and_reaped(self):
+        from jarvis.cancellation import CancelledError
+        voice = VoiceIO()
+        process = Mock()
+        process.poll.return_value = None
+        def wait(**_):
+            voice.cancel_speech()
+            raise __import__('subprocess').TimeoutExpired('aplay', 0.1)
+        process.communicate.side_effect = [wait, ('', '')]
+        # Mock side_effect não invoca funções dentro de lista.
+        calls = 0
+        def communicate(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return wait(**kwargs)
+            return '', ''
+        process.communicate.side_effect = communicate
+        with patch('jarvis.voice.subprocess.Popen', return_value=process):
+            with self.assertRaises(CancelledError):
+                voice._run_audio(['aplay', 'mock.wav'])
+        process.terminate.assert_called_once()
+        self.assertEqual(calls, 2)
+
+    def test_long_tts_never_truncates_at_3000_characters(self):
+        with tempfile.TemporaryDirectory() as td:
+            model = Path(td) / 'voice.onnx'
+            model.write_bytes(b'mock')
+            voice = VoiceIO(piper_model=str(model))
+            text = ' '.join('Frase completa.' for _ in range(300))
+            with patch('jarvis.voice.shutil.which', return_value='/bin/true'), patch.object(voice, '_run_audio') as run:
+                self.assertEqual(voice.speak(text), 'spoken')
+            spoken = ' '.join(call.kwargs['text'] for call in run.call_args_list if 'text' in call.kwargs)
+            self.assertEqual(spoken, text)
 
 if __name__ == "__main__":
     unittest.main()

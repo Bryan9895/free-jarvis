@@ -4,10 +4,13 @@ from __future__ import annotations
 import queue
 
 from .voice import VoiceIO, WakeWordConversation
+from .conversation import ConversationController
 
 
 def run_voice_session(service, voice: VoiceIO, *, report=print, listener_factory=WakeWordConversation):
     commands = queue.Queue(maxsize=1)
+    controller = ConversationController(service,
+        emit=lambda event: report(event.reason) if event.state == 'erro' else None)
 
     def status(message):
         report(message)
@@ -33,16 +36,13 @@ def run_voice_session(service, voice: VoiceIO, *, report=print, listener_factory
                 if command.casefold().strip(" .,!?:;") in {"sair", "encerrar jarvis"}:
                     break
                 report("Você (voz) > " + command)
-                answer = service.ask(command)
-                report("JARVIS > " + answer)
-                if voice.speak(answer) == "disabled":
-                    report("Resposta em texto; configure JARVIS_PIPER_MODEL para ouvir.")
+                controller.run(command, voice=voice, display=lambda answer: report("JARVIS > " + answer))
             except Exception as exc:
                 report("Falha no turno de voz: " + str(exc))
             finally:
                 listener.resume()
     except KeyboardInterrupt:
-        service.cancel_current()
+        controller.cancel()
         report("Conversa por voz encerrada.")
     finally:
         listener.stop()

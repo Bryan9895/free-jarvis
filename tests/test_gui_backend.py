@@ -251,6 +251,7 @@ class GuiBackendTests(unittest.TestCase):
                 self.resumed = True
         class Voice:
             piper_model = object()
+            def prepare_speech(self): pass
             def speak(self, text):
                 return "spoken"
         backend.service = service
@@ -262,7 +263,8 @@ class GuiBackendTests(unittest.TestCase):
             events.append(backend.events.get_nowait())
         self.assertIn(("voice_transcript", "abra o Firefox"), events)
         self.assertIn(("answer", "Resposta: abra o Firefox"), events)
-        self.assertIn(("voice_status", "spoken"), events)
+        self.assertTrue(any(kind == 'conversation_event' and value.state == 'aguardando_seguimento'
+                            for kind, value in events))
         self.assertTrue(backend._voice_listener.resumed)
 
 

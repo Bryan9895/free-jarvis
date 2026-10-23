@@ -43,6 +43,7 @@ class VoiceIO:
         self.device = device if device is not None else os.getenv("JARVIS_AUDIO_DEVICE")
         self.silence_rms = silence_rms
         self._stt = None
+        self._speech_cancel = threading.Event()
 
     @staticmethod
     def input_devices():
@@ -144,6 +145,8 @@ class VoiceIO:
 
     def speak(self, text):
         """Piper sintetiza localmente. Sem configuração, não envia fala para nuvem."""
+        from .speech_text import spoken_text, speech_chunks
+        text = spoken_text(text)
         if not text.strip():
             return "empty"
         if self.piper_model is None:
@@ -158,21 +161,51 @@ class VoiceIO:
         os.close(fd)
         wav_path = Path(location)
         try:
-            synth = subprocess.run(
-                ["piper", "--model", str(self.piper_model), "--output_file", str(wav_path)],
-                input=text[:3000], text=True, capture_output=True, timeout=90, check=False,
-            )
-            if synth.returncode != 0:
-                raise VoiceError("Falha no Piper: " + synth.stderr[-500:])
-            output = subprocess.run(["aplay", "-q", str(wav_path)], capture_output=True,
-                                    timeout=90, check=False)
-            if output.returncode != 0:
-                raise VoiceError("Não foi possível reproduzir o áudio")
+            for chunk in speech_chunks(text):
+                self._run_audio(["piper", "--model", str(self.piper_model), "--output_file", str(wav_path)],
+                                text=chunk)
+                self._run_audio(["aplay", "-q", str(wav_path)])
             return "spoken"
         except subprocess.TimeoutExpired as exc:
             raise VoiceError("Tempo limite de síntese/reprodução excedido") from exc
         finally:
             wav_path.unlink(missing_ok=True)
+
+    def prepare_speech(self):
+        self._speech_cancel.clear()
+
+    def cancel_speech(self):
+        self._speech_cancel.set()
+
+    def _run_audio(self, command, *, text=None):
+        from .cancellation import CancelledError
+        if self._speech_cancel.is_set():
+            raise CancelledError("Resposta falada cancelada")
+        process = subprocess.Popen(command, stdin=subprocess.PIPE if text is not None else subprocess.DEVNULL,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        deadline = time.monotonic() + 90
+        try:
+            pending = text
+            while True:
+                if self._speech_cancel.is_set():
+                    raise CancelledError("Resposta falada cancelada")
+                if time.monotonic() >= deadline:
+                    raise VoiceError("Tempo limite de síntese/reprodução excedido")
+                try:
+                    _, error = process.communicate(input=pending, timeout=0.1)
+                    if process.returncode:
+                        raise VoiceError("Falha de síntese/saída local: " + error[-500:])
+                    return
+                except subprocess.TimeoutExpired:
+                    pending = None
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.communicate(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
 
     def listen_once(self, seconds=6):
         recording = self.record(seconds)

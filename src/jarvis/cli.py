@@ -185,6 +185,9 @@ def main():
         plan_store = PlanStore(c.db)
         planner = TaskPlanner(auto, agent, store=plan_store)
         service = JarvisService(auto, agent, toolkit, mem, planner, approval)
+        from .conversation import ConversationController
+        conversation = ConversationController(service,
+            emit=lambda event: print(event.reason, file=sys.stderr) if event.state == 'erro' else None)
         voice = None
         mixed = None
         if not args.text_only or args.push_to_talk:
@@ -411,20 +414,14 @@ def main():
                           "/plano para o plano atual.")
                     continue
                 try:
-                    answer = service.ask(msg)
-                    print("JARVIS >", answer, "\n")
+                    conversation.run(msg, voice=voice,
+                        display=lambda answer: print("JARVIS >", answer, "\n"))
                     if os.getenv("JARVIS_SHOW_TIMING") == "1":
                         print("Tempo:", agent.last_metrics, "\n")
-                    if voice:
-                        try:
-                            status = voice.speak(answer)
-                            if status == "disabled":
-                                print("Para ouvir respostas, configure JARVIS_PIPER_MODEL.")
-                        except Exception as exc:
-                            print(f"Falha ao falar resposta: {exc}", file=sys.stderr)
                 except (FCCError, ValueError) as exc:
                     print("Erro de modelo/protocolo:", exc, file=sys.stderr)
                 except KeyboardInterrupt:
+                    conversation.cancel()
                     print("\\nRequisição interrompida. Uma ação local já autorizada pode ter ocorrido; "
                           "confira o resultado antes de repetir. Use /metricas para ver o tempo parcial.")
         finally:

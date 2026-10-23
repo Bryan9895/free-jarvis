@@ -47,3 +47,11 @@ Automação **passou**: 378 testes em 5,882 s, incluindo Tk/Chromium e novos cas
 Limites: RMS ainda é fallback, não VAD validado. Captura continua pedindo mono 16 kHz; negociação Bluetooth e timestamps/métricas por frame ainda pendentes. Áudio fica limitado a cerca de 3,84 MB PCM por turno a 16 kHz, mais overhead de arrays; teto rejeita em vez de manter intenção parcial para continuação. Detector dedicado, montagem segmentada, controlador canônico e cancelamento completo do TTS ainda não entregues neste checkpoint.
 
 Publicação: shell HTTPS sem credencial; checkpoint 0 publicado via integração GitHub em `7c0d26ee83b63e7c194f7d6bd7d6a57d5b149f76`. Sem force push.
+
+## Checkpoint 2 — controlador e fala
+
+GUI (texto/voz), CLI mista e CLI contínua usam `ConversationController.run` → `JarvisService.ask`, sem segundo executor. Eventos tipados têm sessão, turno, motivo e tempo monotônico. Cancelamento invalida respostas atrasadas; falha de TTS preserva texto e não repete execução. `ResponseText` separa tela/fala por transformação determinística; código, tabela, JSON e caminhos não são pronunciados literalmente. Piper recebe segmentos sem corte de 3.000 caracteres. Player/síntese podem ser terminados e recolhidos no cancelamento. Persona adicionada às instruções existentes.
+
+Limitações: controlador ainda começa na intenção textual; a máquina de captura/ativação permanece no adaptador legado. TTS ainda inicia Piper por segmento, sem cache residente da voz. Eventos não persistem conteúdo ambiental. Gate de áudio audível, latências aquecidas, interrupção acústica e modelo Jarvis continuam pendentes. Commit publicado do checkpoint de captura: `c0d1e35726053cf588f495749188c04181c90566`.
+
+Automação do checkpoint 2 **passou**: 388 testes em 5,842 s; display real, Chromium e HTTP local incluídos. Novos testes: correlação, cancelamento, falha TTS sem replay, recuperação de provedor, formatter, ordenação longa e término/recolhimento de player falso. `git diff --check` passou. Não houve áudio gravado consentido nem ensaio acústico.
