@@ -8,6 +8,7 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 
 ## Documentos de execução
 
+- A especificação vigente é `docs/PROMPT_UNICO_JARVIS.md`; o prompt explícito do usuário prevalece. Os documentos abaixo são contexto histórico, não pré-requisitos adicionais.
 - Leia `docs/PLANO_JARVIS_AUTONOMO.md` antes de implementar essa evolução.
 - Consulte `docs/REVISAO_REFERENCIAS_VOZ.md` para evidências, versões e limites das referências.
 - `docs/PROMPT_AGENTE_JARVIS.md` é o briefing executável desta entrega.
@@ -48,6 +49,10 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 - Registre latência por etapa, taxa de ativações corretas e falsos positivos. Metas no plano são critérios futuros, nunca resultados já medidos.
 - Sem áudio/transcrições ambientais em logs persistentes por padrão. Dados de avaliação consentidos ficam fora do git; métricas sanitizadas podem ser versionadas.
 - Ao faltar hardware/credencial, implemente e valide o que for possível e mantenha o aceite físico explicitamente pendente. Não invente uma validação.
+- Mantenha `docs/VALIDACAO_CONVERSA.md` com passou/falhou/pendente, SHAs reais e evidência por checkpoint. Separe automação, áudio gravado consentido e ensaio físico.
+- Timeout de espera só vence antes de começar a fala. Overflow ou teto emergencial invalidam o turno; nunca executem uma intenção parcial. Botão e contínuo compartilham o endpoint.
+- Preserve uma única captura durante trocas de entrada, diagnóstico e TTS. Só anuncie barge-in após ensaio acústico; Parar deve descartar resultados atrasados.
+- Preferências não contêm segredos, são versionadas e gravadas atomicamente; ambiente explícito tem precedência. Nenhum download bloqueia startup.
 
 ## Git e referências
 

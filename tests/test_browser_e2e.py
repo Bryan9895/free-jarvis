@@ -19,7 +19,8 @@ class BrowserE2E(unittest.TestCase):
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
                 try:
-                    page = browser.new_page()
+                    context = browser.new_context()
+                    page = context.new_page()
                     page.set_content("""
                       <html><head><title>Teste JARVIS</title></head>
                       <body>
