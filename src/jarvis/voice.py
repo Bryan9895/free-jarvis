@@ -207,6 +207,9 @@ class WakeWordConversation:
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=timeout)
 
+    def pause(self):
+        self._resume.clear()
+
     def resume(self):
         self._resume.set()
 
@@ -223,11 +226,15 @@ class WakeWordConversation:
             self.on_status("Aguardando Jarvis; detecção e transcrição são locais…")
             conversation = False
             while not self._stop.is_set():
+                if not self._resume.wait(0.2):
+                    continue
                 woke = not conversation
                 samples = self._listen_for_command(
                     sd, np, idle_timeout=20 if conversation else None)
                 if self._stop.is_set():
                     break
+                if not self._resume.is_set():
+                    continue
                 if samples is None:
                     conversation = False
                     self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
@@ -240,12 +247,16 @@ class WakeWordConversation:
                         activated, transcript = self.extract_wake_command(transcript)
                         if not activated:
                             continue
+                    else:
+                        transcript = self.remove_wake_word(transcript)
                 except VoiceError as exc:
                     conversation = False
                     self.on_status(f"Fala não reconhecida: {exc}. Aguardando Jarvis novamente…")
                     continue
                 finally:
                     recording.unlink(missing_ok=True)
+                if not self._resume.is_set():
+                    continue
                 if transcript:
                     stop_text = self.WAKE_PATTERN.sub("", transcript, count=1)
                     if stop_text.casefold().strip(" .,!?:;") in self.STOP_PHRASES:
@@ -296,6 +307,8 @@ class WakeWordConversation:
                 max_frames = max(1, round(self.max_command_seconds * self.voice.sample_rate / self.FRAME_SAMPLES))
                 speech_threshold = max(self.voice.silence_rms, 180)
                 while not self._stop.is_set():
+                    if not self._resume.is_set():
+                        return None
                     try:
                         chunk = frames.get(timeout=0.2)
                     except queue.Empty:

@@ -36,6 +36,43 @@ class Toolkit(FilesystemTools):
                     roots.append(root)
         self.allowed_roots = [self.workspace] + [p for p in roots if p != self.workspace]
 
+    def task_list(self, status=None):
+        from .task_board import TaskBoard
+        return TaskBoard(self.layout_db).list(status)
+
+    def task_add(self, title, priority=2):
+        from .task_board import TaskBoard
+        if not self.approve(f"ADICIONAR tarefa: {title}"):
+            return {"status": "rejected"}
+        return TaskBoard(self.layout_db).add(title, priority)
+
+    def task_update(self, task_id, status):
+        from .task_board import TaskBoard
+        if not self.approve(f"ALTERAR tarefa #{task_id} para {status}"):
+            return {"status": "rejected"}
+        return TaskBoard(self.layout_db).update(task_id, status)
+
+    def browser_tabs(self):
+        return self._browser_client().perform("tabs")
+
+    def browser_new_tab(self, url):
+        from .browser_worker import validate_url
+        validate_url(url)
+        if not self.approve(f"ABRIR ABA no Chromium gerenciado: {url}"):
+            return {"status": "rejected"}
+        return self._browser_client().perform("new_tab", url=url)
+
+    def browser_select_tab(self, tab_id):
+        if not self.approve(f"SELECIONAR ABA #{tab_id} no Chromium gerenciado"):
+            return {"status": "rejected"}
+        return self._browser_client().perform("select_tab", tab_id=tab_id)
+
+    def browser_close_tab(self, tab_id):
+        confirmation = getattr(self.approve, "confirm_sensitive", self.approve)
+        if not confirmation(f"FECHAR ABA #{tab_id}? Dados não salvos podem ser perdidos."):
+            return {"status": "rejected"}
+        return self._browser_client().perform("close_tab", tab_id=tab_id)
+
     def browser_open(self, url):
         u = urlparse(url)
         if u.scheme not in ("https", "http") or not u.hostname or u.username or u.password:
@@ -314,10 +351,13 @@ _CAPABILITY_TOOLS = {
     "filesystem.read": {"list_files", "read_file", "verify_file", "authorized_directories"},
     "filesystem.write": {"write_file", "make_directory", "move_path", "delete_path",
                          "create_python_project"},
+    "tasks.read": {"task_list"},
+    "tasks.write": {"task_add", "task_update"},
     "command.read": {"run_command"},
-    "browser.read": {"browser_inspect"},
+    "browser.read": {"browser_inspect", "browser_tabs"},
     "browser.control": {"browser_open", "browser_navigate", "browser_click",
-                        "browser_fill", "browser_screenshot"},
+                        "browser_fill", "browser_screenshot", "browser_new_tab",
+                        "browser_select_tab", "browser_close_tab"},
     "desktop.read": {"desktop_info", "desktop_windows", "verify_app_window",
                      "focused_window", "desktop_spaces", "list_desktop_profiles",
                      "list_window_layouts", "window_action_history", "list_installed_apps",

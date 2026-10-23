@@ -37,7 +37,9 @@ def main():
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--audio-devices", action="store_true", help="Listar entradas de áudio sem conectar ao FCC")
     parser.add_argument("--audio-device", metavar="NOME", help="Nome inequívoco da entrada SoundDevice")
-    parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
+    parser.add_argument("--voice", action="store_true", help="Conversa contínua: diga Jarvis seguido do comando, sem Enter")
+    parser.add_argument("--text-only", action="store_true", help="Somente mensagens; não inicia microfone")
+    parser.add_argument("--push-to-talk", action="store_true", help="Modo antigo: Enter grava e permite revisar a transcrição")
     parser.add_argument("--gui", action="store_true", help="Abrir interface gráfica com conversa de voz opcional")
     approval_group = parser.add_mutually_exclusive_group()
     approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
@@ -177,12 +179,14 @@ def main():
         planner = TaskPlanner(auto, agent, store=plan_store)
         service = JarvisService(auto, agent, toolkit, mem, planner, approval)
         voice = None
-        if args.voice:
+        mixed = None
+        if not args.text_only or args.push_to_talk:
             from .voice import VoiceIO
-            voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL", "tiny"),
+            voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL", "base"),
                             language=os.getenv("JARVIS_LANGUAGE", "pt"),
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
-            print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
+            if args.push_to_talk:
+                print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
@@ -191,10 +195,16 @@ def main():
             print("⚡ AUTOAPROVAÇÃO ATIVA: ferramentas atuais executam sem pedir SIM. "
                   "Limites do workspace, comandos e permissões GNOME continuam valendo.")
         print("Tarefas: /planejar OBJETIVO, /plano, /historico-planos, /selecionar-plano ID, /resolver-etapa skip|retry, /retomar-plano, /executar-plano")
+        if voice is not None and not args.push_to_talk:
+            from .voice_session import MixedInput
+            mixed = MixedInput(voice)
+            mixed.start()
         try:
             while True:
                 try:
-                    if voice is not None:
+                    if mixed is not None:
+                        msg = mixed.read(sys.stdin)
+                    elif voice is not None:
                         command = input("Você [Enter = falar / sair] > ").strip()
                         if command.lower() in {"sair", "/quit", "exit"}:
                             break
@@ -407,6 +417,8 @@ def main():
                     print("\\nRequisição interrompida. Uma ação local já autorizada pode ter ocorrido; "
                           "confira o resultado antes de repetir. Use /metricas para ver o tempo parcial.")
         finally:
+            if mixed is not None:
+                mixed.close()
             service.close()
     except FCCError as exc:
         print("Erro:", exc, file=sys.stderr)

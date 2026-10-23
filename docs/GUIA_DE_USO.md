@@ -49,3 +49,29 @@ Execute `jarvis-fcc --audio-devices` para listar microfones sem iniciar o servid
 Na GUI, **Listar microfones** não escolhe mais o primeiro item automaticamente: o campo vazio mantém a entrada padrão/configurada. Ao escolher um item, o nome é usado na captura, evitando índices antigos após reconexão. A gravação curta respeita `JARVIS_WHISPER_MODEL` e `JARVIS_LANGUAGE`, como a CLI.
 
 Uma falha de transcrição na escuta contínua descarta o WAV e retorna ao modo de espera por “Jarvis”, sem enviar a fala ao FCC. Se nenhum quadro de áudio chegar por três segundos, a escuta para com diagnóstico; reconecte/selecione a entrada e reative a escuta. Isso não limita o tempo de carregamento/inferência do Whisper nem chamadas bloqueadas do próprio driver.
+
+## Tarefas, abas e janelas
+
+A GUI (`jarvis-fcc --gui`) inclui **Minhas tarefas**, **Abas gerenciadas** e **Janelas**. O painel de planos continua separado da lista pessoal. O serviço ainda exige conexão inicial com FCC, inclusive para usar os painéis; modo gráfico offline é uma melhoria futura.
+
+- Tarefas: adicionar título/prioridade (1 baixa, 2 normal, 3 alta), atualizar e marcar pendente/em andamento/concluída. A lista persiste no banco SQLite; marcar concluída é uma decisão do usuário, não evidência de execução de um plano. Capacidades: `tasks.read` e `tasks.write`.
+- Abas: abrir URL pública, atualizar lista, selecionar e fechar por ID da sessão. Fechamento exige confirmação específica por possível perda de formulário. Abas abertas pelo usuário no Firefox pessoal não aparecem. IDs não são reutilizados enquanto o processo Chromium estiver vivo; fechar o Jarvis encerra essa sessão.
+- Janelas: informar aplicativo para centralizar, posicionar à esquerda/direita, minimizar, maximizar ou restaurar. Para lado a lado, informar também o segundo aplicativo. Seleção ambígua continua recusada; use o chat com título da janela. Requer as extensões GNOME já documentadas.
+
+O Chromium permanece headless por padrão. Para ver sua janela, defina `JARVIS_BROWSER_VISIBLE=1` **antes** de iniciar Jarvis. Exemplo: `JARVIS_BROWSER_VISIBLE=1 jarvis-fcc --gui`. Não há acesso aos cookies/perfil do Firefox. Instale o extra browser e Chromium conforme README antes de usar abas.
+
+Exemplos de pedidos ao modelo (dependem de function calling correto): “Adicione a tarefa revisar o relatório com prioridade alta”, “Liste minhas tarefas”, “Marque a tarefa 3 como concluída”, “Liste as abas do navegador gerenciado”, “Abra uma nova aba em https://example.com”, “Feche a aba 2 do navegador gerenciado”, “Coloque Firefox e VS Code lado a lado”. Use a GUI para executar diretamente quando o modelo não emitir ferramentas estruturadas.
+
+## Conversa contínua no terminal
+
+`jarvis-fcc --voice` agora inicia a escuta por palavra de ativação, sem Enter e sem revisão obrigatória da mensagem. Diga **Jarvis, seguido do pedido**, aguarde a resposta e continue. Após a resposta há uma janela de até 20 segundos para falar sem repetir o nome; depois volta a exigir Jarvis. Dizer somente Jarvis abre essa janela para o pedido seguinte. Diga **Jarvis, sair** ou pressione Ctrl+C para encerrar. O modo antigo de gravação/revisão está em `--push-to-talk`.
+
+Exemplo: `FCC_MODEL='openai/gpt-5.6-luna' JARVIS_WHISPER_MODEL=small JARVIS_LANGUAGE=pt PULSE_SOURCE='bluez_input.41:42:FF:87:2B:E1' jarvis-fcc --voice`. Confirme o nome da fonte a cada reconexão. Configure `JARVIS_PIPER_MODEL` para respostas faladas; sem Piper, a entrada permanece por voz e a saída em texto.
+
+A ativação usa transcrição local Whisper e depende da precisão acústica. Não é garantia de reconhecer toda chamada. A escuta fica pausada durante execução/FCC/TTS para não captar a própria resposta; interrupção por voz enquanto fala ainda não é suportada. Confirmações específicas de ações sensíveis e permissões nativas continuam podendo exigir interação. Falha fatal de captura encerra o modo de voz com diagnóstico, em vez de esperar indefinidamente.
+
+## Texto e voz juntos por padrão
+
+Ao iniciar `jarvis-fcc` sem flags, o terminal agora aceita mensagens digitadas e ativa a escuta por Jarvis. Não é necessário `--voice` nem Enter para iniciar gravação. Comandos digitados como `/modelos` continuam disponíveis. Sem dependências ou dispositivo de áudio, a escuta informa o erro e o texto permanece disponível. `jarvis-fcc --text-only` não inicia o microfone; `--push-to-talk` mantém o fluxo antigo. `--voice` permanece aceito por compatibilidade, usando o modo misto.
+
+A leitura do teclado e as confirmações ficam na thread principal. Pedidos de voz são enfileirados e processados pelo mesmo serviço; não executam ferramentas em paralelo. A captura pausa ao processar um pedido e durante a resposta para reduzir eco. Para encerrar por voz, diga Jarvis, sair; pelo teclado, digite sair ou use Ctrl+C. O aplicativo precisa estar aberto e o microfone conectado; não é um serviço iniciado automaticamente ao ligar o computador.

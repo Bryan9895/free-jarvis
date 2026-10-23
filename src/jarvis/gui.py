@@ -122,7 +122,25 @@ class GuiBackend:
 
     def _dispatch(self, command, value):
         service = self.service
-        if command == "ask":
+        if command == "tool_action":
+            name, arguments = value
+            allowed = {"task_list", "task_add", "task_update", "browser_tabs",
+                       "browser_new_tab", "browser_select_tab", "browser_close_tab",
+                       "place_window", "manage_window", "arrange_windows"}
+            if name not in allowed:
+                raise ValueError("Ação de interface desconhecida")
+            outcome = service.toolkit.execute(name, arguments)
+            if "error" in outcome:
+                raise RuntimeError(outcome["error"])
+            detail = outcome.get("result", {})
+            self.events.put(("action_result", detail))
+            if name.startswith("task_"):
+                refreshed = service.toolkit.execute("task_list", {})
+                self.events.put(("task_board", refreshed.get("result", {})))
+            elif name.startswith("browser_"):
+                refreshed = service.toolkit.execute("browser_tabs", {})
+                self.events.put(("browser_tabs", refreshed.get("result", {})))
+        elif command == "ask":
             self.events.put(("busy", True))
             try:
                 answer = service.ask(value)
@@ -259,7 +277,7 @@ class JarvisWindow:
         ttk.Button(send, text="Cancelar", command=self._cancel).pack(side="left")
 
         tasks = ttk.Frame(tabs, padding=8)
-        tabs.add(tasks, text="Tarefa")
+        tabs.add(tasks, text="Plano em execução")
         self.plan_status = tk.StringVar(value="Sem plano")
         ttk.Label(tasks, textvariable=self.plan_status).pack(anchor="w")
         self.steps = ttk.Treeview(tasks, columns=("id", "status", "description"), show="headings")
@@ -269,6 +287,60 @@ class JarvisWindow:
             self.steps.column(key, width=width)
         self.steps.pack(fill="both", expand=True)
         ttk.Button(tasks, text="Atualizar", command=lambda: self.backend.submit("snapshot")).pack()
+
+        board = ttk.Frame(tabs, padding=8)
+        tabs.add(board, text="Minhas tarefas")
+        ttk.Label(board, text="Lista pessoal; concluir um item não executa um plano.").pack(anchor="w")
+        self.task_title = ttk.Entry(board)
+        self.task_title.pack(fill="x")
+        self.task_priority = tk.StringVar(value="2")
+        ttk.Combobox(board, textvariable=self.task_priority, values=("1", "2", "3"),
+                     state="readonly").pack(fill="x")
+        ttk.Button(board, text="Adicionar tarefa", command=lambda: self._tool_action(
+            "task_add", {"title": self.task_title.get(), "priority": int(self.task_priority.get())})).pack(fill="x")
+        self.task_board = ttk.Treeview(board, columns=("id", "title", "state", "priority"), show="headings")
+        for key, label in (("id", "#"), ("title", "Tarefa"), ("state", "Estado"), ("priority", "Prioridade")):
+            self.task_board.heading(key, text=label)
+            self.task_board.column(key, width=120 if key == "title" else 70)
+        self.task_board.pack(fill="both", expand=True)
+        for state, label in (("pending", "Pendente"), ("in_progress", "Em andamento"), ("done", "Concluída")):
+            ttk.Button(board, text=label, command=lambda state=state: self._selected_action(
+                self.task_board, "task_update", "task_id", status=state)).pack(side="left")
+        ttk.Button(board, text="Atualizar", command=lambda: self._tool_action("task_list", {})).pack()
+
+        browser_panel = ttk.Frame(tabs, padding=8)
+        tabs.add(browser_panel, text="Abas gerenciadas")
+        ttk.Label(browser_panel, text="Chromium do Jarvis; não controla abas do Firefox pessoal.").pack(anchor="w")
+        self.tab_url = ttk.Entry(browser_panel)
+        self.tab_url.pack(fill="x")
+        ttk.Button(browser_panel, text="Abrir URL em nova aba", command=lambda: self._tool_action(
+            "browser_new_tab", {"url": self.tab_url.get()})).pack(fill="x")
+        self.browser_tabs = ttk.Treeview(browser_panel, columns=("id", "title", "url"), show="headings")
+        for key, label in (("id", "#"), ("title", "Título"), ("url", "URL")):
+            self.browser_tabs.heading(key, text=label)
+            self.browser_tabs.column(key, width=40 if key == "id" else 160)
+        self.browser_tabs.pack(fill="both", expand=True)
+        ttk.Button(browser_panel, text="Atualizar abas", command=lambda: self._tool_action("browser_tabs", {})).pack(fill="x")
+        for action, label in (("browser_select_tab", "Selecionar aba"), ("browser_close_tab", "Fechar aba")):
+            ttk.Button(browser_panel, text=label, command=lambda action=action: self._selected_action(
+                self.browser_tabs, action, "tab_id")).pack(fill="x")
+
+        windows = ttk.Frame(tabs, padding=8)
+        tabs.add(windows, text="Janelas")
+        ttk.Label(windows, text="Aplicativo (use o chat para desambiguar pelo título)").pack(anchor="w")
+        self.window_app = ttk.Entry(windows)
+        self.window_app.pack(fill="x")
+        for position, label in (("left", "Metade esquerda"), ("right", "Metade direita"), ("center", "Centralizar")):
+            ttk.Button(windows, text=label, command=lambda position=position: self._tool_action(
+                "place_window", {"app": self.window_app.get(), "position": position})).pack(fill="x")
+        for action, label in (("minimize", "Minimizar"), ("maximize", "Maximizar"), ("restore", "Restaurar")):
+            ttk.Button(windows, text=label, command=lambda action=action: self._tool_action(
+                "manage_window", {"app": self.window_app.get(), "action": action})).pack(fill="x")
+        ttk.Label(windows, text="Segundo aplicativo para organizar lado a lado").pack(anchor="w")
+        self.second_app = ttk.Entry(windows)
+        self.second_app.pack(fill="x")
+        ttk.Button(windows, text="Organizar lado a lado", command=lambda: self._tool_action(
+            "arrange_windows", {"left_app": self.window_app.get(), "right_app": self.second_app.get()})).pack(fill="x")
 
         permissions = ttk.Frame(tabs, padding=8)
         tabs.add(permissions, text="Permissões")
@@ -343,6 +415,17 @@ class JarvisWindow:
         if self.backend.cancel():
             self._append_chat("Sistema", "Cancelamento solicitado; aguardando a chamada atual terminar.")
 
+    def _tool_action(self, name, arguments):
+        self.backend.submit("tool_action", (name, arguments))
+
+    def _selected_action(self, widget, name, id_key, **arguments):
+        selected = widget.selection()
+        if not selected:
+            self._append_chat("Sistema", "Selecione um item primeiro.")
+            return
+        arguments[id_key] = int(widget.item(selected[0], "values")[0])
+        self._tool_action(name, arguments)
+
     def _toggle_voice(self):
         if self.voice_listening:
             self.backend.submit("voice_listen_stop")
@@ -403,6 +486,18 @@ class JarvisWindow:
             for step in payload.get("steps", []):
                 self.steps.insert("", "end", values=(step.get("id"), step.get("status"),
                                                      step.get("description")))
+        elif kind == "action_result":
+            self._append_chat("Ação", json.dumps(payload, ensure_ascii=False))
+        elif kind == "task_board":
+            if payload.get("status") == "listed":
+                self.task_board.delete(*self.task_board.get_children())
+                for task in payload["tasks"]:
+                    self.task_board.insert("", "end", values=(task["id"], task["title"], task["state"], task["priority"]))
+        elif kind == "browser_tabs":
+            if payload.get("status") == "listed":
+                self.browser_tabs.delete(*self.browser_tabs.get_children())
+                for tab in payload["tabs"]:
+                    self.browser_tabs.insert("", "end", values=(tab["id"], tab["title"], tab["url"]))
         elif kind == "models":
             self.models.configure(values=payload)
         elif kind == "model":

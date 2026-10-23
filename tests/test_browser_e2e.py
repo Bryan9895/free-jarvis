@@ -1,6 +1,8 @@
 """Integração com Chromium real, sem chamadas externas ou login."""
 import tempfile
 import unittest
+from unittest.mock import patch
+from jarvis.browser_tabs import BrowserTabs
 from pathlib import Path
 
 try:
@@ -39,6 +41,18 @@ class BrowserE2E(unittest.TestCase):
                     shot = handle(page, "screenshot", {}, Path(td))
                     self.assertEqual(shot["status"], "screenshot_verified")
                     self.assertTrue(Path(shot["path"]).is_file())
+                    tabs = BrowserTabs(page.context, page)
+                    first_id = tabs.perform("tabs", {})["tabs"][0]["id"]
+                    page.context.route("https://tabs.example.test/**", lambda route: route.fulfill(
+                        status=200, content_type="text/html", body="<title>Segunda aba</title><p>Teste</p>"))
+                    with patch("jarvis.browser_tabs.validate_url", side_effect=lambda url: url):
+                        second = tabs.perform("new_tab", {"url": "https://tabs.example.test/"})
+                    tabs.perform("select_tab", {"tab_id": first_id})
+                    handle(page, "click", {"selector": "#add"}, Path(td))
+                    self.assertEqual(len(tabs.perform("tabs", {})["tabs"]), 2)
+                    self.assertEqual(tabs.perform("close_tab", {"tab_id": second["tab_id"]})["status"],
+                                     "closed_verified")
+                    self.assertEqual(len(tabs.perform("tabs", {})["tabs"]), 1)
                 finally:
                     browser.close()
 

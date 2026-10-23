@@ -1,4 +1,5 @@
 """Processo de automação. Não usa o perfil existente do Firefox do usuário."""
+import os
 import ipaddress
 import json
 import socket
@@ -58,10 +59,11 @@ def handle(page, op, args, workspace):
         if target.count() != 1:
             raise ValueError("Seletor deve corresponder a exatamente um elemento")
         if op == "click":
+            previous_pages = set(page.context.pages)
             before_url = page.url
             before_text = page.locator("body").inner_text(timeout=7000)[:MAX_TEXT]
             target.click(timeout=7000)
-            popups = [popup for popup in page.context.pages if popup is not page]
+            popups = [popup for popup in page.context.pages if popup not in previous_pages]
             for popup in popups:
                 popup.close()
         else:
@@ -95,9 +97,11 @@ def main():
         return
     workspace = Path.cwd().resolve()
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=os.getenv("JARVIS_BROWSER_VISIBLE") != "1")
         context = browser.new_context(accept_downloads=False, service_workers="block")
         page = context.new_page()
+        from .browser_tabs import BrowserTabs
+        tabs = BrowserTabs(context, page)
         def check_route(route):
             try:
                 validate_url(route.request.url)
@@ -109,7 +113,11 @@ def main():
             for line in sys.stdin:
                 try:
                     request = json.loads(line)
-                    answer = handle(page, request["op"], request.get("args", {}), workspace)
+                    op, args = request["op"], request.get("args", {})
+                    if op in ("tabs", "new_tab", "select_tab", "close_tab"):
+                        answer = tabs.perform(op, args)
+                    else:
+                        answer = handle(tabs.active_page(), op, args, workspace)
                     response = {"ok": True, "result": answer}
                 except Exception as exc:
                     response = {"ok": False, "error": str(exc)[:500]}

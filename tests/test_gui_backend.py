@@ -50,6 +50,30 @@ class GuiBackendTests(unittest.TestCase):
         backend._thread.join(timeout=2)
         self.assertTrue(service.closed)
 
+    def test_task_panel_uses_toolkit_and_refreshes(self):
+        backend = GuiBackend(None)
+        service = FakeService()
+        service.toolkit = Mock()
+        service.toolkit.execute.side_effect = [
+            {"result": {"status": "state_verified", "task_id": 1}},
+            {"result": {"status": "listed", "tasks": [{"id": 1}]}}]
+        backend.service = service
+        backend._dispatch("tool_action", ("task_add", {"title": "Estudar"}))
+        self.assertEqual(service.toolkit.execute.call_args_list[0].args,
+                         ("task_add", {"title": "Estudar"}))
+        events = [backend.events.get_nowait(), backend.events.get_nowait()]
+        self.assertEqual(events[1][0], "task_board")
+
+    def test_tool_panel_does_not_hide_permission_error(self):
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        backend.service.toolkit = Mock()
+        backend.service.toolkit.execute.return_value = {"error": "Capacidade não autorizada"}
+        with self.assertRaisesRegex(RuntimeError, "Capacidade"):
+            backend._dispatch("tool_action", ("browser_tabs", {}))
+        with self.assertRaises(ValueError):
+            backend._dispatch("tool_action", ("run_command", {}))
+
     def test_record_selection_uses_name_and_configured_model(self):
         backend = GuiBackend(None)
         backend.service = FakeService()

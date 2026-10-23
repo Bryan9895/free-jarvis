@@ -59,3 +59,23 @@ Próximas entregas, em ordem:
 - CLI: `--audio-devices` sem inicializar FCC e `--audio-device NOME` para CLI/GUI. GUI usa nome em vez de índice exibido, mantém entrada padrão até escolha explícita e respeita modelo/idioma configurados na gravação curta.
 - Suíte: 324 testes executados sem falhas, um ignorado. Inclui recuperação após erro com remoção dos WAVs, falta de quadros, seleção por nome e enumeração sem FCC. Hardware/FCC/GUI gráfica não foram ensaiados neste ambiente.
 - Próximo passo: validação física Bluetooth nas duas interfaces e comparação base/small sobre o mesmo áudio. Depois, cancelamento com FCC e retomada após queda real; não declarar v1 concluída antes da matriz de aceite.
+
+## Organização pessoal e interface — 23/10/2026
+
+Branch `work/tasks-tabs-interface`, base remota `68ef2b5`. Entrega incremental:
+- `task_board.py`, migração SQLite v3 não destrutiva, tarefas pessoais com prioridade/estado e ferramentas sob capacidades próprias. Não confundir lista pessoal com execução verificada de planos.
+- `browser_tabs.py`: IDs estáveis por sessão, nova aba, inventário, seleção e fechamento confirmado. Corrigido fechamento indevido das abas preexistentes ao clicar: somente pop-ups surgidos naquele clique são encerrados.
+- GUI existente ampliada com painéis de lista pessoal, abas e ações de janelas via Toolkit, preservando política/validações. Chromium visível via opt-in `JARVIS_BROWSER_VISIBLE=1`.
+- Limites: Firefox pessoal não integrado, lista pessoal não agenda nem executa tarefas automaticamente, painel depende da conexão FCC inicial. GUI gráfica, GNOME e Chromium físico pendentes neste ambiente; não declarar versão final.
+- Próximos gates: ensaio dos painéis no notebook; fluxo de planejamento por interface, cancelamento/retomada; integração explícita de navegador pessoal caso necessária.
+- Verificação desta entrega: 332 testes executados sem falhas, um ignorado (Playwright indisponível). Compilação Python e `git diff --check` passaram. Testes novos cobrem migração preservando dados, persistência/prioridade, permissões, IDs de abas, fechamento/seleção, falha de navegação e ações da GUI. E2E com Chromium foi ampliado mas não executado aqui.
+
+## Voz sem Enter — 23/10/2026
+
+Pedido do usuário: ativação por Jarvis e envio automático, sem pressionar gravar/revisar. Implementado `voice_session.py`: `--voice` usa WakeWordConversation, fila de comandos e serviço compartilhado; resposta Piper opcional, retomada após falha de FCC/TTS e encerramento por voz/Ctrl+C. `--push-to-talk` preserva comportamento antigo. Prefixo de ativação também é removido durante seguimento da conversa.
+
+Limites explícitos: pausa durante FCC/execução/TTS, sem interrupção por voz durante resposta; detecção baseada em STT não garante recall; testes físicos pendentes. Envio ao GitHub continua pendente da aprovação solicitada para esta nova entrega.
+
+## Modo misto padrão — 23/10/2026
+
+Pedido explícito do usuário: iniciar `jarvis-fcc` com voz e mensagens simultaneamente. Implementado MixedInput com fila do listener e select do stdin, sem thread concorrente lendo confirmações. Comandos locais de texto são preservados. --text-only desliga captura; --push-to-talk preserva revisão opcional. Ausência de microfone/dependências não encerra entrada de texto. Pausa cooperativa do listener durante execução/resposta; não há interrupção de resposta por voz. Teste físico pendente; publicação GitHub ainda pendente.

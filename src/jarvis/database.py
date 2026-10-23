@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _BASE_SCHEMA = (
     "CREATE TABLE IF NOT EXISTS turns (id INTEGER PRIMARY KEY, role TEXT NOT NULL, "
@@ -45,6 +45,12 @@ def migrate(connection: sqlite3.Connection) -> int:
             for statement in _EVENT_SCHEMA:
                 connection.execute(statement)
             connection.execute("PRAGMA user_version=2")
+        if version < 3:
+            connection.execute("CREATE TABLE IF NOT EXISTS personal_tasks ("
+                               "id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, "
+                               "status TEXT NOT NULL CHECK(status IN ('pending','in_progress','done')), "
+                               "priority INTEGER NOT NULL CHECK(priority BETWEEN 1 AND 3))")
+            connection.execute("PRAGMA user_version=3")
         connection.commit()
     except Exception:
         connection.rollback()
