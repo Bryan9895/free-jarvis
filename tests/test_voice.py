@@ -111,6 +111,18 @@ class VoiceTests(unittest.TestCase):
             self.assertEqual(voice._stt.transcribe.call_args.kwargs['beam_size'], 5)
             self.assertFalse(voice._stt.transcribe.call_args.kwargs['condition_on_previous_text'])
 
+    def test_uncertain_stt_discards_whole_turn_without_blacklisting_valid_words(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'sample.wav'
+            path.write_bytes(b'fixture')
+            voice = VoiceIO()
+            voice._stt = Mock()
+            voice._stt.transcribe.return_value = ([SimpleNamespace(text='abra Firefox', no_speech_prob=.9, avg_logprob=-2)], None)
+            with self.assertRaisesRegex(VoiceError, 'incerta'):
+                voice.transcribe(path)
+            voice._stt.transcribe.return_value = ([SimpleNamespace(text='obrigado', no_speech_prob=.1, avg_logprob=-.2)], None)
+            self.assertEqual(voice.transcribe(path), 'obrigado')
+
     def test_disabled_tts_no_cloud(self):
         self.assertEqual(VoiceIO().speak("Olá"), "disabled")
         self.assertEqual(VoiceIO().speak(" "), "empty")
@@ -297,7 +309,7 @@ class VoiceTests(unittest.TestCase):
             def __exit__(self, *_): pass
         listener = WakeWordConversation(VoiceIO(), lambda _: None)
         # Tempo de parede salta além da janela enquanto há fala.
-        with patch('jarvis.voice.time.monotonic', side_effect=range(0, 1000, 30)):
+        with patch('jarvis.voice.time.monotonic', side_effect=range(0, 10000, 30)):
             samples = listener._listen_for_command(SimpleNamespace(InputStream=Stream), np, idle_timeout=20)
         self.assertEqual(len(samples), 18 * 1280)
 

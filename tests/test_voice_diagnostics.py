@@ -34,7 +34,7 @@ class VoiceDiagnosticTests(unittest.TestCase):
         self.assertIsNone(compare_transcript('', 'palavra'))
 
     def test_probe_resolves_input_and_warns_about_virtual_source(self):
-        backend = SimpleNamespace(query_devices=Mock(return_value={'name':'Loopback'}),
+        backend = SimpleNamespace(query_devices=Mock(return_value={'name':'Loopback', 'default_samplerate':48000, 'max_input_channels':1}),
                                   check_input_settings=Mock())
         with patch.dict(sys.modules, {'sounddevice':backend}), patch.dict('os.environ', {'PULSE_SOURCE':''}):
             result = VoiceDiagnostics().probe('Loopback')
@@ -43,7 +43,8 @@ class VoiceDiagnosticTests(unittest.TestCase):
         self.assertEqual(result['status'], 'available')
 
     def test_probe_fails_for_disconnected_device(self):
-        backend = SimpleNamespace(query_devices=Mock(side_effect=ValueError('disconnected')))
+        backend = SimpleNamespace(query_devices=Mock(side_effect=ValueError('disconnected')),
+                                  check_input_settings=Mock())
         with patch.dict(sys.modules, {'sounddevice':backend}):
             with self.assertRaisesRegex(VoiceError, 'Entrada indisponível'):
                 VoiceDiagnostics().probe('Bluetooth')

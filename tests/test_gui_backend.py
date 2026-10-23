@@ -34,6 +34,35 @@ class FakeService:
 
 
 class GuiBackendTests(unittest.TestCase):
+    def test_button_audio_to_verified_effect_and_visual_reply_journey(self):
+        import sys
+        import numpy as np
+        from jarvis.voice import VoiceIO
+        class Stream:
+            def __init__(self, **kwargs): self.callback = kwargs['callback']
+            def __enter__(self):
+                for level in [600] * 38 + [0] * 13:
+                    self.callback(np.full((1280, 1), level, dtype=np.int16), 1280, None, None)
+                return self
+            def __exit__(self, *_): pass
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        voice = VoiceIO(model='small', piper_model='')
+        voice.piper_model = None
+        voice._stt = Mock()
+        voice._stt.transcribe.return_value = ([SimpleNamespace(text='adicione revisar relatório às tarefas')], None)
+        effects = []
+        def execute(message):
+            effects.append(message)
+            return 'Tarefa adicionada e verificada.'
+        backend.service.ask = execute
+        with patch.dict(sys.modules, {'sounddevice': SimpleNamespace(InputStream=Stream)}), patch('jarvis.voice.VoiceIO', return_value=voice):
+            backend._dispatch('voice_push_to_talk', {'model': 'small'})
+        self.assertEqual(effects, ['adicione revisar relatório às tarefas'])
+        self.assertIn(('answer', 'Tarefa adicionada e verificada.'), list(backend.events.queue))
+        recording = Path(voice._stt.transcribe.call_args.args[0])
+        self.assertFalse(recording.exists())
+
     def test_voice_preferences_save_and_reload_without_fcc(self):
         from jarvis.preferences import PreferenceStore
         with tempfile.TemporaryDirectory() as td:

@@ -65,3 +65,13 @@ Início mostra conversa e controles; navegação e painéis ficam recolhidos em 
 Automação **passou**: 394 testes em 6,547 s, incluindo persistência/erro atômico, ambiente, configuração sem FCC, STT tardio após stop e bounds Tk em 1040×640 e 1366×768. `git diff --check` passou. Escala maior GNOME, áudio audível e reinício físico Bluetooth continuam pendentes. Publicação anterior: `864ff6e3d41fe4e5cd9cb79508ee26e566e95d80`.
 
 Como usar: `jarvis-fcc --gui` → Configurações → Voz → Microfone; em Saída selecionar modelo local e sink, Salvar, Testar voz salva. Em Conversar aplicar entrada/Whisper; Falar/terminar dispensa ativação. Contínuo usa fallback por transcrição identificado no estado; não é detector acústico aceito. CLI: `jarvis-fcc` mistura texto/voz conforme modo salvo, `--text-only` evita captura e `--push-to-talk` usa endpoint com revisão.
+
+## Checkpoint 4 — formato, cache e integridade
+
+Negociação consultada pelo SoundDevice tenta PCM16 mono 16 kHz e depois taxa/canais nativos (até estéreo). Downmix fica fora do callback. WAV registra taxa nativa para uma única decodificação/ressample no STT. Diagnóstico usa a mesma negociação. Callback contínuo copia/enfileira com timestamp monotônico; estatísticas em memória incluem frames, perda de turnos, pico de fila e atraso. Não muda fonte global. Modelo Whisper agora tem um cache global serializado: troca libera o anterior antes de carregar outro CPU int8; diagnóstico e conversa compartilham cache. Indicadores STT combinados de ausência de fala e logprob rejeitam turno incerto, sem blacklist textual. Isso não substitui um VAD acústico validado.
+
+Automação **passou**: 401 testes em 7,159 s, incluindo negociação nativa/erro, cache/reuso/recuperação, STT incerto e jornada de frames sintéticos → STT controlado → efeito controlado único → resposta visual → remoção do WAV. Os testes não demonstram precisão de fala real.
+
+Ensaio com artefato local (não distribuído): `modelos/piper/pt_BR-faber-medium.onnx`, SHA256 `858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7`. Piper instalado sintetizou frase controlada em WAV mono 22050 Hz, 57856 frames; retorno 0; 5,391 s incluindo processo/carga fria. Arquivo temporário apagado. Não foi reproduzido no fone; não é latência aquecida nem aceite de 2 s. Licença do artefato e download gerenciado continuam pendentes.
+
+Publicação anterior de preferências: `45bf7a8b34124a06b3630050412da08dc01d3b7a`. Matriz atual: endpoint/integridade/cache/preferências/layout automatizados passaram; detector Jarvis, VAD acústico, voz audível, Bluetooth, efeitos GNOME/FCC reais, escala GNOME e latência/RSS aquecidas permanecem pendentes. Nenhum arquivo de áudio ambiental foi avaliado.

@@ -57,21 +57,22 @@ class VoiceDiagnostics:
         try:
             import sounddevice as sd
             configured = device if device is not None else os.getenv('JARVIS_AUDIO_DEVICE')
-            info = sd.query_devices(configured, kind='input')
-            sd.check_input_settings(device=configured, channels=1, dtype='int16', samplerate=16000)
+            from .audio_devices import input_format
+            selected = input_format(sd, configured)
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         except Exception as exc:
-            raise VoiceError(f'Entrada indisponível ou sem suporte a 16 kHz: {exc}') from exc
+            raise VoiceError(f'Entrada indisponível ou sem formato suportado: {exc}') from exc
         source = os.getenv('PULSE_SOURCE', '')
-        name = str(info['name'])
+        name = selected.name
         warnings = []
         if any(part in (name + ' ' + source).casefold() for part in ('.monitor', 'loopback', 'snd_aloop')):
             warnings.append('Entrada virtual/monitor selecionada: pode não ser seu microfone.')
         if name.casefold() in ('default', 'pulse', 'pipewire'):
             warnings.append('Entrada genérica: confira no Ubuntu se a fonte ativa é o microfone Bluetooth.')
         return {'status': 'available', 'device': name,
-                'pulse_source': source or 'Padrão do sistema', 'sample_rate': 16000,
+                'pulse_source': source or 'Padrão do sistema (fonte efetiva não confirmada)',
+                'sample_rate': selected.rate, 'channels': selected.channels,
                 'warnings': warnings}
 
     def capture(self, device=None, *, on_level=None):

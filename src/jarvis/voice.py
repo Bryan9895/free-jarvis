@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import wave
+from contextlib import nullcontext
 from functools import wraps
 from array import array
 from math import sqrt
@@ -84,28 +85,29 @@ class VoiceIO:
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         try:
+            from .audio_devices import input_format
+            selected = input_format(sd, self.device, self.sample_rate)
             chunks = []
             completed = threading.Event()
-            remaining = int(self.sample_rate * seconds)
+            lost = threading.Event()
+            remaining = int(selected.rate * seconds)
 
             def receive(indata, _count, _timing, _status):
                 nonlocal remaining
+                if _status:
+                    lost.set()
                 take = min(remaining, len(indata))
                 if take:
                     chunk = indata[:take].tobytes()
                     chunks.append(chunk)
                     remaining -= take
-                    if on_level is not None:
-                        from .voice_diagnostics import signal_metrics
-                        on_level({**signal_metrics(chunk),
-                                  "elapsed": round(seconds-remaining/self.sample_rate, 1)})
                 if remaining == 0:
                     completed.set()
                     raise sd.CallbackStop
 
-            stream = sd.InputStream(samplerate=self.sample_rate, channels=1,
+            stream = sd.InputStream(samplerate=selected.rate, channels=selected.channels,
                                     dtype="int16", device=self.device, callback=receive,
-                                    blocksize=max(1, self.sample_rate // 10))
+                                    blocksize=max(1, selected.rate // 10))
             try:
                 stream.start()
                 if not completed.wait(seconds + 3):
@@ -117,6 +119,15 @@ class VoiceIO:
                     stream.abort()
                 finally:
                     stream.close()
+            if lost.is_set():
+                raise VoiceError('Perda de quadros na gravação; amostra descartada')
+            if selected.channels == 2:
+                import numpy as np
+                samples = np.frombuffer(audio_bytes, dtype=np.int16).reshape(-1, 2)
+                audio_bytes = np.mean(samples, axis=1).astype(np.int16).tobytes()
+            if on_level is not None:
+                from .voice_diagnostics import signal_metrics
+                on_level({**signal_metrics(audio_bytes), 'elapsed': seconds})
             frames = array("h")
             frames.frombytes(audio_bytes)
             if not allow_silence and (not frames or sqrt(
@@ -132,7 +143,7 @@ class VoiceIO:
                 with wave.open(raw, "wb") as wav:
                     wav.setnchannels(1)
                     wav.setsampwidth(2)
-                    wav.setframerate(self.sample_rate)
+                    wav.setframerate(selected.rate)
                     wav.writeframes(audio_bytes)
             return Path(location)
         except BaseException:
@@ -144,13 +155,16 @@ class VoiceIO:
         if not filename.is_file():
             raise VoiceError("Arquivo de gravação inexistente")
         try:
-            if self._stt is None:
-                from faster_whisper import WhisperModel
-                self._stt = WhisperModel(self.model_name, device="cpu", compute_type="int8")
-            segments, _ = self._stt.transcribe(str(filename), language=self.language,
+            from .stt_cache import whisper_model
+            with nullcontext(self._stt) if self._stt is not None else whisper_model(self.model_name) as model:
+                segments, _ = model.transcribe(str(filename), language=self.language,
                                                 vad_filter=True, beam_size=5,
                                                 condition_on_previous_text=False)
-            text = " ".join(segment.text.strip() for segment in segments).strip()
+                segments = list(segments)
+                if any(getattr(segment, 'no_speech_prob', 0) >= 0.6 and
+                       getattr(segment, 'avg_logprob', 0) < -1.0 for segment in segments):
+                    raise VoiceError('Transcrição incerta; repita o pedido brevemente')
+                text = " ".join(segment.text.strip() for segment in segments).strip()
             if not text:
                 raise VoiceError("Nenhuma fala reconhecida")
             return text
@@ -282,6 +296,8 @@ class WakeWordConversation:
         self._capture_idle = threading.Event()
         self._capture_idle.set()
         self._generation = 0
+        self.capture_rate = voice.sample_rate
+        self.audio_metrics = {'frames': 0, 'lost_turns': 0, 'queue_peak': 0}
 
     @classmethod
     def remove_wake_word(cls, text):
@@ -413,21 +429,26 @@ class WakeWordConversation:
         def receive(indata, _frame_count, _time_info, status):
             if status:
                 lost.set()
-            chunk = indata[:, 0].copy()
+            chunk = indata.copy()
             try:
-                frames.put_nowait(chunk)
+                frames.put_nowait((time.monotonic(), chunk))
             except queue.Full:
                 lost.set()
 
-        endpoint = AudioEndpoint(self.voice.sample_rate, silence_seconds=self.silence_seconds,
-                                 max_seconds=self.max_command_seconds)
         with self._capture_guard:
             if not self._resume.is_set():
                 return None
             self._capture_idle.clear()
         try:
-            with sd.InputStream(samplerate=self.voice.sample_rate, blocksize=self.FRAME_SAMPLES,
-                                channels=1, dtype="int16", device=self.device,
+            from .audio_devices import input_format
+            selected = input_format(sd, self.device, self.voice.sample_rate)
+            self.capture_rate = selected.rate
+            self.on_status(f'Entrada SoundDevice: {selected.name}; {selected.rate} Hz, {selected.channels} canal(is). Fonte Pulse deve ser conferida separadamente.')
+            endpoint = AudioEndpoint(selected.rate, silence_seconds=self.silence_seconds,
+                                     max_seconds=self.max_command_seconds)
+            blocksize = round(self.FRAME_SAMPLES * selected.rate / self.voice.sample_rate)
+            with sd.InputStream(samplerate=selected.rate, blocksize=blocksize,
+                                channels=selected.channels, dtype="int16", device=self.device,
                                 callback=receive):
                 idle_started = time.monotonic()
                 last_frame = idle_started
@@ -440,7 +461,7 @@ class WakeWordConversation:
                     if finish is not None and finish.is_set() and frames.empty():
                         break
                     try:
-                        chunk = frames.get(timeout=0.2)
+                        captured_at, chunk = frames.get(timeout=0.2)
                     except queue.Empty:
                         if time.monotonic() - last_frame >= 3:
                             raise VoiceError("Dispositivo sem entregar áudio por 3 segundos; "
@@ -449,6 +470,12 @@ class WakeWordConversation:
                             return None
                         continue
                     last_frame = time.monotonic()
+                    self.audio_metrics['frames'] += 1
+                    self.audio_metrics['last_frame_at'] = captured_at
+                    self.audio_metrics['queue_delay_ms'] = max(0, (last_frame - captured_at) * 1000)
+                    self.audio_metrics['queue_peak'] = max(self.audio_metrics['queue_peak'], frames.qsize())
+                    if chunk.ndim == 2:
+                        chunk = np.mean(chunk, axis=1).astype(np.int16)
                     rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
                     if on_level is not None:
                         from .voice_diagnostics import signal_metrics
@@ -460,6 +487,8 @@ class WakeWordConversation:
                 if lost.is_set():
                     raise VoiceError("Perda de quadros/overflow; pedido descartado, repita a fala")
         except Exception as exc:
+            if lost.is_set():
+                self.audio_metrics['lost_turns'] += 1
             raise VoiceError(f"Não foi possível escutar o microfone: {exc}") from exc
         finally:
             self._capture_idle.set()
@@ -474,7 +503,8 @@ class WakeWordConversation:
                 with wave.open(raw, "wb") as wav:
                     wav.setnchannels(1)
                     wav.setsampwidth(2)
-                    wav.setframerate(self.voice.sample_rate)
+                    # STT decodifica/ressample uma vez a partir da taxa nativa.
+                    wav.setframerate(self.capture_rate)
                     wav.writeframes(samples.tobytes())
             return Path(location)
         except BaseException:
