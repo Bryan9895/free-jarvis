@@ -36,7 +36,7 @@ def main():
     parser.add_argument("--desktop-screenshot", action="store_true", help="Solicita captura de tela via portal Wayland com confirmação")
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--voice", action="store_true", help="Modo de voz: Enter inicia gravação de 6 segundos")
-    parser.add_argument("--gui", action="store_true", help="Abrir interface gráfica leve")
+    parser.add_argument("--gui", action="store_true", help="Abrir interface gráfica com conversa de voz opcional")
     approval_group = parser.add_mutually_exclusive_group()
     approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
     approval_group.add_argument("--manual-approve", action="store_true", help="Pedir confirmação no terminal para cada ação")
