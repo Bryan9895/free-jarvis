@@ -293,14 +293,14 @@ class GuiBackend:
                 recording.unlink(missing_ok=True)
         elif command == "voice_listen_start":
             options = value if isinstance(value, dict) else {"device": value}
-            model = options.get("model") or os.getenv("JARVIS_WAKE_MODEL", "small")
+            model = os.getenv('JARVIS_WHISPER_MODEL', options.get("model") or os.getenv("JARVIS_WAKE_MODEL", "small"))
             if not isinstance(model, str) or not model.strip():
                 raise ValueError("Escolha um modelo Whisper válido para a escuta.")
             if self._voice_listener is not None:
                 if self._voice_listener.stop() is False:
                     raise RuntimeError("A escuta anterior ainda está encerrando. Aguarde e tente aplicar novamente.")
             from .voice import VoiceIO, WakeWordConversation
-            selected = options.get("device")
+            selected = os.getenv('JARVIS_AUDIO_DEVICE', options.get("device"))
             device = selected.split(": ", 1)[-1] if selected else None
             self._voice = VoiceIO(model=model,
                                   language=os.getenv("JARVIS_LANGUAGE", "pt"),
@@ -335,6 +335,7 @@ class GuiBackend:
                 self._voice.piper_model = Path(effective.piper_model).expanduser() if effective.piper_model else None
                 self._voice.output_device = effective.output_device
                 self._voice.silence_seconds = effective.silence_ms / 1000
+                self._voice.vad_threshold = effective.vad_threshold
                 if self._voice_listener is not None:
                     self._voice_listener.silence_seconds = self._voice.silence_seconds
             self.events.put(("voice_status", "Preferências salvas. Ambiente explícito tem precedência. Teste a voz para confirmar a saída."))
@@ -348,9 +349,9 @@ class GuiBackend:
             self.events.put(("voice_listening", False))
         elif command == "voice_push_to_talk":
             from .voice import VoiceIO
-            device = value.get("device")
+            device = os.getenv('JARVIS_AUDIO_DEVICE', value.get("device"))
             device = device.split(": ", 1)[-1] if device else None
-            model = value.get("model") or "small"
+            model = os.getenv('JARVIS_WHISPER_MODEL', value.get("model") or "small")
             configured_device = device if device is not None else os.getenv("JARVIS_AUDIO_DEVICE")
             voice = self._voice
             if voice is None or voice.model_name != model or voice.device != configured_device:
@@ -433,6 +434,7 @@ class JarvisWindow:
         self.voice_heard = tk.StringVar(value="Última fala: aguardando áudio")
         self.voice_listening = False
         self._operation_error = False
+        self._turn_state = None
         self.capability_vars = {}
         self._build()
         if self.preference_store.error:
@@ -704,13 +706,14 @@ class JarvisWindow:
     def _save_voice_preferences(self):
         try:
             silence_ms = int(self.voice_silence.get())
+            vad_threshold = float(self.voice_vad_threshold.get())
         except ValueError:
-            self.voice_status.set('Silêncio deve ser um número entre 600 e 1800 ms.')
+            self.voice_status.set('Confira silêncio (600–1800 ms) e limiar VAD (0.1–0.9).')
             return
         self.backend.submit('voice_configure', {
             'stt_model': self.voice_test_model.get(), 'audio_device': self.voice_device.get(),
             'piper_model': self.voice_piper_model.get(), 'output_device': self.voice_output.get(),
-            'silence_ms': silence_ms, 'voice_mode': self.voice_mode.get()})
+            'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get()})
 
     def _choose_piper_voice(self):
         filename = filedialog.askopenfilename(title='Selecionar voz Piper local (.onnx)',
@@ -803,7 +806,8 @@ class JarvisWindow:
         elif kind == "busy":
             if payload:
                 self._operation_error = False
-            if payload or not self._operation_error:
+                self._turn_state = None
+            if payload or (not self._operation_error and not self._turn_state):
                 self.hud.set_state("PROCESSANDO" if payload else "PRONTO",
                                    "Executando seu pedido" if payload else "Aguardando seu próximo pedido", active=bool(payload))
             self.send_button.configure(state="disabled" if payload else "normal")
@@ -865,6 +869,7 @@ class JarvisWindow:
             for button in (self.push_to_talk_button, self.push_to_talk_quick):
                 button.configure(state='normal' if payload else 'disabled')
         elif kind == "conversation_event":
+            self._turn_state = payload.state
             labels = {'executando': 'Executando', 'falando': 'Falando',
                       'aguardando_seguimento': 'Aguardando seguimento',
                       'cancelado': 'Cancelado', 'erro': 'Erro'}
@@ -875,8 +880,15 @@ class JarvisWindow:
                 self._operation_error = True
         elif kind == "voice_status":
             self.voice_status.set(str(payload))
+            status = str(payload).split(': ', 1)[-1] if str(payload).startswith('Whisper ') else str(payload)
             if "Aguardando Jarvis" in str(payload):
-                self.hud.set_state("ESCUTANDO", "Diga Jarvis seguido do pedido", active=True)
+                self.hud.set_state("Aguardando Jarvis", "Fallback por transcrição; detector acústico não validado")
+            elif status == 'Ouvindo':
+                self.hud.set_state('Ouvindo', 'Fala detectada pelo VAD local')
+            elif status.startswith('Entendendo'):
+                self.hud.set_state('Entendendo', 'Transcrição local em andamento')
+            elif status.startswith('Carregando detector'):
+                self.hud.set_state('Iniciando', 'Carregando VAD local')
             if "Escuta contínua indisponível:" in str(payload):
                 self.voice_listening = False
                 self.voice_toggle_button.configure(text="Ativar escuta contínua")

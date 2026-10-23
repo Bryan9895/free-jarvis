@@ -7,6 +7,8 @@ class SpeechTextTests(unittest.TestCase):
         response = ResponseText.from_display('# Resultado\n**Dois** vezes 2 * 3 = 6. [Detalhes](https://example.test)')
         self.assertEqual(response.spoken_text, 'Resultado Dois vezes 2 * 3 = 6. Detalhes')
         self.assertTrue(response.display_text.startswith('#'))
+        self.assertEqual(ResponseText.from_display('2 * 3 * 4 = 24; *ênfase*.').spoken_text,
+                         '2 * 3 * 4 = 24; ênfase.')
 
     def test_code_table_json_and_paths_are_not_read_literally(self):
         for value in ('```python\nprint(42)\n```', '| A | B |\n|---|---|\n| 1 | 2 |', '{"result": true}', '/home/bryan/projeto/arquivo.txt'):

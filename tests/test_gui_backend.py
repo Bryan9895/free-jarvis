@@ -56,7 +56,7 @@ class GuiBackendTests(unittest.TestCase):
             effects.append(message)
             return 'Tarefa adicionada e verificada.'
         backend.service.ask = execute
-        with patch.dict(sys.modules, {'sounddevice': SimpleNamespace(InputStream=Stream)}), patch('jarvis.voice.VoiceIO', return_value=voice):
+        with patch.dict(sys.modules, {'sounddevice': SimpleNamespace(InputStream=Stream)}), patch('jarvis.voice.VoiceIO', return_value=voice), patch('jarvis.audio_activity.SileroActivity', side_effect=lambda **_: SimpleNamespace(active=lambda pcm: bool(abs(pcm).max() >= 180))):
             backend._dispatch('voice_push_to_talk', {'model': 'small'})
         self.assertEqual(effects, ['adicione revisar relatório às tarefas'])
         self.assertIn(('answer', 'Tarefa adicionada e verificada.'), list(backend.events.queue))
@@ -273,6 +273,16 @@ class GuiBackendTests(unittest.TestCase):
             listener.call_args.kwargs["on_transcript"]("Olá mundo")
             self.assertIn(("voice_heard", "Olá mundo"), list(backend.events.queue))
             self.assertIn(("voice_status", "Whisper small: Aguardando Jarvis"), list(backend.events.queue))
+
+    def test_explicit_audio_environment_matches_announced_effective_settings(self):
+        backend = GuiBackend(None)
+        with patch.dict('os.environ', {'JARVIS_WHISPER_MODEL': 'base', 'JARVIS_AUDIO_DEVICE': 'explicit mic'}), patch('jarvis.voice.VoiceIO') as voice, patch('jarvis.voice.WakeWordConversation') as listener:
+            backend._dispatch('voice_listen_start', {'device': 'selected mic', 'model': 'small'})
+            self.assertEqual(voice.call_args.kwargs['model'], 'base')
+            self.assertEqual(voice.call_args.kwargs['device'], 'explicit mic')
+            self.assertEqual(listener.call_args.kwargs['device'], 'explicit mic')
+            listener.call_args.kwargs['on_status']('Ouvindo')
+            self.assertIn(('voice_status', 'Whisper base: Ouvindo'), list(backend.events.queue))
 
     def test_model_change_waits_for_old_listener_to_stop(self):
         backend = GuiBackend(None)

@@ -50,6 +50,7 @@ class VoiceIO:
         self.silence_rms = silence_rms
         self.output_device = os.getenv('JARVIS_AUDIO_OUTPUT', output_device if output_device is not None else preferences.output_device)
         self.silence_seconds = preferences.silence_ms / 1000
+        self.vad_threshold = preferences.vad_threshold
         self._stt = None
         self._speech_cancel = threading.Event()
 
@@ -278,11 +279,13 @@ class WakeWordConversation:
 
     def __init__(self, voice: VoiceIO, on_command, on_status=lambda _message: None,
                  *, device=None, silence_seconds=None,
-                 max_command_seconds=120, on_transcript=lambda _text: None):
+                 max_command_seconds=120, on_transcript=lambda _text: None,
+                 activity_factory=None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
         self.on_transcript = on_transcript
+        self.activity_factory = activity_factory
         self.device = voice.device if device is None else device
         self.silence_seconds = voice.silence_seconds if silence_seconds is None else silence_seconds
         self.max_command_seconds = max_command_seconds
@@ -372,7 +375,7 @@ class WakeWordConversation:
                     conversation = False
                     self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
                     continue
-                self.on_status("Verificando fala e palavra de ativação localmente…")
+                self.on_status("Entendendo: transcrevendo localmente e verificando ativação no fallback…")
                 recording = self._write_recording(samples)
                 try:
                     transcript = self.voice.transcribe(recording)
@@ -437,20 +440,26 @@ class WakeWordConversation:
             if not self._resume.is_set():
                 return None
             self._capture_idle.clear()
+        stage = 'Entrada de áudio'
         try:
             from .audio_devices import input_format
+            from .audio_activity import PCMNormalizer, SileroActivity
             selected = input_format(sd, self.device, self.voice.sample_rate)
-            self.capture_rate = selected.rate
+            normalizer = PCMNormalizer(selected.rate, 16000)
+            self.on_status('Carregando detector local de fala (VAD)…')
+            stage = 'VAD local'
+            activity = self.activity_factory() if self.activity_factory else SileroActivity(threshold=self.voice.vad_threshold)
+            self.capture_rate = 16000
             self.on_status(f'Entrada SoundDevice: {selected.name}; {selected.rate} Hz, {selected.channels} canal(is). Fonte Pulse deve ser conferida separadamente.')
-            endpoint = AudioEndpoint(selected.rate, silence_seconds=self.silence_seconds,
+            endpoint = AudioEndpoint(16000, silence_seconds=self.silence_seconds,
                                      max_seconds=self.max_command_seconds)
-            blocksize = round(self.FRAME_SAMPLES * selected.rate / self.voice.sample_rate)
+            blocksize = round(self.FRAME_SAMPLES * selected.rate / 16000)
+            stage = 'Captura de áudio'
             with sd.InputStream(samplerate=selected.rate, blocksize=blocksize,
                                 channels=selected.channels, dtype="int16", device=self.device,
                                 callback=receive):
                 idle_started = time.monotonic()
                 last_frame = idle_started
-                speech_threshold = max(self.voice.silence_rms, 180)
                 while not self._stop.is_set():
                     if not self._resume.is_set():
                         return None
@@ -471,23 +480,33 @@ class WakeWordConversation:
                     self.audio_metrics['frames'] += 1
                     self.audio_metrics['last_frame_at'] = captured_at
                     self.audio_metrics['queue_delay_ms'] = max(0, (last_frame - captured_at) * 1000)
-                    self.audio_metrics['queue_peak'] = max(self.audio_metrics['queue_peak'], frames.qsize())
-                    if chunk.ndim == 2:
-                        chunk = np.mean(chunk, axis=1).astype(np.int16)
-                    rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
+                    self.audio_metrics['queue_peak'] = max(self.audio_metrics['queue_peak'], frames.qsize() + 1)
+                    chunk = normalizer.feed(chunk)
+                    if not len(chunk):
+                        continue
+                    self.audio_metrics['rms'] = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
                     if on_level is not None:
                         from .voice_diagnostics import signal_metrics
                         on_level(signal_metrics(chunk.tobytes()))
-                    if endpoint.feed(chunk, rms >= speech_threshold):
+                    was_started = endpoint.started
+                    ended = endpoint.feed(chunk, activity.active(chunk))
+                    if endpoint.started and not was_started:
+                        self.on_status('Ouvindo')
+                    if ended:
                         break
                     if not endpoint.started and idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
                         return None
                 if lost.is_set():
                     raise VoiceError("Perda de quadros/overflow; pedido descartado, repita a fala")
+                tail = normalizer.flush()
+                if len(tail) and endpoint.started:
+                    if endpoint.samples + len(tail) >= endpoint.limit:
+                        raise VoiceError('Limite de segurança atingido; pedido não enviado')
+                    endpoint.chunks.append(tail)
         except Exception as exc:
             if lost.is_set():
                 self.audio_metrics['lost_turns'] += 1
-            raise VoiceError(f"Não foi possível escutar o microfone: {exc}") from exc
+            raise VoiceError(f"{stage} indisponível: {exc}") from exc
         finally:
             self._capture_idle.set()
         if self._stop.is_set():

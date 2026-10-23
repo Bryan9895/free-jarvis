@@ -29,7 +29,8 @@ def spoken_text(text):
     text = re.sub(r"(?<!\w)/(?:[^\s/]+/)+[^\s,;]*", "caminho disponível na conversa", text)
     text = re.sub(r"`([^`]+)`", r"\1", text)
     text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m[1] or m[2], text)
-    text = re.sub(r"(?<!\w)\*([^*\n]+)\*(?!\w)", r"\1", text)
+    text = re.sub(r"(?<!\w)\*(\S(?:[^*\n]*?\S)?)\*(?!\w)",
+                  lambda match: match[0] if re.fullmatch(r'[\d\s.,+\-/=]+', match[1]) else match[1], text)
     lines, in_table = [], False
     for line in text.splitlines():
         if line.strip().startswith('|') and line.count('|') >= 2:

@@ -9,6 +9,13 @@ from unittest.mock import Mock, patch
 from jarvis.voice import VoiceIO, VoiceError, WakeWordConversation
 
 class VoiceTests(unittest.TestCase):
+    def setUp(self):
+        # Estes testes verificam captura/lifecycle, não a precisão do classificador.
+        activity = patch('jarvis.audio_activity.SileroActivity', side_effect=lambda **_:
+            SimpleNamespace(active=lambda pcm: bool(abs(pcm).max() >= 180)))
+        activity.start()
+        self.addCleanup(activity.stop)
+
     def test_record_duration_bounds(self):
         voice = VoiceIO()
         for seconds in (0, -1, 16, 999):

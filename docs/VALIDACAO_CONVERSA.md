@@ -95,3 +95,43 @@ Modelo SHA256 do checkpoint 4; JSON SHA256 `7e694de195ae3fc36dd732c445eb04fb49b6
 Configurações de saída têm rolagem e revelam controle ao receber foco. Teste Tk adicional em escala 1,8 verifica viewport e botão final alcançável; fonte/escala físicas do GNOME continuam pendentes. Poll Tk é cancelado ao destruir a janela para evitar callback órfão. “Parar conversa” passa pelo controlador sem ferramentas e encerra a voz nas interfaces.
 
 Automação final deste checkpoint: suíte com 410 testes, incluindo falhas de rede/hash/cancelamento no instalador, comando de controle e escala maior. `git diff --check` passou. Ensaio físico de captura, reprodução audível, wake word e efeitos GNOME/FCC permanece pendente. Piper residente publicado em `c9f604b21b3c95d0dc55c25c70fb464ab92703e3`.
+
+## Checkpoint 7 — VAD local e formato canônico
+
+Silero do faster-whisper 1.2.1 decide fala em janela limitada de 512 ms; limiar 0,5 ajustável em Voz → Saída (0,1–0,9). RMS serve apenas como nível. PCM mono/estéreo nativo é normalizado uma vez por PyAV para 16 kHz; o mesmo áudio alimenta VAD, endpoint e WAV do STT. O resampler é contínuo e descarrega a cauda; em 16 kHz não há conversão. Fila/limite continuam invalidando o turno sem enviar intenção parcial. Falhas de VAD recebem identificação própria. Requisito mínimo do extra voice atualizado para faster-whisper 1.2.1, cuja API foi inspecionada e ensaiada no ambiente.
+
+Automação **passou**: 415 testes em 12,683 s, com display real, HTTP local e Chromium; `git diff --check` passou. Ensaios sintéticos cobrem normalização contínua 48→16 kHz, contexto VAD limitado e separação entre volume e classificação. O formatter preserva multiplicações com vários asteriscos. Estados de escuta/STT não são substituídos por Pronto no fim de cada evento busy; overrides de modelo/entrada correspondem aos valores anunciados.
+
+Ensaio real de inferência VAD, sem microfone: frase sintetizada por Piper em 33 blocos de até 80 ms; 30 marcados ativos, análise em 0,053 s. Silêncio digital: 0/125 blocos ativos; ruído gaussiano sintético com seed 42 e desvio 800 PCM: 0/125 ativos. São três estímulos controlados, não avaliação de precisão pt-BR, fala humana, ruído do ambiente ou wake word. Arquivos temporários apagados.
+
+### Arquitetura efetivamente entregue
+
+GUI/CLI → ConversationController (intenção, eventos tipados, cancelamento) → JarvisService/FCC/Toolkit/SQLite existentes. Adaptador de captura compartilhado pelo botão e contínuo: SoundDevice → fila limitada com timestamps → normalizador PCM → Silero → AudioEndpoint → Whisper CPU compartilhado → fallback de ativação textual → controlador. Resposta visual/ResponseText → Piper CPU residente cancelável → paplay/aplay. Diagnóstico usa exclusão de captura e formato negociado; não há streams simultâneos no processo.
+
+A máquina de captura ainda tem estados textuais no adaptador legado, enquanto IDs/eventos canônicos começam na intenção. Não se afirma que a migração ao coordenador de captura completo esteja encerrada.
+
+### Matriz atual e gates de encerramento
+
+| Jornada | Automação/ensaio controlado | Ensaio físico |
+| --- | --- | --- |
+| Botão/contínuo, fala longa e pausa 800 ms | passou (frames 3/10/25/60 s) | pendente (fala humana ≥25 s) |
+| Perdas, silêncio, VAD e normalização | passou (backends/estímulos controlados) | pendente (Bluetooth/ruído/desconexão) |
+| Resposta tardia e cancelamento/player | passou | pendente (eco e saída audível) |
+| TTS e instalação de Faber | passou (síntese, cache aquecido, hashes e download reais) | pendente (fone e primeiro áudio) |
+| Preferências, reinício lógico e layout | passou (persistência, bounds e escala Tk 1,8) | pendente (GNOME/fonte/escala reais) |
+| 404 e falha TTS sem replay | passou (adaptadores controlados) | pendente (credencial/modelo FCC real) |
+| Ferramentas e efeitos observados | passou (suíte existente e efeito controlado) | pendente (Firefox/VS Code/GNOME) |
+| Jarvis isolado acústico | pendente: nenhum artefato validado entregue | pendente: 20 chamadas + 30 min negativos |
+| CPU/RSS e latência em 30 turnos completos | pendente | pendente |
+
+Falhou historicamente: cortes de 6/15 s e baseline E2E de abas, corrigidos nos checkpoints anteriores. Não há falha automatizada restante nesta execução.
+
+### Trabalho ainda necessário
+
+- Artefato de ativação Jarvis isolado com licença/hash, avaliação pt-BR e fixtures consentidas; não substituir por hey_jarvis nem anunciar detector ativo.
+- Concluir migração de estados/IDs da captura ao coordenador; inicialização de áudio totalmente independente da tentativa inicial de FCC e preferências de seguimento/reconexão completas.
+- Turnos acima do teto hoje são rejeitados com aviso, não mantidos para continuação; segmentação/remontagem e fluxo de intenção pendente ainda exigem implementação.
+- Calibração acústica VAD/ruído, telemetria por ferramenta/primeiro áudio e medição CPU/RSS de 30 turnos ainda faltam.
+- Executar o roteiro físico deste documento, incluindo recuperação, janelas e voz audível. Barge-in depende desse gate e não foi entregue.
+
+Publicação anterior: instalador em `61d2669ec922665e667399f003599ff207da5feb`. O projeto permanece **sem aceite final** até demonstrar chamar Jarvis → fala livre → efeito verificado/resposta → áudio audível → seguimento/recuperação.

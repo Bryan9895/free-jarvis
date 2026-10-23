@@ -91,6 +91,7 @@ def build_voice_panel(window, tabs):
     window.voice_piper_model = tk.StringVar(value=window.preferences.piper_model)
     window.voice_output = tk.StringVar(value=window.preferences.output_device)
     window.voice_silence = tk.StringVar(value=str(window.preferences.silence_ms))
+    window.voice_vad_threshold = tk.StringVar(value=str(window.preferences.vad_threshold))
     window.voice_mode = tk.StringVar(value=window.preferences.voice_mode)
     ttk.Label(output_panel, text='Voz Piper local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
     ttk.Label(output_panel, text='Selecione .onnx com .onnx.json ou instale Faber: fonte Piper, SHA256 verificado, dataset CC0.',
@@ -111,6 +112,10 @@ def build_voice_panel(window, tabs):
     ttk.Spinbox(row, from_=600, to=1800, increment=100, textvariable=window.voice_silence, width=5).pack(side='left', padx=4)
     ttk.Combobox(row, textvariable=window.voice_mode, values=('continuous', 'manual', 'muted'),
                  width=11, state='readonly').pack(side='left')
+    row = ttk.Frame(output_panel)
+    row.pack(fill='x', pady=4)
+    ttk.Label(row, text='Limiar VAD (0.1–0.9):').pack(side='left')
+    ttk.Spinbox(row, from_=0.1, to=0.9, increment=0.05, textvariable=window.voice_vad_threshold, width=5).pack(side='left', padx=4)
     ttk.Button(output_panel, text='Salvar voz, entrada e modo', command=window._save_voice_preferences).pack(fill='x', pady=4)
     ttk.Button(output_panel, text='Testar voz salva', command=lambda: window.backend.submit(
         'voice_speak', 'A voz local está configurada. Confirme se você ouviu esta frase com clareza.')).pack(fill='x', pady=4)

@@ -1,6 +1,7 @@
 """Preferências locais sem segredos, com substituição atômica e esquema fechado."""
 from dataclasses import asdict, dataclass
 import json
+import math
 import os
 from pathlib import Path
 import tempfile
@@ -15,6 +16,7 @@ class Preferences:
     piper_model: str = ''
     output_device: str = ''  # nome de sink Pulse/PipeWire, nunca índice SoundDevice
     silence_ms: int = 1000
+    vad_threshold: float = 0.5
     voice_mode: str = 'continuous'
 
     def validate(self):
@@ -28,6 +30,8 @@ class Preferences:
             raise ValueError('Modelo STT inválido')
         if type(self.silence_ms) is not int or not 600 <= self.silence_ms <= 1800:
             raise ValueError('Silêncio deve estar entre 600 e 1800 ms')
+        if type(self.vad_threshold) not in (int, float) or not math.isfinite(self.vad_threshold) or not 0.1 <= self.vad_threshold <= 0.9:
+            raise ValueError('Limiar VAD deve estar entre 0.1 e 0.9')
         if self.voice_mode not in ('continuous', 'manual', 'muted'):
             raise ValueError('Modo de voz inválido')
         return self
@@ -42,6 +46,8 @@ class Preferences:
                 values[key] = os.environ[variable]
         if 'JARVIS_SILENCE_MS' in os.environ:
             values['silence_ms'] = int(os.environ['JARVIS_SILENCE_MS'])
+        if 'JARVIS_VAD_THRESHOLD' in os.environ:
+            values['vad_threshold'] = float(os.environ['JARVIS_VAD_THRESHOLD'])
         return Preferences(**values).validate()
 
 
