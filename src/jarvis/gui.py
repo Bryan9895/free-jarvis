@@ -24,7 +24,8 @@ class GuiBackend:
     """Fila de comandos para manter GUI responsiva e conexões SQLite na mesma thread."""
 
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
-                         "voice_record", "voice_speak"})
+                         "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
+                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear"})
 
     def __init__(self, config, *, auto=True, service_factory=None):
         self.config = config
@@ -36,6 +37,7 @@ class GuiBackend:
         self._approval = None
         self._voice = None
         self._voice_listener = None
+        self._voice_test = None
         self._action_pending = threading.Event()
         self._cancel_queued = threading.Event()
         self._submission_lock = threading.Lock()
@@ -135,14 +137,20 @@ class GuiBackend:
                     if action:
                         self.events.put(("busy", True))
                         if self._voice_listener is not None:
-                            self._voice_listener.pause()
+                            if command.startswith("voice_test_"):
+                                if not self._voice_listener.pause(timeout=2):
+                                    raise RuntimeError("A captura contínua não liberou o microfone. Pare a escuta e tente novamente.")
+                            else:
+                                self._voice_listener.pause()
                     if command == "retry":
                         self._reconnect()
-                    elif self.service is None:
+                    elif self.service is None and command != "voice_devices" and not command.startswith("voice_test_"):
                         self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
                     else:
                         self._dispatch(command, value)
                 except Exception as exc:
+                    if command.startswith("voice_test_"):
+                        self.events.put(("voice_test_error", str(exc)))
                     self.events.put(("connection_error" if command == "retry" else "error", str(exc)))
                 finally:
                     if action:
@@ -151,6 +159,8 @@ class GuiBackend:
                             self._voice_listener.resume()
                         self.events.put(("busy", False))
         finally:
+            if self._voice_test is not None:
+                self._voice_test.close()
             if self.service is not None:
                 try:
                     self.service.close()
@@ -160,7 +170,30 @@ class GuiBackend:
 
     def _dispatch(self, command, value):
         service = self.service
-        if command == "plan_action":
+        if command.startswith("voice_test_"):
+            from .voice_diagnostics import VoiceDiagnostics
+            if self._voice_test is None:
+                self._voice_test = VoiceDiagnostics()
+            if command == "voice_test_probe":
+                device = value.split(": ", 1)[-1] if value else None
+                self.events.put(("voice_test_probe", self._voice_test.probe(device)))
+            elif command == "voice_test_capture":
+                device = value.split(": ", 1)[-1] if value else None
+                self.events.put(("voice_test_status", "Fale agora por 6 segundos. A escuta de comandos está pausada."))
+                result = self._voice_test.capture(device, on_level=lambda level: self.events.put(("voice_test_level", level)))
+                self.events.put(("voice_test_capture", result))
+            elif command == "voice_test_replay":
+                self.events.put(("voice_test_status", "Reproduzindo na saída padrão do Ubuntu…"))
+                self.events.put(("voice_test_replay", self._voice_test.replay()))
+            elif command == "voice_test_transcribe":
+                self.events.put(("voice_test_status", "Transcrevendo localmente; o primeiro uso pode baixar/carregar o modelo…"))
+                self.events.put(("voice_test_transcript", self._voice_test.transcribe(value["model"], value["expected"])))
+            elif command == "voice_test_clear":
+                self._voice_test.close()
+                self.events.put(("voice_test_status", "Amostra apagada. Grave outra quando quiser."))
+            else:
+                raise ValueError("Teste de voz desconhecido")
+        elif command == "plan_action":
             action, argument = value
             try:
                 result = service.plan_action(action, argument)
@@ -470,24 +503,47 @@ class JarvisWindow:
         self.metrics = scrolledtext.ScrolledText(metrics, width=35, wrap="word", state="disabled")
         self.metrics.pack(fill="both", expand=True)
 
+        from .voice_diagnostics import TEST_PHRASE
         voice = ttk.Frame(tabs, padding=8)
         tabs.add(voice, text="Voz")
-        ttk.Label(voice, text="Ative a escuta contínua e diga 'Jarvis' para conversar sem cliques.").pack(anchor="w")
-        self.devices = ttk.Combobox(voice, textvariable=self.voice_device, width=40)
-        self.devices.pack(fill="x", pady=5)
-        ttk.Button(voice, text="Listar microfones", command=lambda: self.backend.submit(
-            "voice_devices")).pack(fill="x")
-        ttk.Button(voice, text="Gravar 6 segundos", command=lambda: self.backend.submit(
-            "voice_record", self.voice_device.get())).pack(fill="x")
-        self.voice_toggle_button = ttk.Button(voice, text="Ativar escuta contínua",
-                                              command=self._toggle_voice)
-        self.voice_toggle_button.pack(fill="x", pady=(8, 2))
+        ttk.Label(voice, text="Microfone e reconhecimento", font=("DejaVu Sans", 12, "bold")).pack(anchor="w")
+        ttk.Label(voice, text="Bluetooth: selecione a entrada do fone, não uma saída .monitor.",
+                  wraplength=350, style="Muted.TLabel").pack(anchor="w")
+        self.devices = ttk.Combobox(voice, textvariable=self.voice_device, width=35)
+        self.devices.pack(fill="x", pady=4)
+        device_controls = ttk.Frame(voice)
+        device_controls.pack(fill="x")
+        ttk.Button(device_controls, text="Listar entradas", command=lambda: self.backend.submit("voice_devices")).pack(side="left")
+        ttk.Button(device_controls, text="Verificar entrada", command=lambda: self._voice_test_action("probe")).pack(side="left")
+        self.voice_toggle_button = ttk.Button(voice, text="Ativar escuta contínua", command=self._toggle_voice)
+        self.voice_toggle_button.pack(fill="x", pady=4)
         self.voice_status = tk.StringVar(value="Desativada")
-        ttk.Label(voice, textvariable=self.voice_status, wraplength=360).pack(anchor="w", pady=4)
-        ttk.Label(voice, text="Detecção e transcrição ocorrem localmente. "
-                             "Só falas iniciadas pela palavra de ativação são enviadas ao FCC. "
-                             "A resposta é falada se JARVIS_PIPER_MODEL estiver configurado.",
-                  wraplength=360).pack(anchor="w", pady=8)
+        ttk.Label(voice, textvariable=self.voice_status, wraplength=350).pack(anchor="w")
+        ttk.Label(voice, text="Leia a frase abaixo durante o teste:", style="Muted.TLabel").pack(anchor="w", pady=(8, 2))
+        self.voice_reference = ttk.Entry(voice)
+        self.voice_reference.insert(0, TEST_PHRASE)
+        self.voice_reference.pack(fill="x")
+        model_row = ttk.Frame(voice)
+        model_row.pack(fill="x", pady=3)
+        ttk.Label(model_row, text="Whisper do teste:").pack(side="left")
+        configured_model = os.getenv("JARVIS_WHISPER_MODEL", "base")
+        self.voice_test_model = tk.StringVar(value=configured_model if configured_model in ("tiny", "base", "small") else "base")
+        ttk.Combobox(model_row, textvariable=self.voice_test_model, values=("tiny", "base", "small"),
+                     width=9, state="readonly").pack(side="left", padx=5)
+        test_controls = ttk.Frame(voice)
+        test_controls.pack(fill="x")
+        for action, label in (("capture", "Gravar 6 s"), ("replay", "Ouvir amostra"), ("transcribe", "Transcrever")):
+            ttk.Button(test_controls, text=label, command=lambda action=action: self._voice_test_action(action)).pack(side="left")
+        self.voice_level = ttk.Progressbar(voice, maximum=100, mode="determinate")
+        self.voice_level.pack(fill="x", pady=5)
+        self.voice_test_status = tk.StringVar(value="Verifique a entrada, grave, ouça e transcreva a mesma amostra.")
+        ttk.Label(voice, textvariable=self.voice_test_status, wraplength=350).pack(anchor="w")
+        self.voice_test_result = scrolledtext.ScrolledText(voice, height=8, width=35, wrap="word", state="disabled")
+        self.voice_test_result.pack(fill="both", expand=True, pady=4)
+        ttk.Button(voice, text="Apagar amostra", command=lambda: self._voice_test_action("clear")).pack(anchor="w")
+        ttk.Label(voice, text="Testes locais: não enviam comandos ao FCC. Similaridade vale só para a frase testada. "
+                             "Áudio temporário apagado ao gravar outra amostra ou fechar.",
+                  wraplength=350, style="Muted.TLabel").pack(anchor="w", pady=4)
 
     def _write(self, widget, value):
         widget.configure(state="normal")
@@ -536,6 +592,15 @@ class JarvisWindow:
             return
         arguments[id_key] = int(widget.item(selected[0], "values")[0])
         self._tool_action(name, arguments)
+
+    def _voice_test_action(self, action):
+        value = ({"model": self.voice_test_model.get(), "expected": self.voice_reference.get()}
+                 if action == "transcribe" else self.voice_device.get())
+        if self.backend.submit("voice_test_" + action, value):
+            if action == "capture":
+                self.voice_level.configure(value=0)
+                self._write(self.voice_test_result, "")
+            self.voice_test_status.set("Preparando teste…")
 
     def _toggle_voice(self):
         if self.voice_listening:
@@ -662,6 +727,41 @@ class JarvisWindow:
             self.voice_quick.configure(text="Voz: ligada" if payload else "Voz: desligada")
             self.voice_toggle_button.configure(
                 text="Parar escuta contínua" if self.voice_listening else "Ativar escuta contínua")
+        elif kind == "voice_test_status":
+            self.voice_test_status.set(payload)
+        elif kind == "voice_test_error":
+            self.voice_level.configure(value=0)
+            self.voice_test_status.set("Teste não concluído")
+            self._write(self.voice_test_result, str(payload))
+        elif kind == "voice_test_level":
+            self.voice_level.configure(value=max(0, min(100, (payload["dbfs"] + 60) / 60 * 100)))
+            self.voice_test_status.set(f"Gravando: {payload['elapsed']:.1f}/6 s · nível {payload['dbfs']:.1f} dBFS")
+        elif kind in ("voice_test_probe", "voice_test_capture"):
+            text = f"Entrada: {payload['device']}\nFonte PulseAudio: {payload['pulse_source']}\nCaptura: {payload['sample_rate']} Hz, mono\n"
+            for warning in payload.get("warnings", []):
+                text += "\nAtenção: " + warning
+            if kind == "voice_test_capture":
+                labels = {"baixo_ou_silencio": "Sinal muito baixo ou silêncio",
+                          "possivel_saturacao": "Possível saturação: reduza o volume de entrada",
+                          "sinal_detectado": "Sinal detectado; ouça para confirmar a clareza"}
+                text += f"\n\n{labels[payload['signal']]}\nNível médio: {payload['metrics']['dbfs']} dBFS"
+                text += f"\nAmostras no limite: {payload['metrics']['clipping_percent']}%"
+                self.voice_test_status.set("Gravação concluída. Ouça e depois teste a transcrição.")
+            else:
+                text += "\n\nEntrada compatível. Isso ainda não confirma que sua fala está chegando."
+                self.voice_test_status.set("Entrada verificada. Grave uma amostra para medir o sinal.")
+            self._write(self.voice_test_result, text)
+        elif kind == "voice_test_replay":
+            self.voice_test_status.set(payload["note"])
+        elif kind == "voice_test_transcript":
+            text = f"Modelo: {payload['model']} · tempo {payload['seconds']} s (inclui carga inicial)\n\nFrase esperada:\n{payload['expected']}\n\nReconhecido:\n{payload['recognized']}"
+            comparison = payload.get("comparison")
+            if comparison:
+                text += f"\n\nSimilaridade textual: {comparison['similarity_percent']}%"
+                text += f"\nEdições por palavra: {comparison['word_edits']} em {comparison['reference_words']} palavras de referência."
+            text += "\n\nTeste outro modelo para comparar a MESMA gravação. Isso não mede a precisão geral do Jarvis."
+            self._write(self.voice_test_result, text)
+            self.voice_test_status.set("Transcrição concluída; confira o texto reconhecido.")
         elif kind == "voice_devices":
             self.devices.configure(values=payload)
         elif kind == "approval_request":

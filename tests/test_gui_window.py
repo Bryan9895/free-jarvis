@@ -41,5 +41,21 @@ class WindowTests(unittest.TestCase):
                 root.update()
                 self.assertFalse(window.workspace_panels.panels[0].winfo_ismapped())
                 self.assertTrue(window.workspace_panels.panels[-1].winfo_ismapped())
+                window.voice_device.set('14: Bluetooth mic')
+                window._voice_test_action('capture')
+                backend.submit.assert_called_with('voice_test_capture', '14: Bluetooth mic')
+                window._handle('voice_test_level', {'elapsed':2, 'dbfs':-30})
+                self.assertEqual(float(window.voice_level['value']), 50)
+                window._handle('voice_test_transcript', {
+                    'model':'small', 'seconds':4, 'expected':'Olá Jarvis',
+                    'recognized':'ola jarvis', 'comparison':{
+                        'similarity_percent':100, 'word_edits':0, 'reference_words':2}})
+                self.assertIn('Similaridade textual: 100%', window.voice_test_result.get('1.0', 'end'))
+                root.update()
+                panel = window.workspace_panels.panels[-1]
+                for widget in panel.winfo_children():
+                    if widget.winfo_ismapped():
+                        self.assertLessEqual(widget.winfo_rooty()+widget.winfo_height(),
+                                             root.winfo_rooty()+root.winfo_height())
         finally:
             root.destroy()

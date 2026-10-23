@@ -88,6 +88,58 @@ class GuiBackendTests(unittest.TestCase):
         service.plan_action.assert_called_once_with("prepare", "Organizar janelas")
         self.assertEqual(backend.events.get_nowait(), ("plan", {"status":"ready"}))
 
+    def test_voice_diagnostic_works_without_fcc_and_cleans_recording(self):
+        backend = GuiBackend(None, service_factory=Mock(side_effect=RuntimeError("FCC offline")))
+        with patch("jarvis.voice_diagnostics.VoiceDiagnostics") as diagnostic:
+            diagnostic.return_value.probe.return_value = {"status":"available", "device":"Bluetooth"}
+            backend.start()
+            self.assertEqual(backend.events.get(timeout=2)[0], "connection_error")
+            self.assertTrue(backend.submit("voice_test_probe", "14: Bluetooth"))
+            while True:
+                kind, value = backend.events.get(timeout=2)
+                if kind == "voice_test_probe":
+                    self.assertEqual(value["device"], "Bluetooth")
+                    break
+            diagnostic.return_value.probe.assert_called_once_with("Bluetooth")
+            backend.close()
+            backend._thread.join(2)
+            diagnostic.return_value.close.assert_called_once()
+
+    def test_diagnostic_capture_only_emits_local_events(self):
+        backend = GuiBackend(None)
+        backend._voice_test = Mock()
+        backend._voice_test.capture.return_value = {"signal":"sinal_detectado"}
+        backend._dispatch("voice_test_capture", "9: Bluetooth")
+        backend._voice_test.capture.assert_called_once()
+        callback = backend._voice_test.capture.call_args.kwargs["on_level"]
+        callback({"dbfs":-20,"elapsed":1})
+        events = []
+        while not backend.events.empty():
+            events.append(backend.events.get_nowait()[0])
+        self.assertIn("voice_test_capture", events)
+        self.assertIn("voice_test_level", events)
+        self.assertNotIn("voice_transcript", events)
+
+    def test_diagnostic_aborts_if_continuous_capture_does_not_release_device(self):
+        backend = GuiBackend(None, service_factory=Mock(side_effect=RuntimeError("offline")))
+        backend._voice_listener = Mock()
+        backend._voice_listener.pause.return_value = False
+        backend._voice_test = Mock()
+        backend.start()
+        backend.submit("voice_test_capture", "Bluetooth")
+        events = []
+        while True:
+            event = backend.events.get(timeout=2)
+            events.append(event)
+            if event == ("busy", False):
+                break
+        backend._voice_listener.pause.assert_called_once_with(timeout=2)
+        backend._voice_test.capture.assert_not_called()
+        self.assertTrue(any(kind == "voice_test_error" for kind, _ in events))
+        backend._voice_listener.resume.assert_called_once()
+        backend.close()
+        backend._thread.join(2)
+
     def test_text_turn_pauses_and_resumes_voice_listener(self):
         backend = GuiBackend(None)
         backend.service = FakeService()

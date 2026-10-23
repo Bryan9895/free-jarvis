@@ -39,7 +39,7 @@ class VoiceIO:
         except Exception as exc:
             raise VoiceError(f"Não foi possível listar microfones: {exc}") from exc
 
-    def record(self, seconds=6):
+    def record(self, seconds=6, *, allow_silence=False, on_level=None):
         """Grava WAV PCM16 temporário; o chamador deve apagar o arquivo."""
         if not 1 <= seconds <= 15:
             raise VoiceError("A gravação deve durar entre 1 e 15 segundos")
@@ -56,14 +56,20 @@ class VoiceIO:
                 nonlocal remaining
                 take = min(remaining, len(indata))
                 if take:
-                    chunks.append(indata[:take].tobytes())
+                    chunk = indata[:take].tobytes()
+                    chunks.append(chunk)
                     remaining -= take
+                    if on_level is not None:
+                        from .voice_diagnostics import signal_metrics
+                        on_level({**signal_metrics(chunk),
+                                  "elapsed": round(seconds-remaining/self.sample_rate, 1)})
                 if remaining == 0:
                     completed.set()
                     raise sd.CallbackStop
 
             stream = sd.InputStream(samplerate=self.sample_rate, channels=1,
-                                    dtype="int16", device=self.device, callback=receive)
+                                    dtype="int16", device=self.device, callback=receive,
+                                    blocksize=max(1, self.sample_rate // 10))
             try:
                 stream.start()
                 if not completed.wait(seconds + 3):
@@ -77,7 +83,8 @@ class VoiceIO:
                     stream.close()
             frames = array("h")
             frames.frombytes(audio_bytes)
-            if not frames or sqrt(sum(sample * sample for sample in frames) / len(frames)) < self.silence_rms:
+            if not allow_silence and (not frames or sqrt(
+                    sum(sample * sample for sample in frames) / len(frames)) < self.silence_rms):
                 raise VoiceError("Nenhuma fala detectada; gravação descartada")
         except VoiceError:
             raise
@@ -182,6 +189,9 @@ class WakeWordConversation:
         self._resume = threading.Event()
         self._resume.set()
         self._thread = None
+        self._capture_guard = threading.Lock()
+        self._capture_idle = threading.Event()
+        self._capture_idle.set()
 
     @classmethod
     def remove_wake_word(cls, text):
@@ -207,8 +217,10 @@ class WakeWordConversation:
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=timeout)
 
-    def pause(self):
-        self._resume.clear()
+    def pause(self, timeout=0):
+        with self._capture_guard:
+            self._resume.clear()
+        return self._capture_idle.wait(timeout)
 
     def resume(self):
         self._resume.set()
@@ -295,6 +307,10 @@ class WakeWordConversation:
                     pass
 
         captured = []
+        with self._capture_guard:
+            if not self._resume.is_set():
+                return None
+            self._capture_idle.clear()
         try:
             with sd.InputStream(samplerate=self.voice.sample_rate, blocksize=self.FRAME_SAMPLES,
                                 channels=1, dtype="int16", device=self.device,
@@ -338,6 +354,8 @@ class WakeWordConversation:
                         return None
         except Exception as exc:
             raise VoiceError(f"Não foi possível escutar o microfone: {exc}") from exc
+        finally:
+            self._capture_idle.set()
         if self._stop.is_set():
             return None
         return np.concatenate(captured) if captured else None

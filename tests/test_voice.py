@@ -76,6 +76,25 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(WakeWordConversation(voice, lambda _: None).device, voice.device)
         self.assertEqual(WakeWordConversation(voice, lambda _: None, device=0).device, 0)
 
+    def test_diagnostic_record_accepts_silence_and_reports_levels(self):
+        backend, stream = self._capture_backend(array("h", [0]*16000))
+        updates = []
+        with patch.dict(sys.modules, {"sounddevice": backend}):
+            recording = VoiceIO().record(1, allow_silence=True, on_level=updates.append)
+        try:
+            self.assertEqual(updates[-1]["dbfs"], -96)
+            self.assertEqual(updates[-1]["elapsed"], 1)
+        finally:
+            recording.unlink()
+
+    def test_paused_listener_does_not_open_microphone(self):
+        import numpy as np
+        backend = Mock()
+        listener = WakeWordConversation(VoiceIO(), lambda _: None)
+        self.assertTrue(listener.pause(timeout=0))
+        self.assertIsNone(listener._listen_for_command(backend, np))
+        backend.InputStream.assert_not_called()
+
     def test_transcribe_missing_file(self):
         with tempfile.TemporaryDirectory() as td:
             with self.assertRaises(VoiceError):

@@ -97,3 +97,12 @@ Base remota `1b2c756`. Corrigidos Reconectar inoperante após conexão inicial, 
 Implementados controles de criar/executar/selecionar/cancelar/preparar retomada/resolver etapas de plano via JarvisService com lock e token; confirmações específicas de retry/skip preservadas. Apresentação em português, resumo de resultado sem JSON bruto e progresso somente de etapas verificadas. Código de apresentação em gui_presenter.py.
 
 Validação: ambiente Xvfb isolado conseguiu renderizar após preparação do teclado virtual. Layout inspecionado em 1240×720 e 1040×640 numa tela virtual 1366×768; mensagens e plano demonstrativos com backend simulado. Capturas em docs/screenshots não são ensaio físico. Suíte de checkpoint: 352 testes passaram, um ignorado (Playwright). Falta validação física de FCC, GNOME e áudio nesta entrega. Próximos passos: preferências persistentes de modelo/dispositivo e fluxo offline para painéis locais.
+
+
+## Diagnóstico de microfone na interface — 23/10/2026
+
+A aba Voz agora verifica a entrada SoundDevice, captura seis segundos com medidor de nível, classifica silêncio/sinal/saturação, reproduz a amostra e compara transcrição local pt-BR com frase editável. tiny/base/small usam o mesmo WAV, sem fornecer a referência ao Whisper. Similaridade textual não é precisão geral nem teste de wake word. Seleção do modelo de teste não altera a escuta contínua.
+
+O diagnóstico não usa inferência FCC nem executa comandos transcritos e funciona após falha da conexão inicial. A escuta contínua é pausada com espera pela liberação do stream; se não liberar em dois segundos, o teste falha sem abrir outra captura. Áudio temporário removido ao substituir/apagar amostra e no fechamento normal. Reprodução tem tempo limite e verifica erro do player. Instalação dos pacotes de voz e disponibilidade física do dispositivo ainda são necessárias.
+
+Validação: 364 testes executados sem falhas, um ignorado (Playwright), incluindo GUI real em Xvfb. Layout inspecionado em 1240×720 e 1040×640 com backend e dados simulados. Cobertura nova inclui silêncio e saturação, comparação normalizada, repetição no mesmo arquivo/modelo, remoção de áudio, reprodução com erro, teste sem FCC, isolamento das transcrições, bloqueio se o listener não liberar o dispositivo e eventos/controles da GUI. Bluetooth, saída física, download/inferência real Whisper e qualidade acústica precisam ser validados no notebook do usuário seguindo GUIA_DE_USO.md.

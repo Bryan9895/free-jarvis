@@ -46,13 +46,27 @@ Se ocorrer `open() got an unexpected keyword argument 'metadata_errors'`, confir
 
 Execute `jarvis-fcc --audio-devices` para listar microfones sem iniciar o servidor ou carregar Whisper. Para selecionar um nome inequívoco, use `jarvis-fcc --voice --audio-device 'NOME DA ENTRADA'`; a mesma opção funciona com `--gui`. Se houver nomes duplicados, SoundDevice rejeita a seleção ambígua; não presuma que o primeiro seja o correto. A lista também pode conter monitores e entradas virtuais.
 
-Na GUI, **Listar microfones** não escolhe mais o primeiro item automaticamente: o campo vazio mantém a entrada padrão/configurada. Ao escolher um item, o nome é usado na captura, evitando índices antigos após reconexão. A gravação curta respeita `JARVIS_WHISPER_MODEL` e `JARVIS_LANGUAGE`, como a CLI.
+Na GUI, **Listar entradas** não escolhe mais o primeiro item automaticamente: o campo vazio mantém a entrada padrão/configurada. Ao escolher um item, o nome é usado na captura, evitando índices antigos após reconexão. A gravação curta respeita `JARVIS_WHISPER_MODEL` e `JARVIS_LANGUAGE`, como a CLI.
 
 Uma falha de transcrição na escuta contínua descarta o WAV e retorna ao modo de espera por “Jarvis”, sem enviar a fala ao FCC. Se nenhum quadro de áudio chegar por três segundos, a escuta para com diagnóstico; reconecte/selecione a entrada e reative a escuta. Isso não limita o tempo de carregamento/inferência do Whisper nem chamadas bloqueadas do próprio driver.
 
+### Diagnóstico na aba Voz
+
+Abra `jarvis-fcc --gui` e selecione **Voz**. Os testes funcionam mesmo após falha da conexão inicial ao FCC; a tentativa inicial de conexão ainda precisa terminar. Instale o extra `voice` para captura e Whisper.
+
+1. Conecte o fone Bluetooth e confira no Ubuntu se a entrada ativa é o microfone dele. Clique **Listar entradas**, selecione um nome inequívoco ou mantenha o campo vazio para a entrada padrão/configurada. A lista SoundDevice pode mostrar apenas `pulse`/`default`; nesse caso, a fonte Bluetooth é escolhida pelo sistema ou por `PULSE_SOURCE`, não digitando um nome `bluez_input` como dispositivo SoundDevice.
+2. Clique **Verificar entrada**. Isso verifica disponibilidade e compatibilidade com captura mono a 16 kHz, sem comprovar que sua fala está chegando. Evite `.monitor` e entradas virtuais.
+3. Leia a frase exibida e clique **Gravar 6 s**. Fale durante os seis segundos; a barra mostra o nível recebido. O resultado informa sinal muito baixo/silêncio, sinal detectado ou possível saturação. Ruído também pode produzir sinal: ouça a gravação para conferir.
+4. Clique **Ouvir amostra** para reproduzir na saída padrão do Ubuntu. Se houver silêncio, confira fonte, volume e mudo antes de alterar o Whisper. A reprodução requer `paplay` (pulseaudio-utils) ou `aplay` (alsa-utils).
+5. Clique **Transcrever** com `base`. Compare o texto reconhecido com a frase de referência. Se a gravação estiver clara e o texto ruim, selecione `small` e transcreva novamente a mesma amostra; pode consumir mais memória e tempo. O primeiro uso pode baixar/carregar o modelo.
+
+A similaridade compara palavras, ignorando acentos, maiúsculas e pontuação; não estima a precisão geral nem testa a ativação contínua por palavra-chave. A frase de referência não é enviada ao Whisper. Escolher o modelo de teste não altera o modelo da escuta contínua (`JARVIS_WAKE_MODEL`).
+
+A escuta contínua pausa durante cada operação de diagnóstico e retoma depois. As transcrições de teste não viram comandos nem são enviadas ao FCC. Um único WAV temporário fica disponível para comparação, removido ao gravar outra amostra, clicar **Apagar amostra** ou fechar normalmente a GUI. Encerramento forçado do processo pode deixar o arquivo temporário no sistema.
+
 ## Tarefas, abas e janelas
 
-A GUI (`jarvis-fcc --gui`) inclui **Minhas tarefas**, **Abas gerenciadas** e **Janelas**. O painel de planos continua separado da lista pessoal. O serviço ainda exige conexão inicial com FCC, inclusive para usar os painéis; modo gráfico offline é uma melhoria futura.
+A GUI (`jarvis-fcc --gui`) inclui **Minhas tarefas**, **Abas gerenciadas** e **Janelas**. O painel de planos continua separado da lista pessoal. Os painéis de tarefas, abas e janelas ainda exigem conexão inicial com FCC. Os testes locais da aba Voz estão disponíveis após a tentativa de conexão, mesmo se ela falhar.
 
 - Tarefas: adicionar título/prioridade (1 baixa, 2 normal, 3 alta), atualizar e marcar pendente/em andamento/concluída. A lista persiste no banco SQLite; marcar concluída é uma decisão do usuário, não evidência de execução de um plano. Capacidades: `tasks.read` e `tasks.write`.
 - Abas: abrir URL pública, atualizar lista, selecionar e fechar por ID da sessão. Fechamento exige confirmação específica por possível perda de formulário. Abas abertas pelo usuário no Firefox pessoal não aparecem. IDs não são reutilizados enquanto o processo Chromium estiver vivo; fechar o Jarvis encerra essa sessão.
