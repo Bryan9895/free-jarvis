@@ -141,6 +141,8 @@ class GuiBackend:
                 refreshed = service.toolkit.execute("browser_tabs", {})
                 self.events.put(("browser_tabs", refreshed.get("result", {})))
         elif command == "ask":
+            if self._voice_listener is not None:
+                self._voice_listener.pause()
             self.events.put(("busy", True))
             try:
                 answer = service.ask(value)
@@ -148,6 +150,8 @@ class GuiBackend:
                 self.events.put(("metrics", service.agent.last_metrics))
                 self.events.put(("plan", service.planner.snapshot()))
             finally:
+                if self._voice_listener is not None:
+                    self._voice_listener.resume()
                 self.events.put(("busy", False))
         elif command == "snapshot":
             self.events.put(("plan", service.planner.snapshot()))
@@ -179,6 +183,8 @@ class GuiBackend:
                             language=os.getenv("JARVIS_LANGUAGE", "pt"), device=device)
             self.events.put(("transcript", voice.listen_once(6)))
         elif command == "voice_listen_start":
+            if self._voice_listener is not None:
+                self._voice_listener.stop()
             from .voice import VoiceIO, WakeWordConversation
             device = value.split(": ", 1)[-1] if value else None
             self._voice = VoiceIO(model=os.getenv("JARVIS_WAKE_MODEL", "base"),
@@ -189,8 +195,8 @@ class GuiBackend:
                 self._voice, on_command=lambda text: self.submit("voice_ask", text),
                 on_status=lambda text: self.events.put(("voice_status", text)),
                 device=device)
-            self._voice_listener.start()
             self.events.put(("voice_listening", True))
+            self._voice_listener.start()
         elif command == "voice_listen_stop":
             if self._voice_listener is not None:
                 self._voice_listener.stop()
@@ -228,9 +234,11 @@ class JarvisWindow:
     def __init__(self, root, backend: GuiBackend):
         self.root, self.backend = root, backend
         self.last_answer = ""
-        root.title("JARVIS FCC")
-        root.geometry("1050x680")
-        root.minsize(760, 480)
+        from .gui_theme import apply_theme
+        self._style = apply_theme(root)
+        root.title("JARVIS | Central de operações")
+        root.geometry("1240x720")
+        root.minsize(1040, 640)
         self.connection = tk.StringVar(value="Conectando ao FCC…")
         self.model = tk.StringVar()
         self.approval_mode = tk.StringVar(value="auto")
@@ -243,35 +251,52 @@ class JarvisWindow:
         root.after(100, self._poll)
 
     def _build(self):
-        header = ttk.Frame(self.root, padding=8)
+        from .gui_shell import WorkspacePanels, AssistantHud
+        from .gui_theme import PANEL, TEXT, ACCENT, BORDER
+        header = ttk.Frame(self.root, padding=(18, 10))
         header.pack(fill="x")
-        ttk.Label(header, textvariable=self.connection).pack(side="left", padx=4)
+        ttk.Label(header, text="J /", style="Brand.TLabel").pack(side="left", padx=(0, 16))
+        ttk.Label(header, textvariable=self.connection, style="Muted.TLabel").pack(side="left", padx=4)
         ttk.Button(header, text="Reconectar", command=lambda: self.backend.submit("retry")).pack(side="left")
         ttk.Label(header, text="Modelo:").pack(side="left", padx=(18, 4))
-        self.models = ttk.Combobox(header, textvariable=self.model, width=30)
+        self.models = ttk.Combobox(header, textvariable=self.model, width=24)
         self.models.pack(side="left")
         ttk.Button(header, text="Listar", command=lambda: self.backend.submit("models")).pack(side="left")
         ttk.Button(header, text="Selecionar", command=lambda: self.backend.submit(
             "select_model", self.model.get())).pack(side="left")
 
-        split = ttk.PanedWindow(self.root, orient="horizontal")
-        split.pack(fill="both", expand=True, padx=8, pady=4)
-        conversation = ttk.Frame(split)
-        tabs = ttk.Notebook(split)
+        body = ttk.Frame(self.root)
+        body.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+        navigation = ttk.Frame(body, width=175, padding=(0, 10, 10, 0))
+        navigation.pack(side="left", fill="y")
+        navigation.pack_propagate(False)
+        ttk.Label(navigation, text="CENTRAL DE OPERAÇÕES", style="Muted.TLabel",
+                  font=("DejaVu Sans", 8, "bold")).pack(anchor="w", pady=(0, 12))
+        split = ttk.PanedWindow(body, orient="horizontal")
+        split.pack(side="left", fill="both", expand=True)
+        conversation = ttk.Frame(split, padding=(4, 0, 12, 0))
+        tabs = WorkspacePanels(split, navigation)
+        self.workspace_panels = tabs
         split.add(conversation, weight=3)
         split.add(tabs, weight=2)
 
-        self.chat = scrolledtext.ScrolledText(conversation, wrap="word", state="disabled")
+        self.hud = AssistantHud(conversation)
+        self.hud.pack(fill="x")
+        ttk.Label(conversation, text="CONVERSA", style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
+        self.chat = scrolledtext.ScrolledText(conversation, wrap="word", state="disabled",
+            width=42, background=PANEL, foreground=TEXT, insertbackground=ACCENT,
+            relief="flat", borderwidth=0, padx=16, pady=14, font=("DejaVu Sans", 10))
+        self.chat.tag_configure("speaker", foreground=ACCENT, font=("DejaVu Sans", 10, "bold"))
         self.chat.pack(fill="both", expand=True)
         send = ttk.Frame(conversation)
         send.pack(fill="x", pady=6)
         self.message = ttk.Entry(send)
         self.message.pack(side="left", fill="x", expand=True)
         self.message.bind("<Return>", lambda _event: self._send())
-        self.send_button = ttk.Button(send, text="Enviar", command=self._send)
+        self.send_button = ttk.Button(send, text="Enviar", style="Accent.TButton", command=self._send)
         self.send_button.pack(side="left", padx=3)
-        ttk.Button(send, text="🎙 Gravar", command=lambda: self.backend.submit(
-            "voice_record", self.voice_device.get())).pack(side="left")
+        self.voice_quick = ttk.Button(send, text="Voz: desligada", command=self._toggle_voice)
+        self.voice_quick.pack(side="left")
         ttk.Button(send, text="Ler", command=lambda: self.backend.submit(
             "voice_speak", self.last_answer)).pack(side="left")
         ttk.Button(send, text="Cancelar", command=self._cancel).pack(side="left")
@@ -364,13 +389,13 @@ class JarvisWindow:
 
         history = ttk.Frame(tabs, padding=8)
         tabs.add(history, text="Histórico")
-        self.history = scrolledtext.ScrolledText(history, wrap="word", state="disabled")
+        self.history = scrolledtext.ScrolledText(history, width=35, wrap="word", state="disabled")
         self.history.pack(fill="both", expand=True)
         ttk.Button(history, text="Atualizar", command=lambda: self.backend.submit("history")).pack()
 
         metrics = ttk.Frame(tabs, padding=8)
         tabs.add(metrics, text="Métricas")
-        self.metrics = scrolledtext.ScrolledText(metrics, wrap="word", state="disabled")
+        self.metrics = scrolledtext.ScrolledText(metrics, width=35, wrap="word", state="disabled")
         self.metrics.pack(fill="both", expand=True)
 
         voice = ttk.Frame(tabs, padding=8)
@@ -400,7 +425,8 @@ class JarvisWindow:
 
     def _append_chat(self, label, value):
         self.chat.configure(state="normal")
-        self.chat.insert("end", f"{label}: {value}\n\n")
+        self.chat.insert("end", label.upper() + "\n", "speaker")
+        self.chat.insert("end", str(value) + "\n\n")
         self.chat.see("end")
         self.chat.configure(state="disabled")
 
@@ -461,22 +487,29 @@ class JarvisWindow:
 
     def _handle(self, kind, payload):
         if kind == "connected":
-            self.connection.set("Catálogo FCC acessível; inferência ainda não testada")
+            self.connection.set("FCC conectado · pronto para conversar")
             self.model.set(payload["model"])
             self.approval_mode.set(payload["approval"])
             self._set_capabilities(payload["capabilities"])
             self.backend.submit("snapshot")
+            self.hud.set_state("PRONTO", "Digite ou diga Jarvis seguido do pedido")
+            if os.getenv("JARVIS_GUI_VOICE", "1") != "0":
+                self.backend.submit("voice_listen_start", self.voice_device.get())
         elif kind == "connection_error":
             self.connection.set("FCC indisponível")
+            self.hud.set_state("SEM CONEXÃO", "Confira o servidor FCC e use Reconectar")
             self._append_chat("Sistema", payload)
         elif kind == "answer":
             self.last_answer = payload
+            self.hud.set_state("RESPOSTA RECEBIDA", "Conversa e operações no mesmo lugar")
             self._append_chat("JARVIS", payload)
         elif kind == "error":
             self._append_chat("Erro", payload)
         elif kind == "progress":
             self._append_chat("Etapa", payload)
         elif kind == "busy":
+            self.hud.set_state("PROCESSANDO" if payload else "PRONTO",
+                               "Executando seu pedido" if payload else "Aguardando seu próximo pedido", active=bool(payload))
             self.send_button.configure(state="disabled" if payload else "normal")
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))
@@ -520,11 +553,16 @@ class JarvisWindow:
             self._append_chat("Você (voz)", payload)
         elif kind == "voice_status":
             self.voice_status.set(str(payload))
+            if str(payload).startswith("Aguardando Jarvis"):
+                self.hud.set_state("ESCUTANDO", "Diga Jarvis seguido do pedido", active=True)
             if str(payload).startswith("Escuta contínua indisponível:"):
                 self.voice_listening = False
                 self.voice_toggle_button.configure(text="Ativar escuta contínua")
+                self.voice_quick.configure(text="Voz: indisponível")
+                self.hud.set_state("VOZ INDISPONÍVEL", "Texto continua disponível; confira a entrada de áudio")
         elif kind == "voice_listening":
             self.voice_listening = bool(payload)
+            self.voice_quick.configure(text="Voz: ligada" if payload else "Voz: desligada")
             self.voice_toggle_button.configure(
                 text="Parar escuta contínua" if self.voice_listening else "Ativar escuta contínua")
         elif kind == "voice_devices":

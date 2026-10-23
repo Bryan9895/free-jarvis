@@ -59,6 +59,8 @@ def main():
     approval = ApprovalPolicy(auto=not args.manual_approve, manual_callback=globals()["confirm"])
     confirm = approval
     if args.gui:
+        if args.text_only:
+            os.environ["JARVIS_GUI_VOICE"] = "0"
         from .gui import main_gui
         main_gui(c, auto=not args.manual_approve)
         return

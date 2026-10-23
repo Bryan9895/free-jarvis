@@ -75,3 +75,11 @@ A ativação usa transcrição local Whisper e depende da precisão acústica. N
 Ao iniciar `jarvis-fcc` sem flags, o terminal agora aceita mensagens digitadas e ativa a escuta por Jarvis. Não é necessário `--voice` nem Enter para iniciar gravação. Comandos digitados como `/modelos` continuam disponíveis. Sem dependências ou dispositivo de áudio, a escuta informa o erro e o texto permanece disponível. `jarvis-fcc --text-only` não inicia o microfone; `--push-to-talk` mantém o fluxo antigo. `--voice` permanece aceito por compatibilidade, usando o modo misto.
 
 A leitura do teclado e as confirmações ficam na thread principal. Pedidos de voz são enfileirados e processados pelo mesmo serviço; não executam ferramentas em paralelo. A captura pausa ao processar um pedido e durante a resposta para reduzir eco. Para encerrar por voz, diga Jarvis, sair; pelo teclado, digite sair ou use Ctrl+C. O aplicativo precisa estar aberto e o microfone conectado; não é um serviço iniciado automaticamente ao ligar o computador.
+
+## Central gráfica inspirada no Mark-LVI
+
+Inicie com `jarvis-fcc --gui`. A navegação lateral seleciona o painel de operações enquanto a conversa permanece visível. O tema escuro e o HUD vetorial usam código próprio, sem assets da referência. O HUD indica estados recebidos do backend e não é medidor de áudio.
+
+A voz contínua inicia automaticamente após conectar ao FCC. Use **Voz: ligada/desligada** para alternar ou `jarvis-fcc --gui --text-only` para não iniciar o microfone. Microfone indisponível não impede mensagens digitadas. Durante um pedido digitado, a escuta é pausada e retomada após a execução.
+
+Análise e plano: `docs/INTERFACE_MARK_PLANO.md`. Modelo visual ilustrativo: `docs/INTERFACE_MODELO.svg`. Requer ambiente gráfico e Tkinter; no Ubuntu, instale python3-tk se sua instalação Python não incluir Tk. A aparência final no GNOME ainda precisa de verificação física.

@@ -50,6 +50,14 @@ class GuiBackendTests(unittest.TestCase):
         backend._thread.join(timeout=2)
         self.assertTrue(service.closed)
 
+    def test_text_turn_pauses_and_resumes_voice_listener(self):
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        backend._voice_listener = Mock()
+        backend._dispatch("ask", "Olá")
+        backend._voice_listener.pause.assert_called_once()
+        backend._voice_listener.resume.assert_called_once()
+
     def test_task_panel_uses_toolkit_and_refreshes(self):
         backend = GuiBackend(None)
         service = FakeService()

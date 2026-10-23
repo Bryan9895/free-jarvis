@@ -79,3 +79,9 @@ Limites explícitos: pausa durante FCC/execução/TTS, sem interrupção por voz
 ## Modo misto padrão — 23/10/2026
 
 Pedido explícito do usuário: iniciar `jarvis-fcc` com voz e mensagens simultaneamente. Implementado MixedInput com fila do listener e select do stdin, sem thread concorrente lendo confirmações. Comandos locais de texto são preservados. --text-only desliga captura; --push-to-talk preserva revisão opcional. Ausência de microfone/dependências não encerra entrada de texto. Pausa cooperativa do listener durante execução/resposta; não há interrupção de resposta por voz. Teste físico pendente; publicação GitHub ainda pendente.
+
+## Interface inspirada no Mark-LVI — 23/10/2026
+
+Analisada árvore completa e amostra arquitetural da referência `FatihMakes/Mark-LVI` em `4d4035c`; plano e modelo registrados antes da implementação. Código próprio em gui_theme.py (tema) e gui_shell.py (navegação/HUD). GUI mantém serviço/backend, tarefas, abas, janelas e permissões; navegação lateral substitui a linha de abas. Voz automática após conexão, opção --text-only e alternância visível. Captura pausa durante pedidos digitados.
+
+Validação: 339 testes executados sem falhas, dois ignorados (Playwright e display gráfico). Tentativa de Xvfb isolado não concluiu inicialização do teclado virtual; não houve renderização real da janela. Modelo SVG é ilustrativo, não screenshot. Falta ensaio em GNOME 1366x768, contraste/fontes reais, aprovação e resposta falada. Dependências do produto permanecem as mesmas, sem PyQt6/Electron.
