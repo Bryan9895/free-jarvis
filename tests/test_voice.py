@@ -209,6 +209,35 @@ class VoiceTests(unittest.TestCase):
                 listener._listen_for_command(backend, np)
         stream.__exit__.assert_called_once()
 
+    def test_rejected_voice_request_resumes_and_reports_missing_wake_word(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as td:
+            voice = VoiceIO()
+            voice.transcribe = Mock(side_effect=["Olá mundo", "Jarvis, olá"])
+            statuses = []
+            submitted = Mock(return_value=False)
+            listener = WakeWordConversation(voice, submitted, statuses.append)
+            # O worker retoma a escuta quando termina a tarefa que bloqueou o envio.
+            submitted.side_effect = lambda _text: (listener.resume(), False)[1]
+            def capture(*_args, **_kwargs):
+                if voice.transcribe.call_count == 2:
+                    listener._stop.set()
+                    return None
+                return np.array([600], dtype=np.int16)
+            def recording(_samples):
+                path = Path(td) / 'sample.wav'
+                path.write_bytes(b'audio')
+                return path
+            listener._listen_for_command = capture
+            listener._write_recording = recording
+            with patch.dict(sys.modules, {"sounddevice": SimpleNamespace()}):
+                listener._run()
+            submitted.assert_called_once_with("olá")
+            self.assertTrue(listener._resume.is_set())
+            self.assertTrue(any("sem ativação" in text for text in statuses))
+            self.assertTrue(any("não enviado" in text for text in statuses))
+            self.assertFalse((Path(td) / 'sample.wav').exists())
+
     def test_piper_exec_and_cleanup(self):
         with tempfile.TemporaryDirectory() as td:
             model = Path(td) / "voice.onnx"

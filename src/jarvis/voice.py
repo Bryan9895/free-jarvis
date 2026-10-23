@@ -216,6 +216,7 @@ class WakeWordConversation:
         self._resume.set()
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=timeout)
+        return self._thread is None or not self._thread.is_alive()
 
     def pause(self, timeout=0):
         with self._capture_guard:
@@ -258,6 +259,7 @@ class WakeWordConversation:
                     if woke:
                         activated, transcript = self.extract_wake_command(transcript)
                         if not activated:
+                            self.on_status("Fala reconhecida, mas sem ativação. Comece o pedido com Jarvis.")
                             continue
                     else:
                         transcript = self.remove_wake_word(transcript)
@@ -276,8 +278,14 @@ class WakeWordConversation:
                         self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
                         continue
                     self._resume.clear()
+                    accepted = self.on_command(transcript)
+                    if accepted is False:
+                        self.on_status("Pedido de voz não enviado: aguarde a tarefa atual e diga Jarvis novamente.")
+                        while not self._stop.is_set() and not self._resume.wait(0.2):
+                            pass
+                        conversation = False
+                        continue
                     self.on_status("Comando enviado; conversação por voz ativa por até 20 s após a resposta.")
-                    self.on_command(transcript)
                     while not self._stop.is_set() and not self._resume.wait(0.2):
                         pass
                     conversation = True

@@ -263,17 +263,23 @@ class GuiBackend:
                             language=os.getenv("JARVIS_LANGUAGE", "pt"), device=device)
             self.events.put(("transcript", voice.listen_once(6)))
         elif command == "voice_listen_start":
+            options = value if isinstance(value, dict) else {"device": value}
+            model = options.get("model") or os.getenv("JARVIS_WAKE_MODEL", "base")
+            if not isinstance(model, str) or not model.strip():
+                raise ValueError("Escolha um modelo Whisper válido para a escuta.")
             if self._voice_listener is not None:
-                self._voice_listener.stop()
+                if self._voice_listener.stop() is False:
+                    raise RuntimeError("A escuta anterior ainda está encerrando. Aguarde e tente aplicar novamente.")
             from .voice import VoiceIO, WakeWordConversation
-            device = value.split(": ", 1)[-1] if value else None
-            self._voice = VoiceIO(model=os.getenv("JARVIS_WAKE_MODEL", "base"),
+            selected = options.get("device")
+            device = selected.split(": ", 1)[-1] if selected else None
+            self._voice = VoiceIO(model=model,
                                   language=os.getenv("JARVIS_LANGUAGE", "pt"),
                                   piper_model=os.getenv("JARVIS_PIPER_MODEL", ""),
                                   device=device)
             self._voice_listener = WakeWordConversation(
                 self._voice, on_command=lambda text: self.submit("voice_ask", text),
-                on_status=lambda text: self.events.put(("voice_status", text)),
+                on_status=lambda text: self.events.put(("voice_status", f"Whisper {model}: {text}")),
                 device=device)
             self.events.put(("voice_listening", True))
             self._voice_listener.start()
@@ -525,11 +531,12 @@ class JarvisWindow:
         self.voice_reference.pack(fill="x")
         model_row = ttk.Frame(voice)
         model_row.pack(fill="x", pady=3)
-        ttk.Label(model_row, text="Whisper do teste:").pack(side="left")
-        configured_model = os.getenv("JARVIS_WHISPER_MODEL", "base")
+        ttk.Label(model_row, text="Whisper:").pack(side="left")
+        configured_model = os.getenv("JARVIS_WAKE_MODEL", os.getenv("JARVIS_WHISPER_MODEL", "base"))
         self.voice_test_model = tk.StringVar(value=configured_model if configured_model in ("tiny", "base", "small") else "base")
         ttk.Combobox(model_row, textvariable=self.voice_test_model, values=("tiny", "base", "small"),
                      width=9, state="readonly").pack(side="left", padx=5)
+        ttk.Button(model_row, text="Aplicar à escuta", command=self._apply_voice_settings).pack(side="left")
         test_controls = ttk.Frame(voice)
         test_controls.pack(fill="x")
         for action, label in (("capture", "Gravar 6 s"), ("replay", "Ouvir amostra"), ("transcribe", "Transcrever")):
@@ -606,7 +613,11 @@ class JarvisWindow:
         if self.voice_listening:
             self.backend.submit("voice_listen_stop")
         else:
-            self.backend.submit("voice_listen_start", self.voice_device.get())
+            self._apply_voice_settings()
+
+    def _apply_voice_settings(self):
+        self.backend.submit("voice_listen_start", {
+            "device": self.voice_device.get(), "model": self.voice_test_model.get()})
 
     def _revoke(self):
         self.backend.revoke()
@@ -715,9 +726,9 @@ class JarvisWindow:
             self._append_chat("Você (voz)", payload)
         elif kind == "voice_status":
             self.voice_status.set(str(payload))
-            if str(payload).startswith("Aguardando Jarvis"):
+            if "Aguardando Jarvis" in str(payload):
                 self.hud.set_state("ESCUTANDO", "Diga Jarvis seguido do pedido", active=True)
-            if str(payload).startswith("Escuta contínua indisponível:"):
+            if "Escuta contínua indisponível:" in str(payload):
                 self.voice_listening = False
                 self.voice_toggle_button.configure(text="Ativar escuta contínua")
                 self.voice_quick.configure(text="Voz: indisponível")
@@ -760,6 +771,7 @@ class JarvisWindow:
                 text += f"\n\nSimilaridade textual: {comparison['similarity_percent']}%"
                 text += f"\nEdições por palavra: {comparison['word_edits']} em {comparison['reference_words']} palavras de referência."
             text += "\n\nTeste outro modelo para comparar a MESMA gravação. Isso não mede a precisão geral do Jarvis."
+            text += "\n\nPara conversar com este modelo e entrada, clique Aplicar à escuta e diga Jarvis seguido do pedido."
             self._write(self.voice_test_result, text)
             self.voice_test_status.set("Transcrição concluída; confira o texto reconhecido.")
         elif kind == "voice_devices":

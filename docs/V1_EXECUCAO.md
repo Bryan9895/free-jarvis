@@ -106,3 +106,10 @@ A aba Voz agora verifica a entrada SoundDevice, captura seis segundos com medido
 O diagnóstico não usa inferência FCC nem executa comandos transcritos e funciona após falha da conexão inicial. A escuta contínua é pausada com espera pela liberação do stream; se não liberar em dois segundos, o teste falha sem abrir outra captura. Áudio temporário removido ao substituir/apagar amostra e no fechamento normal. Reprodução tem tempo limite e verifica erro do player. Instalação dos pacotes de voz e disponibilidade física do dispositivo ainda são necessárias.
 
 Validação: 364 testes executados sem falhas, um ignorado (Playwright), incluindo GUI real em Xvfb. Layout inspecionado em 1240×720 e 1040×640 com backend e dados simulados. Cobertura nova inclui silêncio e saturação, comparação normalizada, repetição no mesmo arquivo/modelo, remoção de áudio, reprodução com erro, teste sem FCC, isolamento das transcrições, bloqueio se o listener não liberar o dispositivo e eventos/controles da GUI. Bluetooth, saída física, download/inferência real Whisper e qualidade acústica precisam ser validados no notebook do usuário seguindo GUIA_DE_USO.md.
+
+
+## Aplicar o modelo validado à conversa — 23/10/2026
+
+Relato: small transcreve bem no teste, mas a conversa permanece sem resposta. Identificada separação entre modelo/entrada do teste e da escuta ativa (base por padrão); não foi possível confirmar qual fator ocorreu no hardware. Adicionado Aplicar à escuta, iniciando/reiniciando com o modelo e a entrada selecionados. Estado informa Whisper ativo; a transcrição de teste explica como iniciar a conversa. Reinício recusa criar segundo listener enquanto o anterior não encerrou. Fala reconhecida sem palavra de ativação passa a informar o motivo; pedido recusado por tarefa em andamento aguarda retomada e informa que deve ser repetido. Nenhuma frase de diagnóstico é executada automaticamente.
+
+Validação: suíte com 367 testes, um ignorado (Playwright), incluindo aplicação small/Bluetooth, espera pelo encerramento, retorno de envio recusado e GUI compacta em Xvfb. Inferência FCC, Piper e Bluetooth físicos continuam dependendo de ensaio no notebook.

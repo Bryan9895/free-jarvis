@@ -51,6 +51,12 @@ class WindowTests(unittest.TestCase):
                     'recognized':'ola jarvis', 'comparison':{
                         'similarity_percent':100, 'word_edits':0, 'reference_words':2}})
                 self.assertIn('Similaridade textual: 100%', window.voice_test_result.get('1.0', 'end'))
+                window.voice_test_model.set('small')
+                window._apply_voice_settings()
+                backend.submit.assert_called_with('voice_listen_start', {
+                    'device':'14: Bluetooth mic', 'model':'small'})
+                window._handle('voice_status', 'Whisper small: Escuta contínua indisponível: desconectado')
+                self.assertFalse(window.voice_listening)
                 root.update()
                 panel = window.workspace_panels.panels[-1]
                 for widget in panel.winfo_children():

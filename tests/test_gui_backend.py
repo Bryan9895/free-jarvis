@@ -181,6 +181,26 @@ class GuiBackendTests(unittest.TestCase):
             self.assertEqual(voice.call_args.kwargs,
                              {"model": "small", "language": "pt", "device": "Bluetooth mic"})
 
+    def test_continuous_voice_uses_applied_model_and_device(self):
+        backend = GuiBackend(None)
+        backend.service = FakeService()
+        with patch("jarvis.voice.VoiceIO") as voice, patch("jarvis.voice.WakeWordConversation") as listener:
+            backend._dispatch("voice_listen_start", {"device":"14: Bluetooth mic", "model":"small"})
+            self.assertEqual(voice.call_args.kwargs["model"], "small")
+            self.assertEqual(voice.call_args.kwargs["device"], "Bluetooth mic")
+            listener.return_value.start.assert_called_once()
+            listener.call_args.kwargs["on_status"]("Aguardando Jarvis")
+            self.assertIn(("voice_status", "Whisper small: Aguardando Jarvis"), list(backend.events.queue))
+
+    def test_model_change_waits_for_old_listener_to_stop(self):
+        backend = GuiBackend(None)
+        backend._voice_listener = Mock()
+        backend._voice_listener.stop.return_value = False
+        with patch("jarvis.voice.VoiceIO") as voice:
+            with self.assertRaisesRegex(RuntimeError, "ainda está encerrando"):
+                backend._dispatch("voice_listen_start", {"model":"small"})
+            voice.assert_not_called()
+
     def test_voice_turn_uses_service_and_resumes_listener(self):
         service = FakeService()
         backend = GuiBackend(None, service_factory=lambda *_a, **_kw: service)
