@@ -85,3 +85,13 @@ Automação **passou**: 405 testes em 6,903 s, incluindo cache do worker, cancel
 Ensaio real de síntese, sem reprodução: mesma frase controlada, mesmo artefato local/hash do checkpoint 4, mesmo processo nas duas chamadas. WAVs mono 22050 Hz: primeira chamada 3,739 s (57600 frames), segunda 0,234 s (58112 frames). Variação de frames é possível na síntese; ambos os arquivos foram removidos. Tempos são geração de WAV incluindo carga fria na primeira chamada; não medem player, primeiro áudio no fone nem p95. Meta aquecida de saída audível continua pendente.
 
 Publicação anterior de formato/cache: `0317f93ce25076d602ebeee92c35c58bc112f384`.
+
+## Checkpoint 6 — instalação explícita e acessibilidade
+
+Voz → Saída oferece Instalar Faber pt-BR (~63 MB), progresso por arquivo, cancelamento por Parar, validação SHA256 do modelo e JSON, instalação por rename de staging e recuperação sem publicar download parcial. Fonte fixa: https://huggingface.co/rhasspy/piper-voices/tree/1af0d6b01d3dbe698a426f0c3424650ef77fc131/pt/pt_BR/faber/medium . O MODEL_CARD declara dataset CC0; metadados do repositório indicam MIT. O cartão original e a origem/hashes acompanham a instalação. Não instala pacotes do sistema, não baixa ao iniciar e não distribui artefato no git.
+
+Modelo SHA256 do checkpoint 4; JSON SHA256 `7e694de195ae3fc36dd732c445eb04fb49b649854893cb5506b978f0d50a1d6f`. Ensaio real do instalador para `/tmp/jarvis_faber_verified`: 63201294 bytes, 21,158 s, ambos os hashes passaram. Não alterou preferências do notebook; não incluiu áudio ambiental.
+
+Configurações de saída têm rolagem e revelam controle ao receber foco. Teste Tk adicional em escala 1,8 verifica viewport e botão final alcançável; fonte/escala físicas do GNOME continuam pendentes. Poll Tk é cancelado ao destruir a janela para evitar callback órfão. “Parar conversa” passa pelo controlador sem ferramentas e encerra a voz nas interfaces.
+
+Automação final deste checkpoint: suíte com 410 testes, incluindo falhas de rede/hash/cancelamento no instalador, comando de controle e escala maior. `git diff --check` passou. Ensaio físico de captura, reprodução audível, wake word e efeitos GNOME/FCC permanece pendente. Piper residente publicado em `c9f604b21b3c95d0dc55c25c70fb464ab92703e3`.

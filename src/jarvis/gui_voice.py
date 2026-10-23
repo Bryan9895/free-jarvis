@@ -3,6 +3,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from .voice_diagnostics import TEST_PHRASE
+from .gui_shell import ScrollPanel
 
 
 def build_voice_panel(window, tabs):
@@ -14,8 +15,11 @@ def build_voice_panel(window, tabs):
     pages = ttk.Notebook(voice)
     pages.pack(fill='both', expand=True)
     window.voice_pages = pages
-    talk, microphone, test, output_panel = (ttk.Frame(pages, padding=8) for _ in range(4))
-    for panel, title in ((talk, 'Conversar'), (microphone, 'Microfone'), (test, 'Diagnóstico'), (output_panel, 'Saída')):
+    talk, microphone, test = (ttk.Frame(pages, padding=8) for _ in range(3))
+    output_scroll = ScrollPanel(pages)
+    output_panel = output_scroll.content
+    window.voice_output_scroll = output_scroll
+    for panel, title in ((talk, 'Conversar'), (microphone, 'Microfone'), (test, 'Diagnóstico'), (output_scroll, 'Saída')):
         pages.add(panel, text=title)
 
     configured = os.getenv('JARVIS_WAKE_MODEL', window.preferences.stt_model)
@@ -89,12 +93,14 @@ def build_voice_panel(window, tabs):
     window.voice_silence = tk.StringVar(value=str(window.preferences.silence_ms))
     window.voice_mode = tk.StringVar(value=window.preferences.voice_mode)
     ttk.Label(output_panel, text='Voz Piper local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
-    ttk.Label(output_panel, text='Selecione um .onnx compatível com seu .onnx.json. Nenhum download é feito automaticamente.',
+    ttk.Label(output_panel, text='Selecione .onnx com .onnx.json ou instale Faber: fonte Piper, SHA256 verificado, dataset CC0.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
     row = ttk.Frame(output_panel)
     row.pack(fill='x', pady=4)
     ttk.Entry(row, textvariable=window.voice_piper_model, width=12).pack(side='left', fill='x', expand=True)
     ttk.Button(row, text='Escolher…', command=window._choose_piper_voice).pack(side='left')
+    ttk.Button(output_panel, text='Instalar Faber pt-BR (~63 MB)',
+               command=lambda: window.backend.submit('voice_install')).pack(fill='x', pady=2)
     ttk.Label(output_panel, text='Saída Pulse/PipeWire (vazia = padrão)').pack(anchor='w')
     window.voice_output_choice = ttk.Combobox(output_panel, textvariable=window.voice_output, width=22)
     window.voice_output_choice.pack(fill='x', pady=4)

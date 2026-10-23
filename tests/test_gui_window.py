@@ -10,6 +10,29 @@ from jarvis.tools import DEFAULT_REGISTRY
 
 @unittest.skipUnless(os.getenv('DISPLAY'), 'Display gráfico indisponível')
 class WindowTests(unittest.TestCase):
+    def test_voice_output_scroll_at_larger_scale(self):
+        backend = Mock()
+        backend.events = queue.Queue()
+        root = tk.Tk()
+        root.tk.call('tk', 'scaling', 1.8)
+        try:
+            window = JarvisWindow(root, backend)
+            root.geometry('1040x640')
+            window._toggle_settings()
+            window.workspace_panels.select(len(window.workspace_panels.panels) - 1)
+            window.voice_pages.select(window.voice_pages.tabs()[-1])
+            root.update()
+            viewport = window.voice_output_scroll.canvas
+            self.assertLessEqual(viewport.winfo_rooty()+viewport.winfo_height(), root.winfo_rooty()+root.winfo_height())
+            buttons = [widget for widget in window.voice_output_scroll.content.winfo_children()
+                       if widget.winfo_class() == 'TButton']
+            buttons[-1].focus_force()
+            root.update()
+            self.assertLessEqual(buttons[-1].winfo_rooty()+buttons[-1].winfo_height(),
+                                 viewport.winfo_rooty()+viewport.winfo_height()+2)
+        finally:
+            root.destroy()
+
     def test_compact_layout_and_plan_controls(self):
         backend = Mock()
         backend.events = queue.Queue()
@@ -95,7 +118,8 @@ class WindowTests(unittest.TestCase):
                                                  root.winfo_rooty()+root.winfo_height())
                             self.assertLessEqual(widget.winfo_rootx()+widget.winfo_width(),
                                                  root.winfo_rootx()+root.winfo_width())
-                            check_bounds(widget)
+                            if not isinstance(widget, tk.Canvas):
+                                check_bounds(widget)
                 for page in window.voice_pages.tabs():
                     window.voice_pages.select(page)
                     root.update()

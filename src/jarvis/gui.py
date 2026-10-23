@@ -25,7 +25,7 @@ class GuiBackend:
 
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
-                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk"})
+                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install"})
 
     def __init__(self, config, *, auto=True, service_factory=None):
         self.config = config
@@ -164,7 +164,7 @@ class GuiBackend:
                                 self._voice_listener.pause()
                     if command == "retry":
                         self._reconnect()
-                    elif self.service is None and command not in {"voice_devices", "voice_listen_start", "voice_listen_stop", "voice_speak", "voice_configure", "voice_outputs"} and not command.startswith("voice_test_"):
+                    elif self.service is None and command not in {"voice_devices", "voice_listen_start", "voice_listen_stop", "voice_speak", "voice_configure", "voice_outputs", "voice_install"} and not command.startswith("voice_test_"):
                         self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
                     else:
                         self._dispatch(command, value)
@@ -313,6 +313,13 @@ class GuiBackend:
                 device=device)
             self.events.put(("voice_listening", True))
             self._voice_listener.start()
+        elif command == 'voice_install':
+            from .voice_setup import install_faber
+            model = install_faber(cancel=self._capture_cancel,
+                progress=lambda message: self.events.put(('voice_status', message)))
+            if not self._capture_cancel.is_set():
+                self._dispatch('voice_configure', {'piper_model': str(model)})
+                self.events.put(('voice_installed', str(model)))
         elif command == "voice_configure":
             preferences = replace(self.preferences, **value).validate()
             self.preference_store.save(preferences)
@@ -398,7 +405,8 @@ class GuiBackend:
         from .conversation import ConversationController
         if self._conversation is None or self._conversation.service is not self.service:
             self._conversation = ConversationController(self.service,
-                emit=lambda event: self.events.put(("conversation_event", event)))
+                emit=lambda event: self.events.put(("conversation_event", event)),
+                on_end=lambda: self._dispatch('voice_listen_stop', None))
         return self._conversation.run(message, voice=voice,
             display=lambda answer: self.events.put(("answer", answer)))
 
@@ -431,7 +439,8 @@ class JarvisWindow:
             self.voice_status.set('Preferências inválidas; padrões usados: ' + self.preference_store.error)
         root.protocol("WM_DELETE_WINDOW", self._close)
         self.backend.start()
-        root.after(100, self._poll)
+        self._poll_timer = root.after(100, self._poll)
+        root.bind('<Destroy>', self._destroy, add='+')
 
     def _build(self):
         from .gui_shell import WorkspacePanels, AssistantHud
@@ -745,6 +754,7 @@ class JarvisWindow:
             self.backend.submit("ask", message)
 
     def _poll(self):
+        self._poll_timer = None
         try:
             while True:
                 kind, payload = self.backend.events.get_nowait()
@@ -752,7 +762,12 @@ class JarvisWindow:
         except queue.Empty:
             pass
         if self.root.winfo_exists():
-            self.root.after(100, self._poll)
+            self._poll_timer = self.root.after(100, self._poll)
+
+    def _destroy(self, event):
+        if event.widget is self.root and self._poll_timer is not None:
+            self.root.after_cancel(self._poll_timer)
+            self._poll_timer = None
 
     def _handle(self, kind, payload):
         if kind == "connected":
@@ -874,6 +889,8 @@ class JarvisWindow:
                 text="Parar escuta contínua" if self.voice_listening else "Ativar escuta contínua")
         elif kind == 'voice_outputs':
             self.voice_output_choice.configure(values=[''] + list(payload))
+        elif kind == 'voice_installed':
+            self.voice_piper_model.set(payload)
         elif kind == "voice_test_status":
             self.voice_test_status.set(payload)
         elif kind == "voice_test_error":

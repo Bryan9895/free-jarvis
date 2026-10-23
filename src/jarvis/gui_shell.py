@@ -5,6 +5,54 @@ from tkinter import ttk
 from .gui_theme import BG, PANEL, BORDER, ACCENT, TEXT, MUTED
 
 
+class ScrollPanel(ttk.Frame):
+    """Área recolhida de configurações com viewport e foco acessível."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.canvas = tk.Canvas(self, highlightthickness=0, background=BG, width=320)
+        scrollbar = ttk.Scrollbar(self, orient='vertical', command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+        self.canvas.pack(side='left', fill='both', expand=True)
+        self.content = ttk.Frame(self.canvas, padding=8)
+        self._item = self.canvas.create_window(0, 0, window=self.content, anchor='nw')
+        self.content.bind('<Configure>', lambda _: self.canvas.configure(scrollregion=self.canvas.bbox('all')))
+        self.canvas.bind('<Configure>', lambda event: self.canvas.itemconfigure(self._item, width=event.width))
+        self._top = self.winfo_toplevel()
+        self._focus_binding = self._top.bind('<FocusIn>', self._reveal, add='+')
+        self._wheel_binding = self._top.bind('<MouseWheel>', self._wheel, add='+')
+        self.bind('<Destroy>', self._cleanup)
+
+    def _contains(self, widget):
+        while widget is not None:
+            if widget is self.content:
+                return True
+            widget = getattr(widget, 'master', None)
+        return False
+
+    def _reveal(self, event):
+        if not self._contains(event.widget):
+            return
+        y = event.widget.winfo_rooty() - self.content.winfo_rooty()
+        visible_top = self.canvas.canvasy(0)
+        visible_bottom = visible_top + self.canvas.winfo_height()
+        height = max(1, self.content.winfo_height())
+        if y < visible_top:
+            self.canvas.yview_moveto(y / height)
+        elif y + event.widget.winfo_height() > visible_bottom:
+            self.canvas.yview_moveto((y + event.widget.winfo_height() - self.canvas.winfo_height()) / height)
+
+    def _wheel(self, event):
+        widget = self.winfo_containing(event.x_root, event.y_root)
+        if self._contains(widget):
+            self.canvas.yview_scroll(-1 if event.delta > 0 else 1, 'units')
+
+    def _cleanup(self, event):
+        if event.widget is self:
+            self._top.unbind('<FocusIn>', self._focus_binding)
+            self._top.unbind('<MouseWheel>', self._wheel_binding)
+
+
 class WorkspacePanels(ttk.Frame):
     def __init__(self, parent, navigation):
         super().__init__(parent)

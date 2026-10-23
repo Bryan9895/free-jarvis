@@ -211,6 +211,13 @@ def main():
             from .voice_session import MixedInput
             mixed = MixedInput(voice)
             mixed.start()
+        def end_voice_session():
+            nonlocal mixed, voice
+            if mixed is not None:
+                mixed.close()
+                mixed = None
+            voice = None
+        conversation.on_end = end_voice_session
         try:
             while True:
                 try:

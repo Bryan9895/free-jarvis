@@ -10,7 +10,8 @@ from .conversation import ConversationController
 def run_voice_session(service, voice: VoiceIO, *, report=print, listener_factory=WakeWordConversation):
     commands = queue.Queue(maxsize=1)
     controller = ConversationController(service,
-        emit=lambda event: report(event.reason) if event.state == 'erro' else None)
+        emit=lambda event: report(event.reason) if event.state == 'erro' else None,
+        on_end=lambda: (listener.stop(), commands.put(None)))
 
     def status(message):
         report(message)

@@ -6,6 +6,13 @@ from jarvis.cancellation import CancelledError
 
 
 class ConversationTests(unittest.TestCase):
+    def test_stop_control_never_calls_tools_and_closes_voice_session(self):
+        service, close, display = Mock(), Mock(), Mock()
+        controller = ConversationController(service, on_end=close)
+        controller.run('Parar conversa.', display=display)
+        close.assert_called_once()
+        service.ask.assert_not_called()
+        display.assert_called_once_with('Conversa encerrada.')
     def test_display_and_voice_share_result_and_correlated_events(self):
         service, voice, display = Mock(), Mock(), Mock()
         service.ask.return_value = '**Abri** o [Firefox](https://example.test).'

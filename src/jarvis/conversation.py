@@ -18,9 +18,10 @@ class ConversationEvent:
 
 
 class ConversationController:
-    def __init__(self, service, *, emit=lambda _: None):
+    def __init__(self, service, *, emit=lambda _: None, on_end=lambda: None):
         self.service = service
         self.emit = emit
+        self.on_end = on_end
         self.session_id = uuid4().hex
         self._turn_id = None
         self._cancelled = False
@@ -53,6 +54,12 @@ class ConversationController:
         with self._guard:
             self._turn_id, self._cancelled, self._voice = turn, False, voice
         try:
+            if message.casefold().strip(' .,!?:;') == 'parar conversa':
+                self.on_end()
+                self._event(turn, 'cancelado', 'conversa encerrada pelo usuário')
+                response = ResponseText.from_display('Conversa encerrada.')
+                display(response.display_text)
+                return response
             if voice is not None:
                 voice.prepare_speech()
             self._check(turn)
