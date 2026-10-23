@@ -6,8 +6,8 @@ import os
 import queue
 import threading
 import tkinter as tk
-from dataclasses import dataclass, field
-from tkinter import messagebox, scrolledtext, ttk
+from dataclasses import dataclass, field, replace
+from tkinter import messagebox, scrolledtext, ttk, filedialog
 
 from .service import JarvisService
 from .gui_presenter import status_label, plan_progress, plan_details, action_summary, error_message
@@ -46,6 +46,10 @@ class GuiBackend:
         self._capture_finish = threading.Event()
         self._capturing = threading.Event()
         self._conversation = None
+        self._speaking_voice = None
+        from .preferences import PreferenceStore
+        self.preference_store = PreferenceStore()
+        self.preferences = self.preference_store.load()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
 
     def start(self):
@@ -69,6 +73,8 @@ class GuiBackend:
         self._capture_cancel.set()
         if self._conversation is not None:
             self._conversation.cancel()
+        if self._speaking_voice is not None:
+            self._speaking_voice.cancel_speech()
         service = self.service
         cancelled = service.cancel_current() if service is not None else False
         if self._action_pending.is_set():
@@ -158,7 +164,7 @@ class GuiBackend:
                                 self._voice_listener.pause()
                     if command == "retry":
                         self._reconnect()
-                    elif self.service is None and command not in {"voice_devices", "voice_listen_start", "voice_listen_stop", "voice_speak"} and not command.startswith("voice_test_"):
+                    elif self.service is None and command not in {"voice_devices", "voice_listen_start", "voice_listen_stop", "voice_speak", "voice_configure", "voice_outputs"} and not command.startswith("voice_test_"):
                         self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
                     else:
                         self._dispatch(command, value)
@@ -255,6 +261,8 @@ class GuiBackend:
         elif command == "select_model":
             service.client.select_model(value)
             service.agent.model = value
+            self.preferences = replace(self.preferences, conversation_model=value)
+            self.preference_store.save(self.preferences)
             self.events.put(("model", value))
         elif command == "approval_mode":
             service.approval.set_mode(value)
@@ -305,6 +313,27 @@ class GuiBackend:
                 device=device)
             self.events.put(("voice_listening", True))
             self._voice_listener.start()
+        elif command == "voice_configure":
+            preferences = replace(self.preferences, **value).validate()
+            self.preference_store.save(preferences)
+            self.preferences = preferences
+            if preferences.voice_mode != 'continuous' and self._voice_listener is not None:
+                if not self._voice_listener.stop():
+                    raise RuntimeError('A escuta ainda está encerrando; aguarde antes de trocar a entrada')
+                self._voice_listener = None
+                self.events.put(('voice_listening', False))
+            if self._voice is not None:
+                effective = preferences.effective()
+                from pathlib import Path
+                self._voice.piper_model = Path(effective.piper_model).expanduser() if effective.piper_model else None
+                self._voice.output_device = effective.output_device
+                self._voice.silence_seconds = effective.silence_ms / 1000
+                if self._voice_listener is not None:
+                    self._voice_listener.silence_seconds = self._voice.silence_seconds
+            self.events.put(("voice_status", "Preferências salvas. Ambiente explícito tem precedência. Teste a voz para confirmar a saída."))
+        elif command == "voice_outputs":
+            from .voice import VoiceIO
+            self.events.put(("voice_outputs", VoiceIO.output_devices()))
         elif command == "voice_listen_stop":
             if self._voice_listener is not None:
                 self._voice_listener.stop()
@@ -358,7 +387,12 @@ class GuiBackend:
         elif command == "voice_speak":
             from .voice import VoiceIO
             voice = VoiceIO(piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
-            self.events.put(("voice_status", voice.speak(value)))
+            voice.prepare_speech()
+            self._speaking_voice = voice
+            try:
+                self.events.put(("voice_status", voice.speak(value)))
+            finally:
+                self._speaking_voice = None
 
     def _conversation_turn(self, message, *, voice=None):
         from .conversation import ConversationController
@@ -375,7 +409,7 @@ class JarvisWindow:
         self.last_answer = ""
         from .gui_theme import apply_theme
         self._style = apply_theme(root)
-        root.title("JARVIS | Central de operações")
+        root.title("JARVIS | Conversa")
         root.geometry("1240x720")
         root.minsize(1040, 640)
         self.connection = tk.StringVar(value="Conectando ao FCC…")
@@ -384,11 +418,17 @@ class JarvisWindow:
         self.model_summary = tk.StringVar(value="Modelo de conversa: conectando…")
         self.approval_mode = tk.StringVar(value="auto")
         self.voice_device = tk.StringVar()
+        from .preferences import PreferenceStore
+        self.preference_store = PreferenceStore()
+        self.preferences = self.preference_store.load().effective()
+        self.voice_device.set(self.preferences.audio_device)
         self.voice_heard = tk.StringVar(value="Última fala: aguardando áudio")
         self.voice_listening = False
         self._operation_error = False
         self.capability_vars = {}
         self._build()
+        if self.preference_store.error:
+            self.voice_status.set('Preferências inválidas; padrões usados: ' + self.preference_store.error)
         root.protocol("WM_DELETE_WINDOW", self._close)
         self.backend.start()
         root.after(100, self._poll)
@@ -401,16 +441,19 @@ class JarvisWindow:
         ttk.Label(header, text="J /", style="Brand.TLabel").pack(side="left", padx=(0, 16))
         ttk.Label(header, textvariable=self.connection, style="Muted.TLabel").pack(side="left", padx=4)
         ttk.Button(header, text="Reconectar", command=lambda: self.backend.submit("retry")).pack(side="left")
+        ttk.Button(header, text="Configurações", command=self._toggle_settings).pack(side='right')
         ttk.Label(header, textvariable=self.model_summary, style="Muted.TLabel").pack(side="left", padx=12)
 
         body = ttk.Frame(self.root)
         body.pack(fill="both", expand=True, padx=12, pady=(0, 8))
         navigation = ttk.Frame(body, width=175, padding=(0, 10, 10, 0))
+        self._navigation = navigation
         navigation.pack(side="left", fill="y")
         navigation.pack_propagate(False)
-        ttk.Label(navigation, text="CENTRAL DE OPERAÇÕES", style="Muted.TLabel",
+        ttk.Label(navigation, text="CONFIGURAÇÕES / AVANÇADO", style="Muted.TLabel",
                   font=("DejaVu Sans", 8, "bold")).pack(anchor="w", pady=(0, 12))
         split = ttk.PanedWindow(body, orient="horizontal")
+        self._split = split
         split.pack(side="left", fill="both", expand=True)
         conversation = ttk.Frame(split, padding=(4, 0, 12, 0))
         tabs = WorkspacePanels(split, navigation)
@@ -570,6 +613,17 @@ class JarvisWindow:
         self.models_panel_index = len(tabs.panels)
         build_models_panel(self, tabs)
         build_voice_panel(self, tabs)
+        self._settings_open = True
+        self._toggle_settings()
+
+    def _toggle_settings(self):
+        self._settings_open = not getattr(self, '_settings_open', False)
+        if self._settings_open:
+            self._navigation.pack(side='left', fill='y', before=self._split)
+            self._split.add(self.workspace_panels, weight=2)
+        else:
+            self._navigation.pack_forget()
+            self._split.forget(self.workspace_panels)
 
     def _write(self, widget, value):
         widget.configure(state="normal")
@@ -638,6 +692,23 @@ class JarvisWindow:
         self.backend.submit("voice_listen_start", {
             "device": self.voice_device.get(), "model": self.voice_test_model.get()})
 
+    def _save_voice_preferences(self):
+        try:
+            silence_ms = int(self.voice_silence.get())
+        except ValueError:
+            self.voice_status.set('Silêncio deve ser um número entre 600 e 1800 ms.')
+            return
+        self.backend.submit('voice_configure', {
+            'stt_model': self.voice_test_model.get(), 'audio_device': self.voice_device.get(),
+            'piper_model': self.voice_piper_model.get(), 'output_device': self.voice_output.get(),
+            'silence_ms': silence_ms, 'voice_mode': self.voice_mode.get()})
+
+    def _choose_piper_voice(self):
+        filename = filedialog.askopenfilename(title='Selecionar voz Piper local (.onnx)',
+                                             filetypes=[('Modelo Piper', '*.onnx')])
+        if filename:
+            self.voice_piper_model.set(filename)
+
     def _push_to_talk(self):
         if self.backend.finish_voice_turn():
             return
@@ -691,7 +762,7 @@ class JarvisWindow:
             self._set_capabilities(payload["capabilities"])
             self.backend.submit("snapshot")
             self.hud.set_state("PRONTO", "Digite ou diga Jarvis seguido do pedido")
-            if os.getenv("JARVIS_GUI_VOICE", "1") != "0":
+            if os.getenv("JARVIS_GUI_VOICE", "1") != "0" and self.preferences.voice_mode == 'continuous':
                 self._apply_voice_settings()
         elif kind == "reconnected":
             self.connection.set("Catálogo FCC atualizado · inferência ainda não testada")
@@ -801,6 +872,8 @@ class JarvisWindow:
             self.voice_quick.configure(text="Voz: ligada" if payload else "Voz: desligada")
             self.voice_toggle_button.configure(
                 text="Parar escuta contínua" if self.voice_listening else "Ativar escuta contínua")
+        elif kind == 'voice_outputs':
+            self.voice_output_choice.configure(values=[''] + list(payload))
         elif kind == "voice_test_status":
             self.voice_test_status.set(payload)
         elif kind == "voice_test_error":

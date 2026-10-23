@@ -301,6 +301,21 @@ class VoiceTests(unittest.TestCase):
             samples = listener._listen_for_command(SimpleNamespace(InputStream=Stream), np, idle_timeout=20)
         self.assertEqual(len(samples), 18 * 1280)
 
+    def test_stopping_during_stt_never_submits_late_command(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'sample.wav'
+            path.write_bytes(b'mock')
+            voice, command = VoiceIO(), Mock()
+            listener = WakeWordConversation(voice, command)
+            listener._listen_for_command = Mock(return_value=np.array([600], dtype=np.int16))
+            listener._write_recording = Mock(return_value=path)
+            voice.transcribe = Mock(side_effect=lambda _: (listener.stop(timeout=0), 'Jarvis abra Firefox')[1])
+            with patch.dict(sys.modules, {'sounddevice': SimpleNamespace()}):
+                listener._run()
+            command.assert_not_called()
+            self.assertFalse(path.exists())
+
     def test_cancelled_player_is_terminated_and_reaped(self):
         from jarvis.cancellation import CancelledError
         voice = VoiceIO()

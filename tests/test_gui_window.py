@@ -22,6 +22,10 @@ class WindowTests(unittest.TestCase):
                 window = JarvisWindow(root, backend)
                 root.geometry('1040x640')
                 root.update()
+                self.assertFalse(window._navigation.winfo_ismapped())
+                self.assertFalse(window.workspace_panels.winfo_ismapped())
+                window._toggle_settings()
+                root.update()
                 # A última página construída não pode esconder a página selecionada.
                 self.assertEqual(window.workspace_panels.selected, 0)
                 self.assertTrue(window.workspace_panels.panels[0].winfo_ismapped())
@@ -96,6 +100,17 @@ class WindowTests(unittest.TestCase):
                     window.voice_pages.select(page)
                     root.update()
                     check_bounds(window.voice_pages)
+                for geometry in ('1366x768', '1040x640'):
+                    root.geometry(geometry)
+                    root.update()
+                    check_bounds(window.voice_pages)
+                    window._toggle_settings()
+                    root.update()
+                    for widget in (window.voice_quick, window.send_button, window.push_to_talk_quick):
+                        self.assertTrue(widget.winfo_ismapped())
+                        self.assertLessEqual(widget.winfo_rootx()+widget.winfo_width(), root.winfo_rootx()+root.winfo_width())
+                    window._toggle_settings()
+                    root.update()
                 window.workspace_panels.select(window.models_panel_index)
                 root.update()
                 check_bounds(window.workspace_panels.panels[window.models_panel_index])

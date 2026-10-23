@@ -55,3 +55,13 @@ GUI (texto/voz), CLI mista e CLI contínua usam `ConversationController.run` →
 Limitações: controlador ainda começa na intenção textual; a máquina de captura/ativação permanece no adaptador legado. TTS ainda inicia Piper por segmento, sem cache residente da voz. Eventos não persistem conteúdo ambiental. Gate de áudio audível, latências aquecidas, interrupção acústica e modelo Jarvis continuam pendentes. Commit publicado do checkpoint de captura: `c0d1e35726053cf588f495749188c04181c90566`.
 
 Automação do checkpoint 2 **passou**: 388 testes em 5,842 s; display real, Chromium e HTTP local incluídos. Novos testes: correlação, cancelamento, falha TTS sem replay, recuperação de provedor, formatter, ordenação longa e término/recolhimento de player falso. `git diff --check` passou. Não houve áudio gravado consentido nem ensaio acústico.
+
+## Checkpoint 3 — preferências e interface
+
+Implementado: preferências com esquema fechado v1, arquivo privado e substituição atômica, recuperação visível de arquivo inválido e precedência de ambiente. GUI salva voz local selecionada, sink Pulse/PipeWire, silêncio de 600–1800 ms, entrada, STT e modo; modelo FCC selecionado também persiste. Sem segredos nesse arquivo. CLI respeita modo salvo; `--voice` explicita contínuo. Piper local pode ser testado sem FCC; seleção de saída usa paplay e não muda o padrão global.
+
+Início mostra conversa e controles; navegação e painéis ficam recolhidos em Configurações, preservando funções anteriores. Voz → Saída permite escolher `.onnx`, listar saídas, salvar e testar frase. O `.onnx.json` compatível e executáveis precisam existir. Instalação/download automático não implementado: licença/hash do artefato de voz ainda não verificados, nenhum modelo foi distribuído. Salvar entrada/modelo requer Aplicar na sessão contínua ou reinício; mudo/manual encerra listener ativo.
+
+Automação **passou**: 394 testes em 6,547 s, incluindo persistência/erro atômico, ambiente, configuração sem FCC, STT tardio após stop e bounds Tk em 1040×640 e 1366×768. `git diff --check` passou. Escala maior GNOME, áudio audível e reinício físico Bluetooth continuam pendentes. Publicação anterior: `864ff6e3d41fe4e5cd9cb79508ee26e566e95d80`.
+
+Como usar: `jarvis-fcc --gui` → Configurações → Voz → Microfone; em Saída selecionar modelo local e sink, Salvar, Testar voz salva. Em Conversar aplicar entrada/Whisper; Falar/terminar dispensa ativação. Contínuo usa fallback por transcrição identificado no estado; não é detector acústico aceito. CLI: `jarvis-fcc` mistura texto/voz conforme modo salvo, `--text-only` evita captura e `--push-to-talk` usa endpoint com revisão.

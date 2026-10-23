@@ -190,9 +190,11 @@ def main():
             emit=lambda event: print(event.reason, file=sys.stderr) if event.state == 'erro' else None)
         voice = None
         mixed = None
-        if not args.text_only or args.push_to_talk:
+        from .preferences import PreferenceStore
+        preferences = PreferenceStore().load().effective()
+        if args.voice or args.push_to_talk or (not args.text_only and preferences.voice_mode != 'muted'):
             from .voice import VoiceIO
-            voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL", "base"),
+            voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL"),
                             language=os.getenv("JARVIS_LANGUAGE", "pt"),
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
             if args.push_to_talk:
@@ -205,7 +207,7 @@ def main():
             print("⚡ AUTOAPROVAÇÃO ATIVA: ferramentas atuais executam sem pedir SIM. "
                   "Limites do workspace, comandos e permissões GNOME continuam valendo.")
         print("Tarefas: /planejar OBJETIVO, /plano, /historico-planos, /selecionar-plano ID, /resolver-etapa skip|retry, /retomar-plano, /executar-plano")
-        if voice is not None and not args.push_to_talk:
+        if voice is not None and not args.push_to_talk and (args.voice or preferences.voice_mode == 'continuous'):
             from .voice_session import MixedInput
             mixed = MixedInput(voice)
             mixed.start()

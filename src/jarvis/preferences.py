@@ -1,0 +1,79 @@
+"""Preferências locais sem segredos, com substituição atômica e esquema fechado."""
+from dataclasses import asdict, dataclass
+import json
+import os
+from pathlib import Path
+import tempfile
+
+
+@dataclass(frozen=True)
+class Preferences:
+    version: int = 1
+    stt_model: str = 'small'
+    conversation_model: str = ''
+    audio_device: str = ''
+    piper_model: str = ''
+    output_device: str = ''  # nome de sink Pulse/PipeWire, nunca índice SoundDevice
+    silence_ms: int = 1000
+    voice_mode: str = 'continuous'
+
+    def validate(self):
+        if self.version != 1:
+            raise ValueError('Versão de preferências não suportada')
+        for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device'):
+            value = getattr(self, key)
+            if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
+                raise ValueError('Preferência inválida: ' + key)
+        if self.stt_model not in ('tiny', 'base', 'small'):
+            raise ValueError('Modelo STT inválido')
+        if type(self.silence_ms) is not int or not 600 <= self.silence_ms <= 1800:
+            raise ValueError('Silêncio deve estar entre 600 e 1800 ms')
+        if self.voice_mode not in ('continuous', 'manual', 'muted'):
+            raise ValueError('Modo de voz inválido')
+        return self
+
+    def effective(self):
+        values = asdict(self)
+        for key, variable in {'stt_model': 'JARVIS_WHISPER_MODEL',
+                              'conversation_model': 'FCC_MODEL', 'audio_device': 'JARVIS_AUDIO_DEVICE',
+                              'piper_model': 'JARVIS_PIPER_MODEL', 'output_device': 'JARVIS_AUDIO_OUTPUT',
+                              'voice_mode': 'JARVIS_VOICE_MODE'}.items():
+            if variable in os.environ:
+                values[key] = os.environ[variable]
+        if 'JARVIS_SILENCE_MS' in os.environ:
+            values['silence_ms'] = int(os.environ['JARVIS_SILENCE_MS'])
+        return Preferences(**values).validate()
+
+
+class PreferenceStore:
+    def __init__(self, path=None):
+        self.path = Path(path or os.getenv('JARVIS_PREFERENCES',
+            '~/.config/jarvis-fcc/preferences.json')).expanduser()
+        self.error = None
+
+    def load(self):
+        self.error = None
+        try:
+            data = json.loads(self.path.read_text())
+            if not isinstance(data, dict) or set(data) - set(asdict(Preferences())):
+                raise ValueError('Esquema de preferências inválido')
+            return Preferences(**data).validate()
+        except FileNotFoundError:
+            return Preferences()
+        except (OSError, ValueError, TypeError) as exc:
+            self.error = str(exc)
+            return Preferences()
+
+    def save(self, preferences):
+        preferences.validate()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix='.preferences-', dir=self.path.parent)
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(asdict(preferences), stream, ensure_ascii=False, indent=2)
+                stream.write('\n')
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)

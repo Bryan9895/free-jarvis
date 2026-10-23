@@ -14,11 +14,11 @@ def build_voice_panel(window, tabs):
     pages = ttk.Notebook(voice)
     pages.pack(fill='both', expand=True)
     window.voice_pages = pages
-    talk, microphone, test = (ttk.Frame(pages, padding=8) for _ in range(3))
-    for panel, title in ((talk, 'Conversar'), (microphone, 'Microfone'), (test, 'Testar áudio')):
+    talk, microphone, test, output_panel = (ttk.Frame(pages, padding=8) for _ in range(4))
+    for panel, title in ((talk, 'Conversar'), (microphone, 'Microfone'), (test, 'Diagnóstico'), (output_panel, 'Saída')):
         pages.add(panel, text=title)
 
-    configured = os.getenv('JARVIS_WAKE_MODEL', 'small')
+    configured = os.getenv('JARVIS_WAKE_MODEL', window.preferences.stt_model)
     window.voice_test_model = tk.StringVar(value=configured)
     ttk.Label(talk, text='1. Reconhecimento da sua fala', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
     row = ttk.Frame(talk)
@@ -41,8 +41,8 @@ def build_voice_panel(window, tabs):
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
     window.voice_capture_level = ttk.Progressbar(talk, maximum=100)
     window.voice_capture_level.pack(fill='x', pady=6)
-    output = ('Resposta falada: Piper configurado.' if os.getenv('JARVIS_PIPER_MODEL') else
-              'Resposta em texto. Para ouvir a resposta, configure a voz Piper.')
+    output = ('Voz selecionada; confirme áudio na aba Saída.' if window.preferences.piper_model else
+              'Resposta em texto. Selecione e teste uma voz local na aba Saída.')
     ttk.Label(talk, text=output, wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=6)
 
     ttk.Label(microphone, text='Entrada de áudio', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
@@ -82,4 +82,31 @@ def build_voice_panel(window, tabs):
     window.voice_test_result.pack(fill='both', expand=True, pady=6)
     ttk.Button(test, text='Apagar amostra', command=lambda: window._voice_test_action('clear')).pack(anchor='w')
     ttk.Label(test, text='Similaridade vale só para esta frase. Áudio temporário apagado ao substituir ou fechar.',
+              wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
+
+    window.voice_piper_model = tk.StringVar(value=window.preferences.piper_model)
+    window.voice_output = tk.StringVar(value=window.preferences.output_device)
+    window.voice_silence = tk.StringVar(value=str(window.preferences.silence_ms))
+    window.voice_mode = tk.StringVar(value=window.preferences.voice_mode)
+    ttk.Label(output_panel, text='Voz Piper local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
+    ttk.Label(output_panel, text='Selecione um .onnx compatível com seu .onnx.json. Nenhum download é feito automaticamente.',
+              wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
+    row = ttk.Frame(output_panel)
+    row.pack(fill='x', pady=4)
+    ttk.Entry(row, textvariable=window.voice_piper_model, width=12).pack(side='left', fill='x', expand=True)
+    ttk.Button(row, text='Escolher…', command=window._choose_piper_voice).pack(side='left')
+    ttk.Label(output_panel, text='Saída Pulse/PipeWire (vazia = padrão)').pack(anchor='w')
+    window.voice_output_choice = ttk.Combobox(output_panel, textvariable=window.voice_output, width=22)
+    window.voice_output_choice.pack(fill='x', pady=4)
+    ttk.Button(output_panel, text='Listar saídas', command=lambda: window.backend.submit('voice_outputs')).pack(anchor='w')
+    row = ttk.Frame(output_panel)
+    row.pack(fill='x', pady=6)
+    ttk.Label(row, text='Silêncio (ms):').pack(side='left')
+    ttk.Spinbox(row, from_=600, to=1800, increment=100, textvariable=window.voice_silence, width=5).pack(side='left', padx=4)
+    ttk.Combobox(row, textvariable=window.voice_mode, values=('continuous', 'manual', 'muted'),
+                 width=11, state='readonly').pack(side='left')
+    ttk.Button(output_panel, text='Salvar voz, entrada e modo', command=window._save_voice_preferences).pack(fill='x', pady=4)
+    ttk.Button(output_panel, text='Testar voz salva', command=lambda: window.backend.submit(
+        'voice_speak', 'A voz local está configurada. Confirme se você ouviu esta frase com clareza.')).pack(fill='x', pady=4)
+    ttk.Label(output_panel, text='Ambiente explícito tem precedência. Salvar não comprova saída audível. Piper e player precisam estar instalados.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)

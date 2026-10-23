@@ -34,14 +34,21 @@ def exclusive_capture(method):
     return capture
 
 class VoiceIO:
-    def __init__(self, model="tiny", language="pt", piper_model="", sample_rate=16000,
-                 device=None, silence_rms=150):
-        self.model_name = model
+    def __init__(self, model=None, language="pt", piper_model="", sample_rate=16000,
+                 device=None, silence_rms=150, output_device=None):
+        from .preferences import PreferenceStore
+        preferences = PreferenceStore().load().effective()
+        self.model_name = os.getenv('JARVIS_WHISPER_MODEL', model or preferences.stt_model)
         self.language = language
+        piper_model = os.getenv('JARVIS_PIPER_MODEL', piper_model or preferences.piper_model)
         self.piper_model = Path(piper_model).expanduser() if piper_model else None
         self.sample_rate = sample_rate
-        self.device = device if device is not None else os.getenv("JARVIS_AUDIO_DEVICE")
+        self.device = os.getenv('JARVIS_AUDIO_DEVICE', device if device is not None else preferences.audio_device or None)
+        if isinstance(self.device, str):
+            self.device = self.device.split(': ', 1)[-1]
         self.silence_rms = silence_rms
+        self.output_device = os.getenv('JARVIS_AUDIO_OUTPUT', output_device if output_device is not None else preferences.output_device)
+        self.silence_seconds = preferences.silence_ms / 1000
         self._stt = None
         self._speech_cancel = threading.Event()
 
@@ -55,6 +62,17 @@ class VoiceIO:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         except Exception as exc:
             raise VoiceError(f"Não foi possível listar microfones: {exc}") from exc
+
+    @staticmethod
+    def output_devices():
+        try:
+            result = subprocess.run(['pactl', 'list', 'short', 'sinks'], capture_output=True,
+                                    text=True, timeout=5, check=False)
+            if result.returncode:
+                raise VoiceError('Não foi possível listar as saídas Pulse/PipeWire')
+            return [line.split()[1] for line in result.stdout.splitlines() if len(line.split()) >= 2]
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise VoiceError('Listagem requer pactl e servidor Pulse/PipeWire disponível') from exc
 
     @exclusive_capture
     def record(self, seconds=6, *, allow_silence=False, on_level=None):
@@ -155,7 +173,9 @@ class VoiceIO:
             raise VoiceError("Modelo de voz Piper não encontrado em JARVIS_PIPER_MODEL")
         if not shutil.which("piper"):
             raise VoiceError("Executável 'piper' não está no PATH")
-        if not shutil.which("aplay"):
+        if self.output_device and not shutil.which('paplay'):
+            raise VoiceError('Saída selecionada requer paplay (pulseaudio-utils)')
+        if not self.output_device and not shutil.which("aplay"):
             raise VoiceError("Instale 'alsa-utils' para executar aplay")
         fd, location = tempfile.mkstemp(prefix="jarvis_speech_", suffix=".wav")
         os.close(fd)
@@ -164,7 +184,8 @@ class VoiceIO:
             for chunk in speech_chunks(text):
                 self._run_audio(["piper", "--model", str(self.piper_model), "--output_file", str(wav_path)],
                                 text=chunk)
-                self._run_audio(["aplay", "-q", str(wav_path)])
+                player = ['paplay', '--device=' + self.output_device, str(wav_path)] if self.output_device else ['aplay', '-q', str(wav_path)]
+                self._run_audio(player)
             return "spoken"
         except subprocess.TimeoutExpired as exc:
             raise VoiceError("Tempo limite de síntese/reprodução excedido") from exc
@@ -221,7 +242,7 @@ class VoiceIO:
             import sounddevice as sd
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
-        listener = WakeWordConversation(self, lambda _: None)
+        listener = WakeWordConversation(self, lambda _: None, silence_seconds=self.silence_seconds)
         if cancel is not None:
             listener._stop = cancel
         samples = listener._listen_for_command(sd, np, idle_timeout=20,
@@ -244,14 +265,14 @@ class WakeWordConversation:
                     "voltar a espera", "pare de ouvir"}
 
     def __init__(self, voice: VoiceIO, on_command, on_status=lambda _message: None,
-                 *, device=None, silence_seconds=1.0,
+                 *, device=None, silence_seconds=None,
                  max_command_seconds=120, on_transcript=lambda _text: None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
         self.on_transcript = on_transcript
         self.device = voice.device if device is None else device
-        self.silence_seconds = silence_seconds
+        self.silence_seconds = voice.silence_seconds if silence_seconds is None else silence_seconds
         self.max_command_seconds = max_command_seconds
         self._stop = threading.Event()
         self._resume = threading.Event()
@@ -260,6 +281,7 @@ class WakeWordConversation:
         self._capture_guard = threading.Lock()
         self._capture_idle = threading.Event()
         self._capture_idle.set()
+        self._generation = 0
 
     @classmethod
     def remove_wake_word(cls, text):
@@ -280,6 +302,7 @@ class WakeWordConversation:
         self._thread.start()
 
     def stop(self, timeout=2):
+        self._generation += 1
         self._stop.set()
         self._resume.set()
         if self._thread is not None and self._thread is not threading.current_thread():
@@ -288,6 +311,7 @@ class WakeWordConversation:
 
     def pause(self, timeout=0):
         with self._capture_guard:
+            self._generation += 1
             self._resume.clear()
         return self._capture_idle.wait(timeout)
 
@@ -311,6 +335,7 @@ class WakeWordConversation:
                 if not self._resume.wait(0.2):
                     continue
                 woke = not conversation
+                generation = self._generation
                 try:
                     samples = self._listen_for_command(
                         sd, np, idle_timeout=20 if conversation else None)
@@ -327,7 +352,7 @@ class WakeWordConversation:
                 capture_failures = 0
                 if self._stop.is_set():
                     break
-                if not self._resume.is_set():
+                if not self._resume.is_set() or self._stop.is_set() or generation != self._generation:
                     continue
                 if samples is None:
                     conversation = False
@@ -351,7 +376,7 @@ class WakeWordConversation:
                     continue
                 finally:
                     recording.unlink(missing_ok=True)
-                if not self._resume.is_set():
+                if not self._resume.is_set() or self._stop.is_set() or generation != self._generation:
                     continue
                 if transcript:
                     stop_text = self.WAKE_PATTERN.sub("", transcript, count=1)

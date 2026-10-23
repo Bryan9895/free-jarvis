@@ -34,6 +34,18 @@ class FakeService:
 
 
 class GuiBackendTests(unittest.TestCase):
+    def test_voice_preferences_save_and_reload_without_fcc(self):
+        from jarvis.preferences import PreferenceStore
+        with tempfile.TemporaryDirectory() as td:
+            backend = GuiBackend(None)
+            backend.preference_store = PreferenceStore(Path(td) / 'preferences.json')
+            backend._dispatch('voice_configure', {'piper_model': '/tmp/voz.onnx',
+                'output_device': 'bluez_output.test', 'silence_ms': 1200, 'voice_mode': 'manual'})
+            saved = backend.preference_store.load()
+            self.assertEqual(saved.output_device, 'bluez_output.test')
+            self.assertEqual(saved.silence_ms, 1200)
+            self.assertIsNone(backend.service)
+
     def test_push_to_talk_transcribes_sends_and_removes_wav(self):
         backend = GuiBackend(None)
         backend.service = FakeService()
