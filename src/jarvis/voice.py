@@ -1,7 +1,6 @@
 """Camada de voz local e opcional: SoundDevice -> faster-whisper -> Piper."""
 from __future__ import annotations
 import os
-from collections import deque
 from pathlib import Path
 import queue
 import re
@@ -11,11 +10,28 @@ import tempfile
 import threading
 import time
 import wave
+from functools import wraps
 from array import array
 from math import sqrt
 
 class VoiceError(RuntimeError):
     """Falha recuperável de áudio."""
+
+
+_capture_owner = threading.Lock()
+
+
+def exclusive_capture(method):
+    """Exclusão também entre adaptadores de diagnóstico e conversa."""
+    @wraps(method)
+    def capture(*args, **kwargs):
+        if not _capture_owner.acquire(blocking=False):
+            raise VoiceError("Microfone ocupado por outra captura; pare-a antes de continuar")
+        try:
+            return method(*args, **kwargs)
+        finally:
+            _capture_owner.release()
+    return capture
 
 class VoiceIO:
     def __init__(self, model="tiny", language="pt", piper_model="", sample_rate=16000,
@@ -39,6 +55,7 @@ class VoiceIO:
         except Exception as exc:
             raise VoiceError(f"Não foi possível listar microfones: {exc}") from exc
 
+    @exclusive_capture
     def record(self, seconds=6, *, allow_silence=False, on_level=None):
         """Grava WAV PCM16 temporário; o chamador deve apagar o arquivo."""
         if not 1 <= seconds <= 15:
@@ -164,6 +181,22 @@ class VoiceIO:
         finally:
             recording.unlink(missing_ok=True)
 
+    def record_turn(self, *, cancel=None, finish=None, on_level=None):
+        """Botão usa o mesmo endpoint do contínuo, sem janela fixa de pedido."""
+        try:
+            import numpy as np
+            import sounddevice as sd
+        except ImportError as exc:
+            raise VoiceError("Instale: pip install -e '.[voice]'") from exc
+        listener = WakeWordConversation(self, lambda _: None)
+        if cancel is not None:
+            listener._stop = cancel
+        samples = listener._listen_for_command(sd, np, idle_timeout=20,
+                                              finish=finish, on_level=on_level)
+        if samples is None:
+            raise VoiceError("Captura cancelada ou nenhuma fala recebida; pedido não enviado")
+        return listener._write_recording(samples)
+
 
 class WakeWordConversation:
     """Escuta a frase de ativação localmente e entrega uma fala por vez."""
@@ -179,7 +212,7 @@ class WakeWordConversation:
 
     def __init__(self, voice: VoiceIO, on_command, on_status=lambda _message: None,
                  *, device=None, silence_seconds=1.0,
-                 max_command_seconds=15, on_transcript=lambda _text: None):
+                 max_command_seconds=120, on_transcript=lambda _text: None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
@@ -238,14 +271,27 @@ class WakeWordConversation:
                     "Escuta contínua requer os pacotes do extra 'voice'."
                 ) from exc
 
-            self.on_status("Aguardando Jarvis; detecção e transcrição são locais…")
+            self.on_status("Aguardando Jarvis — fallback por transcrição local; detector acústico não validado.")
             conversation = False
+            capture_failures = 0
             while not self._stop.is_set():
                 if not self._resume.wait(0.2):
                     continue
                 woke = not conversation
-                samples = self._listen_for_command(
-                    sd, np, idle_timeout=20 if conversation else None)
+                try:
+                    samples = self._listen_for_command(
+                        sd, np, idle_timeout=20 if conversation else None)
+                except VoiceError as exc:
+                    conversation = False
+                    self.on_status(f"Turno descartado: {exc}")
+                    capture_failures += 1
+                    if capture_failures >= 3:
+                        raise
+                    self.on_status(f"Recuperando áudio: tentativa {capture_failures}/2…")
+                    if self._stop.wait(0.5 * 2 ** (capture_failures - 1)):
+                        break
+                    continue
+                capture_failures = 0
                 if self._stop.is_set():
                     break
                 if not self._resume.is_set():
@@ -300,24 +346,23 @@ class WakeWordConversation:
         except Exception as exc:
             self.on_status(f"Escuta contínua indisponível: {exc}")
 
-    def _listen_for_command(self, sd, np, *, idle_timeout=None):
+    @exclusive_capture
+    def _listen_for_command(self, sd, np, *, idle_timeout=None, finish=None, on_level=None):
+        from .audio_endpoint import AudioEndpoint
         frames = queue.Queue(maxsize=64)
-        recent = deque(maxlen=12)  # preserva a frase de ativação no início da transcrição
+        lost = threading.Event()
 
         def receive(indata, _frame_count, _time_info, status):
             if status:
-                self.on_status(f"Áudio: {status}")
+                lost.set()
             chunk = indata[:, 0].copy()
             try:
                 frames.put_nowait(chunk)
             except queue.Full:
-                try:
-                    frames.get_nowait()
-                    frames.put_nowait(chunk)
-                except (queue.Empty, queue.Full):
-                    pass
+                lost.set()
 
-        captured = []
+        endpoint = AudioEndpoint(self.voice.sample_rate, silence_seconds=self.silence_seconds,
+                                 max_seconds=self.max_command_seconds)
         with self._capture_guard:
             if not self._resume.is_set():
                 return None
@@ -328,48 +373,41 @@ class WakeWordConversation:
                                 callback=receive):
                 idle_started = time.monotonic()
                 last_frame = idle_started
-                voiced = False
-                quiet_frames = 0
-                silence_limit = max(1, round(self.silence_seconds * self.voice.sample_rate / self.FRAME_SAMPLES))
-                max_frames = max(1, round(self.max_command_seconds * self.voice.sample_rate / self.FRAME_SAMPLES))
                 speech_threshold = max(self.voice.silence_rms, 180)
                 while not self._stop.is_set():
                     if not self._resume.is_set():
                         return None
+                    if lost.is_set():
+                        raise VoiceError("Perda de quadros/overflow; pedido descartado, repita a fala")
+                    if finish is not None and finish.is_set() and frames.empty():
+                        break
                     try:
                         chunk = frames.get(timeout=0.2)
                     except queue.Empty:
                         if time.monotonic() - last_frame >= 3:
                             raise VoiceError("Dispositivo sem entregar áudio por 3 segundos; "
                                              "confira a conexão e a entrada selecionada")
-                        if idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
+                        if not endpoint.started and idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
                             return None
                         continue
                     last_frame = time.monotonic()
-                    recent.append(chunk)
                     rms = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
-                    if not voiced and rms >= speech_threshold:
-                        voiced = True
-                        captured.extend(recent)
-                    elif voiced:
-                        captured.append(chunk)
-                        if rms >= speech_threshold:
-                            quiet_frames = 0
-                        else:
-                            quiet_frames += 1
-                            if quiet_frames >= silence_limit:
-                                break
-                    if len(captured) >= max_frames:
+                    if on_level is not None:
+                        from .voice_diagnostics import signal_metrics
+                        on_level(signal_metrics(chunk.tobytes()))
+                    if endpoint.feed(chunk, rms >= speech_threshold):
                         break
-                    if idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
+                    if not endpoint.started and idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
                         return None
+                if lost.is_set():
+                    raise VoiceError("Perda de quadros/overflow; pedido descartado, repita a fala")
         except Exception as exc:
             raise VoiceError(f"Não foi possível escutar o microfone: {exc}") from exc
         finally:
             self._capture_idle.set()
         if self._stop.is_set():
             return None
-        return np.concatenate(captured) if captured else None
+        return np.concatenate(endpoint.chunks) if endpoint.chunks else None
 
     def _write_recording(self, samples):
         fd, location = tempfile.mkstemp(prefix="jarvis_command_", suffix=".wav")

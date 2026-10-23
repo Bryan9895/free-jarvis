@@ -34,10 +34,10 @@ def build_voice_panel(window, tabs):
     window.voice_toggle_button.pack(fill='x')
     ttk.Label(talk, text='Contínua: diga “Jarvis” seguido do pedido. Ao terminar de falar, aguarde o reconhecimento.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=(4, 12))
-    window.push_to_talk_button = ttk.Button(talk, text='Apertar para falar · 6 s', style='Accent.TButton',
+    window.push_to_talk_button = ttk.Button(talk, text='Falar / terminar pedido', style='Accent.TButton',
                                            command=window._push_to_talk)
     window.push_to_talk_button.pack(fill='x')
-    ttk.Label(talk, text='Clique uma vez e fale por até 6 segundos. Grava e envia automaticamente; não precisa dizer Jarvis.',
+    ttk.Label(talk, text='Clique e fale. Um segundo de silêncio termina o pedido; outro clique envia. Parar descarta a captura. Não precisa dizer Jarvis.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
     window.voice_capture_level = ttk.Progressbar(talk, maximum=100)
     window.voice_capture_level.pack(fill='x', pady=6)

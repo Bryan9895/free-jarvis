@@ -37,3 +37,13 @@ Configuração padrão no código: Whisper small na GUI contínua/botão, tiny n
 6. Reiniciar, reconectar fone e repetir por 30 turnos. Registrar CPU/RSS, perdas, latência por estágio; testar 1040×640 e 1366×768 com escala GNOME aumentada. Nunca versionar áudio/transcrição ambiental.
 
 Checkpoint 0: após corrigir o contexto do teste, a suíte completa passou: 370 testes em 5,728 s, sem ignorados, fora do sandbox com display real. `git diff --check` passou. Isso não valida voz ou FCC reais.
+
+## Checkpoint 1 — captura e endpoint
+
+Implementado: endpoint compartilhado botão/contínuo, pré-fala de 800 ms, silêncio por contagem de amostras (1 s padrão), teto emergencial de 120 s que rejeita o turno, overflow/status do backend invalidando áudio, exclusão global de captura no processo, duas retentativas com backoff e término manual no botão. Timeout de seguimento só antes de começar a fala. Parar durante captura/STT do botão descarta o resultado; diagnóstico fixo mantém rótulo de 6 s. Escuta e diagnóstico podem ser iniciados sem FCC conectado.
+
+Automação **passou**: 378 testes em 5,882 s, incluindo Tk/Chromium e novos casos de 3/10/25/60 s, pausa de 800 ms, overflow, exclusão e recuperação limitada. `git diff --check` passou. Frames são sintéticos; não são arquivos de fala nem benchmark acústico.
+
+Limites: RMS ainda é fallback, não VAD validado. Captura continua pedindo mono 16 kHz; negociação Bluetooth e timestamps/métricas por frame ainda pendentes. Áudio fica limitado a cerca de 3,84 MB PCM por turno a 16 kHz, mais overhead de arrays; teto rejeita em vez de manter intenção parcial para continuação. Detector dedicado, montagem segmentada, controlador canônico e cancelamento completo do TTS ainda não entregues neste checkpoint.
+
+Publicação: shell HTTPS sem credencial; checkpoint 0 publicado via integração GitHub em `7c0d26ee83b63e7c194f7d6bd7d6a57d5b149f76`. Sem force push.

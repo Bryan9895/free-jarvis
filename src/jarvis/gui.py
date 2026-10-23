@@ -42,6 +42,9 @@ class GuiBackend:
         self._cancel_queued = threading.Event()
         self._submission_lock = threading.Lock()
         self._closed = threading.Event()
+        self._capture_cancel = threading.Event()
+        self._capture_finish = threading.Event()
+        self._capturing = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
 
     def start(self):
@@ -57,10 +60,12 @@ class GuiBackend:
                     return False
                 self._action_pending.set()
                 self._cancel_queued.clear()
+                self._capture_cancel.clear()
             self.commands.put((command, value))
             return True
 
     def cancel(self):
+        self._capture_cancel.set()
         service = self.service
         cancelled = service.cancel_current() if service is not None else False
         if self._action_pending.is_set():
@@ -71,6 +76,12 @@ class GuiBackend:
             request.accepted = False
             request.event.set()
         return cancelled
+
+    def finish_voice_turn(self):
+        if not self._capturing.is_set():
+            return False
+        self._capture_finish.set()
+        return True
 
     def revoke(self):
         service = self.service
@@ -144,7 +155,7 @@ class GuiBackend:
                                 self._voice_listener.pause()
                     if command == "retry":
                         self._reconnect()
-                    elif self.service is None and command != "voice_devices" and not command.startswith("voice_test_"):
+                    elif self.service is None and command not in {"voice_devices", "voice_listen_start", "voice_listen_stop", "voice_speak"} and not command.startswith("voice_test_"):
                         self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
                     else:
                         self._dispatch(command, value)
@@ -263,7 +274,13 @@ class GuiBackend:
             device = value.split(": ", 1)[-1] if value else None
             voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL", "tiny"),
                             language=os.getenv("JARVIS_LANGUAGE", "pt"), device=device)
-            self.events.put(("transcript", voice.listen_once(6)))
+            recording = voice.record_turn(cancel=self._capture_cancel)
+            try:
+                transcript = voice.transcribe(recording)
+                if not self._capture_cancel.is_set():
+                    self.events.put(("transcript", transcript))
+            finally:
+                recording.unlink(missing_ok=True)
         elif command == "voice_listen_start":
             options = value if isinstance(value, dict) else {"device": value}
             model = options.get("model") or os.getenv("JARVIS_WAKE_MODEL", "small")
@@ -301,11 +318,19 @@ class GuiBackend:
             if voice is None or voice.model_name != model or voice.device != configured_device:
                 voice = VoiceIO(model=model, language=os.getenv("JARVIS_LANGUAGE", "pt"),
                                 piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), device=device)
-            self.events.put(("voice_status", "Fale agora: gravando por 6 segundos. O pedido será enviado automaticamente."))
-            recording = voice.record(6, on_level=lambda level: self.events.put(("voice_capture_level", level)))
+            self._capture_finish.clear()
+            self._capturing.set()
+            self.events.put(("voice_status", "Ouvindo. Termine com um segundo de silêncio ou clique novamente para enviar."))
+            try:
+                recording = voice.record_turn(cancel=self._capture_cancel, finish=self._capture_finish,
+                    on_level=lambda level: self.events.put(("voice_capture_level", level)))
+            finally:
+                self._capturing.clear()
             try:
                 self.events.put(("voice_status", f"Whisper {model}: transcrevendo seu pedido…"))
                 transcript = voice.transcribe(recording)
+                if self._capture_cancel.is_set() or self._closed.is_set():
+                    return
                 self.events.put(("voice_heard", transcript))
             finally:
                 recording.unlink(missing_ok=True)
@@ -609,6 +634,8 @@ class JarvisWindow:
             "device": self.voice_device.get(), "model": self.voice_test_model.get()})
 
     def _push_to_talk(self):
+        if self.backend.finish_voice_turn():
+            return
         if self.backend.submit("voice_push_to_talk", {
                 "device": self.voice_device.get(), "model": self.voice_test_model.get()}):
             self.voice_capture_level.configure(value=0)

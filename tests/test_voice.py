@@ -251,5 +251,55 @@ class VoiceTests(unittest.TestCase):
                 self.assertEqual(run.call_args_list[0].args[0][0], "piper")
                 self.assertEqual(run.call_args_list[1].args[0][0], "aplay")
 
+    def test_overflow_invalidates_turn_instead_of_transcribing_missing_audio(self):
+        import numpy as np
+        class Stream:
+            def __init__(self, **kwargs): self.callback = kwargs['callback']
+            def __enter__(self):
+                for _ in range(65):
+                    self.callback(np.full((1280, 1), 600, dtype=np.int16), 1280, None, None)
+                return self
+            def __exit__(self, *_): pass
+        listener = WakeWordConversation(VoiceIO(), lambda _: self.fail('não enviar'))
+        with self.assertRaisesRegex(VoiceError, 'overflow'):
+            listener._listen_for_command(SimpleNamespace(InputStream=Stream), np)
+        self.assertTrue(listener._capture_idle.is_set())
+
+    def test_capture_exclusion_between_diagnostic_and_listener(self):
+        from jarvis.voice import _capture_owner
+        _capture_owner.acquire()
+        try:
+            with self.assertRaisesRegex(VoiceError, 'ocupado'):
+                VoiceIO().record(1)
+        finally:
+            _capture_owner.release()
+
+    def test_disconnected_listener_has_bounded_retries(self):
+        listener = WakeWordConversation(VoiceIO(), lambda _: self.fail('não enviar'))
+        listener._listen_for_command = Mock(side_effect=VoiceError('desconectado'))
+        listener._stop.wait = Mock(return_value=False)
+        statuses = []
+        listener.on_status = statuses.append
+        with patch.dict(sys.modules, {'sounddevice': SimpleNamespace()}):
+            listener._run()
+        self.assertEqual(listener._listen_for_command.call_count, 3)
+        self.assertEqual([call.args[0] for call in listener._stop.wait.call_args_list], [0.5, 1.0])
+        self.assertIn('Escuta contínua indisponível:', statuses[-1])
+
+    def test_followup_deadline_never_expires_after_speech_starts(self):
+        import numpy as np
+        class Stream:
+            def __init__(self, **kwargs): self.callback = kwargs['callback']
+            def __enter__(self):
+                for value in [600] * 5 + [0] * 13:
+                    self.callback(np.full((1280, 1), value, dtype=np.int16), 1280, None, None)
+                return self
+            def __exit__(self, *_): pass
+        listener = WakeWordConversation(VoiceIO(), lambda _: None)
+        # Tempo de parede salta além da janela enquanto há fala.
+        with patch('jarvis.voice.time.monotonic', side_effect=range(0, 1000, 30)):
+            samples = listener._listen_for_command(SimpleNamespace(InputStream=Stream), np, idle_timeout=20)
+        self.assertEqual(len(samples), 18 * 1280)
+
 if __name__ == "__main__":
     unittest.main()

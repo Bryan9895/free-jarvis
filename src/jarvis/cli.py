@@ -193,7 +193,7 @@ def main():
                             language=os.getenv("JARVIS_LANGUAGE", "pt"),
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
             if args.push_to_talk:
-                print("MODO VOZ: pressione Enter para gravar 6 segundos; digite sair para encerrar.")
+                print("MODO VOZ: Enter inicia fala até silêncio; digite sair para encerrar.")
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
@@ -218,9 +218,13 @@ def main():
                         if command:
                             msg = command
                         else:
-                            print("🎙️ Gravando por 6 segundos...")
+                            print("🎙️ Ouvindo até um segundo de silêncio...")
                             try:
-                                msg = voice.listen_once(6)
+                                recording = voice.record_turn()
+                                try:
+                                    msg = voice.transcribe(recording)
+                                finally:
+                                    recording.unlink(missing_ok=True)
                             except Exception as exc:
                                 print(f"Falha de gravação/transcrição: {exc}", file=sys.stderr)
                                 continue

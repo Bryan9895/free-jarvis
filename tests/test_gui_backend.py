@@ -41,7 +41,7 @@ class GuiBackendTests(unittest.TestCase):
             recording = Path(td) / 'sample.wav'
             recording.write_bytes(b'audio')
             voice = factory.return_value
-            voice.record.return_value = recording
+            voice.record_turn.return_value = recording
             voice.transcribe.return_value = 'Quanto é dois mais dois?'
             voice.piper_model = None
             voice.model_name = 'small'
@@ -64,7 +64,7 @@ class GuiBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, patch('jarvis.voice.VoiceIO') as factory:
             recording = Path(td) / 'sample.wav'
             recording.write_bytes(b'audio')
-            factory.return_value.record.return_value = recording
+            factory.return_value.record_turn.return_value = recording
             factory.return_value.transcribe.side_effect = RuntimeError('sem fala')
             with self.assertRaisesRegex(RuntimeError, 'sem fala'):
                 backend._dispatch('voice_push_to_talk', {'model':'small'})

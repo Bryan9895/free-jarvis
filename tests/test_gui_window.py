@@ -58,6 +58,7 @@ class WindowTests(unittest.TestCase):
                     'device':'14: Bluetooth mic', 'model':'small'})
                 window._handle('voice_status', 'Whisper small: Escuta contínua indisponível: desconectado')
                 self.assertFalse(window.voice_listening)
+                backend.finish_voice_turn.return_value = False
                 window._push_to_talk()
                 backend.submit.assert_called_with('voice_push_to_talk', {
                     'device':'14: Bluetooth mic', 'model':'small'})
