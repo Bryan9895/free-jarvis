@@ -6,17 +6,33 @@ import shutil
 import subprocess
 import tempfile
 import wave
+from array import array
+from math import sqrt
 
 class VoiceError(RuntimeError):
     """Falha recuperável de áudio."""
 
 class VoiceIO:
-    def __init__(self, model="tiny", language="pt", piper_model="", sample_rate=16000):
+    def __init__(self, model="tiny", language="pt", piper_model="", sample_rate=16000,
+                 device=None, silence_rms=150):
         self.model_name = model
         self.language = language
         self.piper_model = Path(piper_model).expanduser() if piper_model else None
         self.sample_rate = sample_rate
+        self.device = device if device is not None else os.getenv("JARVIS_AUDIO_DEVICE")
+        self.silence_rms = silence_rms
         self._stt = None
+
+    @staticmethod
+    def input_devices():
+        try:
+            import sounddevice as sd
+            return [(index, item["name"]) for index, item in enumerate(sd.query_devices())
+                    if item.get("max_input_channels", 0) > 0]
+        except ImportError as exc:
+            raise VoiceError("Instale: pip install -e '.[voice]'") from exc
+        except Exception as exc:
+            raise VoiceError(f"Não foi possível listar microfones: {exc}") from exc
 
     def record(self, seconds=6):
         """Grava WAV PCM16 temporário; o chamador deve apagar o arquivo."""
@@ -28,8 +44,14 @@ class VoiceIO:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         try:
             audio = sd.rec(int(self.sample_rate * seconds), samplerate=self.sample_rate,
-                           channels=1, dtype="int16")
+                           channels=1, dtype="int16", device=self.device)
             sd.wait()
+            frames = array("h")
+            frames.frombytes(audio.tobytes())
+            if not frames or sqrt(sum(sample * sample for sample in frames) / len(frames)) < self.silence_rms:
+                raise VoiceError("Nenhuma fala detectada; gravação descartada")
+        except VoiceError:
+            raise
         except Exception as exc:
             raise VoiceError(f"Microfone indisponível: {exc}") from exc
         fd, location = tempfile.mkstemp(prefix="jarvis_mic_", suffix=".wav")
@@ -55,7 +77,12 @@ class VoiceIO:
                 self._stt = WhisperModel(self.model_name, device="cpu", compute_type="int8")
             segments, _ = self._stt.transcribe(str(filename), language=self.language,
                                                 vad_filter=True, beam_size=1)
-            return " ".join(segment.text.strip() for segment in segments).strip()
+            text = " ".join(segment.text.strip() for segment in segments).strip()
+            if not text:
+                raise VoiceError("Nenhuma fala reconhecida")
+            return text
+        except VoiceError:
+            raise
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         except Exception as exc:

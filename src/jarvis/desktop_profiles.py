@@ -5,6 +5,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
+from .database import connect_database
 
 from .apps import _ID, launch_installed_app
 from .desktop_spaces import _monitors, _workspaces
@@ -18,16 +19,7 @@ from .workspace_control import activate_workspace, move_window_to_workspace
 def _connection(db_path):
     if db_path is None:
         return None
-    path = Path(db_path).expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
-    connection.execute("CREATE TABLE IF NOT EXISTS desktop_profiles ("
-                       "name TEXT PRIMARY KEY, payload TEXT NOT NULL, "
-                       "updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
-    connection.execute("CREATE TABLE IF NOT EXISTS desktop_profile_launches ("
-                       "profile_name TEXT NOT NULL, entry_index INTEGER NOT NULL, "
-                       "PRIMARY KEY(profile_name, entry_index))")
-    return connection
+    return connect_database(db_path)
 
 
 def _pending(db_path, name, entry_index):

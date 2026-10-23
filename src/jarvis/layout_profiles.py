@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from .database import connect_database
 
 from .window_layout import (_identity_ok, _place_one, _placement_verified,
                             _select, _workarea)
@@ -20,13 +21,7 @@ def _name(value):
 def _store(db_path):
     if db_path is None:
         return None
-    path = Path(db_path).expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
-    connection.execute("CREATE TABLE IF NOT EXISTS window_layout_profiles ("
-                       "name TEXT PRIMARY KEY, payload TEXT NOT NULL, "
-                       "updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
-    return connection
+    return connect_database(db_path)
 
 
 def list_window_layouts(db_path):

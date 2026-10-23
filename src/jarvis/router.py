@@ -135,6 +135,28 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
             and not re.search(r"\b(?: e |depois|em seguida|tambem)\b", normalized)):
         return [t for t in available if t.get("name") == "focused_window"]
 
+    # Pedidos simples de arquivo usam um conjunto pequeno de ferramentas.
+    if not re.search(r"\b(?:depois|em seguida|por fim|tambem|e)\b", normalized):
+        intents = [
+            (r"\b(?:crie|criar|escreva|escrever|salve|salvar|edite|editar)\b", r"\b(?:arquivo|ficheiro)\b", "write"),
+            (r"\b(?:leia|ler|abra|abrir|mostre|mostrar|conteudo)\b", r"\b(?:arquivo|ficheiro)\b", "read"),
+            (r"\b(?:liste|listar|mostre|mostrar)\b", r"\b(?:arquivos|pastas|diretorio)\b", "list"),
+            (r"\b(?:crie|criar)\b", r"\b(?:pasta|diretorio)\b", "mkdir"),
+            (r"\b(?:crie|criar|prepare|preparar)\b", r"\bprojeto\b", "project"),
+            (r"\b(?:mova|mover|renomeie|renomear)\b", r"\b(?:arquivo|pasta|projeto)\b", "move"),
+            (r"\b(?:apague|apagar|exclua|excluir)\b", r"\b(?:arquivo|pasta|projeto)\b", "delete"),
+        ]
+        matches = [kind for verb, target, kind in intents
+                   if re.search(verb, normalized) and re.search(target, normalized)]
+        if len(matches) == 1:
+            kind = matches[0]
+            names = {
+                "write": {"read_file", "write_file"} if re.search(r"\b(?:edite|editar)\b", normalized) else {"write_file"},
+                "read": {"read_file"}, "list": {"list_files"}, "mkdir": {"make_directory"},
+                "project": {"create_python_project"}, "move": {"move_path"}, "delete": {"delete_path"},
+            }[kind]
+            return [tool for tool in available if tool.get("name") in names]
+
     # Não escolher só uma ferramenta se houve pedido de arquivo, navegador,
     # abertura de aplicativo, mais de uma ação ou operação composta.
     complex_verbs = (r"\b(?:abra|abrir|inicie|iniciar|crie|criar|"

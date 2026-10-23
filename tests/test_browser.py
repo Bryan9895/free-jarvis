@@ -1,10 +1,13 @@
 """Testes da etapa 3 sem rede nem navegador real."""
 import unittest
 import tempfile
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from jarvis.tools import Toolkit
 from jarvis.browser_worker import validate_url
+from jarvis.browser import BrowserController, BrowserError
 
 class BrowserTests(unittest.TestCase):
     def test_block_unsafe_urls(self):
@@ -47,6 +50,17 @@ class BrowserTests(unittest.TestCase):
         names = {spec["name"] for spec in TOOL_SPECS}
         self.assertTrue({"browser_navigate","browser_inspect","browser_click","browser_fill",
                          "browser_screenshot"} <= names)
+
+    def test_worker_timeout_closes_unresponsive_process(self):
+        with tempfile.TemporaryDirectory() as td:
+            worker = BrowserController(Path(td), timeout=0.05)
+            worker.process = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(5)"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, text=True)
+            with self.assertRaisesRegex(BrowserError, "Tempo limite"):
+                worker.perform("inspect")
+            self.assertIsNone(worker.process)
 
 if __name__ == "__main__":
     unittest.main()

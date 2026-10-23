@@ -2,6 +2,7 @@
 import json
 import subprocess
 import sys
+import select
 from pathlib import Path
 from threading import Lock
 
@@ -9,10 +10,11 @@ class BrowserError(RuntimeError):
     pass
 
 class BrowserController:
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, timeout=30):
         self.workspace = workspace.resolve()
         self.process = None
         self.lock = Lock()
+        self.timeout = timeout
 
     def _ensure_started(self):
         if self.process is not None and self.process.poll() is None:
@@ -30,6 +32,9 @@ class BrowserController:
                 request = json.dumps({"op": operation, "args": kwargs}, ensure_ascii=False)
                 self.process.stdin.write(request + "\n")
                 self.process.stdin.flush()
+                ready, _, _ = select.select([self.process.stdout], [], [], self.timeout)
+                if not ready:
+                    raise BrowserError("Tempo limite do navegador excedido")
                 response = self.process.stdout.readline()
                 if not response:
                     raise BrowserError("O processo do navegador encerrou inesperadamente")
@@ -37,6 +42,9 @@ class BrowserController:
                 if not item.get("ok"):
                     raise BrowserError(item.get("error", "Erro não identificado"))
                 return item["result"]
+            except BrowserError:
+                self.close()
+                raise
             except (BrokenPipeError, OSError, ValueError) as exc:
                 self.close()
                 raise BrowserError("Falha na comunicação com o navegador") from exc
@@ -45,10 +53,15 @@ class BrowserController:
         if self.process is not None:
             proc = self.process
             self.process = None
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+            finally:
+                for stream in (proc.stdin, proc.stdout):
+                    if stream is not None:
+                        stream.close()
