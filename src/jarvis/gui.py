@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from tkinter import messagebox, scrolledtext, ttk
 
 from .service import JarvisService
+from .gui_presenter import status_label, plan_progress, plan_details, action_summary
 
 
 @dataclass
@@ -22,6 +23,9 @@ class ApprovalRequest:
 class GuiBackend:
     """Fila de comandos para manter GUI responsiva e conexões SQLite na mesma thread."""
 
+    ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
+                         "voice_record", "voice_speak"})
+
     def __init__(self, config, *, auto=True, service_factory=None):
         self.config = config
         self.auto = auto
@@ -32,6 +36,9 @@ class GuiBackend:
         self._approval = None
         self._voice = None
         self._voice_listener = None
+        self._action_pending = threading.Event()
+        self._cancel_queued = threading.Event()
+        self._submission_lock = threading.Lock()
         self._closed = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
 
@@ -39,11 +46,24 @@ class GuiBackend:
         self._thread.start()
 
     def submit(self, command, value=None):
-        self.commands.put((command, value))
+        with self._submission_lock:
+            if self._closed.is_set() and command != "shutdown":
+                return False
+            if command in self.ACTIONS:
+                if self._action_pending.is_set():
+                    self.events.put(("error", "Aguarde o pedido atual terminar ou cancele-o antes de enviar outro."))
+                    return False
+                self._action_pending.set()
+                self._cancel_queued.clear()
+            self.commands.put((command, value))
+            return True
 
     def cancel(self):
         service = self.service
         cancelled = service.cancel_current() if service is not None else False
+        if self._action_pending.is_set():
+            self._cancel_queued.set()
+            cancelled = True
         request = self._approval
         if request is not None:
             request.accepted = False
@@ -60,7 +80,7 @@ class GuiBackend:
     def close(self):
         self._closed.set()
         if self._voice_listener is not None:
-            self._voice_listener.stop()
+            self._voice_listener.stop(timeout=0)
         self.cancel()
         self.submit("shutdown")
 
@@ -88,6 +108,15 @@ class GuiBackend:
             "capabilities": sorted(self.service.toolkit.capabilities.enabled),
         }))
 
+    def _reconnect(self):
+        if self.service is None:
+            self._connect()
+        else:
+            # Mantém navegador/perfis/SQLite e o modelo escolhido; relê o catálogo.
+            models = self.service.client.available_models()
+            self.events.put(("models", models))
+            self.events.put(("reconnected", self.service.client.active_model))
+
     def _run(self):
         try:
             try:
@@ -98,20 +127,29 @@ class GuiBackend:
                 command, value = self.commands.get()
                 if command == "shutdown":
                     break
-                if command == "retry":
-                    if self.service is None:
-                        try:
-                            self._connect()
-                        except Exception as exc:
-                            self.events.put(("connection_error", str(exc)))
-                    continue
-                if self.service is None:
-                    self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
-                    continue
+                action = command in self.ACTIONS
                 try:
-                    self._dispatch(command, value)
+                    if action and self._cancel_queued.is_set():
+                        self.events.put(("progress", "Pedido cancelado antes de iniciar."))
+                        continue
+                    if action:
+                        self.events.put(("busy", True))
+                        if self._voice_listener is not None:
+                            self._voice_listener.pause()
+                    if command == "retry":
+                        self._reconnect()
+                    elif self.service is None:
+                        self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
+                    else:
+                        self._dispatch(command, value)
                 except Exception as exc:
-                    self.events.put(("error", str(exc)))
+                    self.events.put(("connection_error" if command == "retry" else "error", str(exc)))
+                finally:
+                    if action:
+                        self._action_pending.clear()
+                        if self._voice_listener is not None:
+                            self._voice_listener.resume()
+                        self.events.put(("busy", False))
         finally:
             if self.service is not None:
                 try:
@@ -122,7 +160,16 @@ class GuiBackend:
 
     def _dispatch(self, command, value):
         service = self.service
-        if command == "tool_action":
+        if command == "plan_action":
+            action, argument = value
+            try:
+                result = service.plan_action(action, argument)
+                self.events.put(("plan", result))
+            finally:
+                self.events.put(("plan", service.planner.snapshot()))
+        elif command == "plan_history":
+            self.events.put(("plan_history", service.planner.history(20)))
+        elif command == "tool_action":
             name, arguments = value
             allowed = {"task_list", "task_add", "task_update", "browser_tabs",
                        "browser_new_tab", "browser_select_tab", "browser_close_tab",
@@ -284,7 +331,7 @@ class JarvisWindow:
         self.hud.pack(fill="x")
         ttk.Label(conversation, text="CONVERSA", style="Muted.TLabel").pack(anchor="w", pady=(0, 8))
         self.chat = scrolledtext.ScrolledText(conversation, wrap="word", state="disabled",
-            width=42, background=PANEL, foreground=TEXT, insertbackground=ACCENT,
+            width=42, height=8, background=PANEL, foreground=TEXT, insertbackground=ACCENT,
             relief="flat", borderwidth=0, padx=16, pady=14, font=("DejaVu Sans", 10))
         self.chat.tag_configure("speaker", foreground=ACCENT, font=("DejaVu Sans", 10, "bold"))
         self.chat.pack(fill="both", expand=True)
@@ -295,23 +342,48 @@ class JarvisWindow:
         self.message.bind("<Return>", lambda _event: self._send())
         self.send_button = ttk.Button(send, text="Enviar", style="Accent.TButton", command=self._send)
         self.send_button.pack(side="left", padx=3)
-        self.voice_quick = ttk.Button(send, text="Voz: desligada", command=self._toggle_voice)
+        audio_controls = ttk.Frame(conversation)
+        audio_controls.pack(fill="x", pady=(0, 5))
+        self.voice_quick = ttk.Button(audio_controls, text="Voz: desligada", command=self._toggle_voice)
         self.voice_quick.pack(side="left")
-        ttk.Button(send, text="Ler", command=lambda: self.backend.submit(
+        ttk.Button(audio_controls, text="Ler resposta", command=lambda: self.backend.submit(
             "voice_speak", self.last_answer)).pack(side="left")
-        ttk.Button(send, text="Cancelar", command=self._cancel).pack(side="left")
+        ttk.Button(audio_controls, text="Cancelar pedido", command=self._cancel).pack(side="left")
 
         tasks = ttk.Frame(tabs, padding=8)
         tabs.add(tasks, text="Plano em execução")
         self.plan_status = tk.StringVar(value="Sem plano")
         ttk.Label(tasks, textvariable=self.plan_status).pack(anchor="w")
-        self.steps = ttk.Treeview(tasks, columns=("id", "status", "description"), show="headings")
+        self.steps = ttk.Treeview(tasks, height=5, columns=("id", "status", "description"), show="headings")
         for key, title, width in (("id", "#", 35), ("status", "Estado", 110),
                                   ("description", "Etapa", 260)):
             self.steps.heading(key, text=title)
             self.steps.column(key, width=width)
         self.steps.pack(fill="both", expand=True)
-        ttk.Button(tasks, text="Atualizar", command=lambda: self.backend.submit("snapshot")).pack()
+        self.plan_progress = ttk.Progressbar(tasks, mode="determinate", maximum=1)
+        self.plan_progress.pack(fill="x", pady=5)
+        self.plan_goal = ttk.Entry(tasks)
+        self.plan_goal.pack(fill="x", pady=3)
+        ttk.Label(tasks, text="Escreva um objetivo e crie um plano antes de executar.",
+                  wraplength=320, style="Muted.TLabel").pack(anchor="w")
+        controls = ttk.Frame(tasks)
+        controls.pack(fill="x")
+        for label, action in (("Criar plano", "prepare"), ("Executar", "execute"), ("Retomar", "resume")):
+            ttk.Button(controls, text=label, command=lambda action=action: self._plan_action(action)).pack(side="left", padx=2)
+        recovery = ttk.Frame(tasks)
+        recovery.pack(fill="x", pady=3)
+        ttk.Button(recovery, text="Repetir etapa", command=lambda: self._plan_action("resolve", "retry")).pack(side="left")
+        ttk.Button(recovery, text="Ignorar etapa", command=lambda: self._plan_action("resolve", "skip")).pack(side="left")
+        ttk.Button(recovery, text="Cancelar plano", command=lambda: self._plan_action("cancel")).pack(side="left")
+        self.saved_plans = ttk.Combobox(tasks, state="readonly")
+        self.saved_plans.pack(fill="x", pady=3)
+        history_controls = ttk.Frame(tasks)
+        history_controls.pack(fill="x")
+        ttk.Button(history_controls, text="Histórico", command=lambda: self.backend.submit("plan_history")).pack(side="left")
+        ttk.Button(history_controls, text="Selecionar", command=self._select_plan).pack(side="left")
+        ttk.Button(history_controls, text="Atualizar", command=lambda: self.backend.submit("snapshot")).pack(side="left")
+        self.plan_detail_text = scrolledtext.ScrolledText(tasks, width=35, height=5, wrap="word", state="disabled")
+        self.plan_detail_text.pack(fill="x", pady=5)
 
         board = ttk.Frame(tabs, padding=8)
         tabs.add(board, text="Minhas tarefas")
@@ -432,10 +504,23 @@ class JarvisWindow:
 
     def _send(self):
         message = self.message.get().strip()
-        if message:
+        if message and self.backend.submit("ask", message):
             self.message.delete(0, "end")
             self._append_chat("Você", message)
-            self.backend.submit("ask", message)
+
+    def _plan_action(self, action, value=None):
+        if action == "prepare":
+            value = self.plan_goal.get().strip()
+            if not value:
+                self._append_chat("Sistema", "Informe o objetivo do plano.")
+                return
+        self.backend.submit("plan_action", (action, value))
+
+    def _select_plan(self):
+        selected = self.saved_plans.get()
+        if selected:
+            plan_id = int(selected.split(" · ", 1)[0].lstrip("#"))
+            self._plan_action("select", plan_id)
 
     def _cancel(self):
         if self.backend.cancel():
@@ -495,6 +580,10 @@ class JarvisWindow:
             self.hud.set_state("PRONTO", "Digite ou diga Jarvis seguido do pedido")
             if os.getenv("JARVIS_GUI_VOICE", "1") != "0":
                 self.backend.submit("voice_listen_start", self.voice_device.get())
+        elif kind == "reconnected":
+            self.connection.set("Catálogo FCC atualizado · inferência ainda não testada")
+            self.model.set(payload)
+            self._append_chat("Sistema", "Conexão restabelecida; catálogo atualizado.")
         elif kind == "connection_error":
             self.connection.set("FCC indisponível")
             self.hud.set_state("SEM CONEXÃO", "Confira o servidor FCC e use Reconectar")
@@ -514,18 +603,26 @@ class JarvisWindow:
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))
         elif kind == "plan":
-            self.plan_status.set(f"Plano: {payload.get('status', 'desconhecido')}")
+            verified, total = plan_progress(payload)
+            self.plan_status.set(f"{status_label(payload.get('status', 'no_plan'))} · {verified}/{total} verificadas")
+            self.plan_progress.configure(maximum=max(total, 1), value=verified)
+            self._write(self.plan_detail_text, plan_details(payload))
             self.steps.delete(*self.steps.get_children())
             for step in payload.get("steps", []):
-                self.steps.insert("", "end", values=(step.get("id"), step.get("status"),
+                self.steps.insert("", "end", values=(step.get("id"), status_label(step.get("status", "pending")),
                                                      step.get("description")))
+        elif kind == "plan_history":
+            values = [f"#{plan['id']} · {plan.get('goal', '')[:65]}" for plan in payload if plan.get('id')]
+            self.saved_plans.configure(values=values)
+            if values:
+                self.saved_plans.set(values[0])
         elif kind == "action_result":
-            self._append_chat("Ação", json.dumps(payload, ensure_ascii=False))
+            self._append_chat("Ação", action_summary(payload))
         elif kind == "task_board":
             if payload.get("status") == "listed":
                 self.task_board.delete(*self.task_board.get_children())
                 for task in payload["tasks"]:
-                    self.task_board.insert("", "end", values=(task["id"], task["title"], task["state"], task["priority"]))
+                    self.task_board.insert("", "end", values=(task["id"], task["title"], status_label(task["state"]), task["priority"]))
         elif kind == "browser_tabs":
             if payload.get("status") == "listed":
                 self.browser_tabs.delete(*self.browser_tabs.get_children())

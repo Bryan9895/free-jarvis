@@ -89,3 +89,11 @@ Validação: 339 testes executados sem falhas, dois ignorados (Playwright e disp
 ## Comparação de catálogos FCC — 23/10/2026
 
 Adicionado --models-diagnostic: leitura Responses/padrão/admin, contagem por provedor e comparação por ref para não tratar aliases como modelos extras. Sem inferência, refresh ou escrita de configurações. Fonte oficial FCC `fc86d534`; servidor do usuário não acessível nesta sessão. Explicação e limites em CATALOGO_MODELOS.md. Não identificado filtro de modelos no cliente; hipótese de catálogo/provedor exige dados da instalação. Suíte: 343 testes sem falhas, dois ignorados.
+
+## Próxima etapa da GUI — 23/10/2026
+
+Base remota `1b2c756`. Corrigidos Reconectar inoperante após conexão inicial, enfileiramento silencioso de pedidos repetidos, cancelamento de pedido ainda na fila, controles cortados em janela compacta e painéis ocultos influenciando geometria/seleção inicial. Captura/TTS manual também passam pela exclusão operacional para pausar escuta contínua.
+
+Implementados controles de criar/executar/selecionar/cancelar/preparar retomada/resolver etapas de plano via JarvisService com lock e token; confirmações específicas de retry/skip preservadas. Apresentação em português, resumo de resultado sem JSON bruto e progresso somente de etapas verificadas. Código de apresentação em gui_presenter.py.
+
+Validação: ambiente Xvfb isolado conseguiu renderizar após preparação do teclado virtual. Layout inspecionado em 1240×720 e 1040×640 numa tela virtual 1366×768; mensagens e plano demonstrativos com backend simulado. Capturas em docs/screenshots não são ensaio físico. Suíte de checkpoint: 352 testes passaram, um ignorado (Playwright). Falta validação física de FCC, GNOME e áudio nesta entrega. Próximos passos: preferências persistentes de modelo/dispositivo e fluxo offline para painéis locais.

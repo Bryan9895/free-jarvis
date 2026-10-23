@@ -1,0 +1,45 @@
+import os
+import queue
+import unittest
+import tkinter as tk
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+from jarvis.gui import JarvisWindow
+from jarvis.tools import DEFAULT_REGISTRY
+
+
+@unittest.skipUnless(os.getenv('DISPLAY'), 'Display gráfico indisponível')
+class WindowTests(unittest.TestCase):
+    def test_compact_layout_and_plan_controls(self):
+        backend = Mock()
+        backend.events = queue.Queue()
+        backend.submit.return_value = True
+        backend.service = SimpleNamespace(toolkit=SimpleNamespace(registry=DEFAULT_REGISTRY))
+        root = tk.Tk()
+        try:
+            with patch.dict('os.environ', {'JARVIS_GUI_VOICE':'0'}):
+                window = JarvisWindow(root, backend)
+                root.geometry('1040x640')
+                root.update()
+                # A última página construída não pode esconder a página selecionada.
+                self.assertEqual(window.workspace_panels.selected, 0)
+                self.assertTrue(window.workspace_panels.panels[0].winfo_ismapped())
+                self.assertFalse(window.workspace_panels.panels[-1].winfo_ismapped())
+                window._handle('plan', {'status':'ready', 'steps':[
+                    {'id':1,'description':'Organizar janelas','status':'pending'}]})
+                root.update()
+                for widget in (window.voice_quick, window.send_button, window.plan_detail_text):
+                    self.assertLessEqual(widget.winfo_rooty()+widget.winfo_height(),
+                                         root.winfo_rooty()+root.winfo_height())
+                window.plan_goal.insert(0, 'Organizar o ambiente')
+                window._plan_action('prepare')
+                backend.submit.assert_called_with('plan_action', ('prepare', 'Organizar o ambiente'))
+                window._handle('plan_history', [{'id':3,'goal':'Plano salvo'}])
+                window._select_plan()
+                backend.submit.assert_called_with('plan_action', ('select',3))
+                window.workspace_panels.buttons[-1].invoke()
+                root.update()
+                self.assertFalse(window.workspace_panels.panels[0].winfo_ismapped())
+                self.assertTrue(window.workspace_panels.panels[-1].winfo_ismapped())
+        finally:
+            root.destroy()

@@ -83,3 +83,13 @@ Inicie com `jarvis-fcc --gui`. A navegação lateral seleciona o painel de opera
 A voz contínua inicia automaticamente após conectar ao FCC. Use **Voz: ligada/desligada** para alternar ou `jarvis-fcc --gui --text-only` para não iniciar o microfone. Microfone indisponível não impede mensagens digitadas. Durante um pedido digitado, a escuta é pausada e retomada após a execução.
 
 Análise e plano: `docs/INTERFACE_MARK_PLANO.md`. Modelo visual ilustrativo: `docs/INTERFACE_MODELO.svg`. Requer ambiente gráfico e Tkinter; no Ubuntu, instale python3-tk se sua instalação Python não incluir Tk. A aparência final no GNOME ainda precisa de verificação física.
+
+## Planos e recuperação na interface
+
+No painel **Plano em execução**, informe um objetivo e clique **Criar plano**. Revise as etapas e use **Executar**. O progresso conta somente etapas verificadas; uma resposta do modelo sem comprovação não aumenta esse indicador. **Histórico** lista planos persistidos; selecione um e clique **Selecionar**.
+
+Para plano interrompido, confira os efeitos no computador. **Repetir etapa** ou **Ignorar etapa** exige confirmação específica, mesmo em autoaprovação. Depois use **Retomar** para preparar pendentes e **Executar** para continuar. **Cancelar plano** cancela o plano parado/pronto; **Cancelar pedido**, abaixo da conversa, sinaliza interrupção do trabalho ativo. Chamadas já enviadas podem terminar e não são desfeitas.
+
+O backend aceita um pedido operacional por vez. Cliques/Enter repetidos não enfileiram execuções silenciosamente; a mensagem digitada permanece no campo se o envio for recusado. Reconectar relê o catálogo do FCC mesmo após uma conexão anterior, mantendo o modelo e o navegador gerenciado. Isso verifica acesso ao catálogo, não inferência do modelo.
+
+A janela compacta de 1040×640 foi renderizada e testada em Xvfb (telas de teste de 1366×768). Capturas de `docs/screenshots/` usam dados de demonstração e backend simulado; não provam integração com GNOME/FCC/microfone reais. Os painéis não selecionados agora são removidos do layout e não forçam tamanho mínimo dos demais.

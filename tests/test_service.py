@@ -1,6 +1,7 @@
 """Serviço compartilhado e cancelamento da sessão."""
 import threading
 import unittest
+from unittest.mock import Mock
 from types import SimpleNamespace
 
 from jarvis.approval import ApprovalPolicy
@@ -9,6 +10,40 @@ from jarvis.service import JarvisService
 
 
 class ServiceTests(unittest.TestCase):
+    def service(self, planner, approval=None):
+        return JarvisService(Mock(), Mock(), Mock(), Mock(), planner,
+                             approval or ApprovalPolicy(auto=True), report=lambda _: None)
+
+    def test_plan_execute_uses_cancel_token_and_releases_lock(self):
+        planner = Mock()
+        planner.execute.return_value = {"status":"completed_verified"}
+        service = self.service(planner)
+        result = service.plan_action("execute")
+        self.assertEqual(result["status"], "completed_verified")
+        self.assertIsNotNone(planner.execute.call_args.kwargs["cancel_token"])
+        self.assertFalse(service._lock.locked())
+        self.assertFalse(service.cancel_current())
+
+    def test_resolving_uncertain_step_requires_specific_confirmation(self):
+        planner = Mock()
+        snapshot = {"status":"interrupted", "steps":[
+            {"id":1,"description":"Criar arquivo","status":"interrupted"}]}
+        planner.snapshot.return_value = snapshot
+        approval = ApprovalPolicy(auto=True, manual_callback=lambda _: False)
+        service = self.service(planner, approval)
+        self.assertEqual(service.plan_action("resolve", "retry"), snapshot)
+        planner.resolve_step.assert_not_called()
+        self.assertFalse(service._lock.locked())
+
+    def test_plan_action_cannot_overlap_chat(self):
+        service = self.service(Mock())
+        service._lock.acquire()
+        try:
+            with self.assertRaisesRegex(RuntimeError, "execução"):
+                service.plan_action("prepare", "Objetivo")
+        finally:
+            service._lock.release()
+
     def test_cancel_current_stops_new_work_and_returns_cancelled_result(self):
         started = threading.Event()
         release = threading.Event()

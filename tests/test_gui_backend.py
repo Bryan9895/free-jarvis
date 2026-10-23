@@ -50,6 +50,44 @@ class GuiBackendTests(unittest.TestCase):
         backend._thread.join(timeout=2)
         self.assertTrue(service.closed)
 
+    def test_repeated_submit_is_rejected_and_pending_cancel_prevents_execution(self):
+        service = FakeService()
+        backend = GuiBackend(None, service_factory=lambda *_a, **_kw: service)
+        self.assertTrue(backend.submit("ask", "primeiro"))
+        self.assertFalse(backend.submit("ask", "duplicado"))
+        self.assertEqual(backend.commands.qsize(), 1)
+        self.assertTrue(backend.cancel())
+        backend.start()
+        while True:
+            event = backend.events.get(timeout=2)
+            if event == ("busy", False):
+                break
+        self.assertIsNone(service.called_in)
+        self.assertFalse(backend._action_pending.is_set())
+        backend.close()
+        backend._thread.join(2)
+
+    def test_reconnect_refreshes_existing_service_without_discarding_it(self):
+        backend = GuiBackend(None)
+        service = FakeService()
+        service.client = Mock(active_model="selected")
+        service.client.available_models.return_value = ["selected", "other"]
+        backend.service = service
+        backend._reconnect()
+        self.assertIs(backend.service, service)
+        service.client.available_models.assert_called_once()
+        self.assertEqual(backend.events.get_nowait(), ("models", ["selected", "other"]))
+        self.assertEqual(backend.events.get_nowait(), ("reconnected", "selected"))
+
+    def test_plan_controls_use_shared_service(self):
+        backend = GuiBackend(None)
+        service = FakeService()
+        service.plan_action = Mock(return_value={"status":"ready"})
+        backend.service = service
+        backend._dispatch("plan_action", ("prepare", "Organizar janelas"))
+        service.plan_action.assert_called_once_with("prepare", "Organizar janelas")
+        self.assertEqual(backend.events.get_nowait(), ("plan", {"status":"ready"}))
+
     def test_text_turn_pauses_and_resumes_voice_listener(self):
         backend = GuiBackend(None)
         backend.service = FakeService()

@@ -23,12 +23,16 @@ class WorkspacePanels(ttk.Frame):
                             command=lambda: self.select(index))
         button.pack(fill='x', pady=1)
         self.buttons.append(button)
-        if self.selected is None:
-            self.select(index)
+        self.select(index if self.selected is None else self.selected)
 
     def select(self, index):
         self.selected = index
-        self.panels[index].tkraise()
+        for number, panel in enumerate(self.panels):
+            if number == index:
+                panel.grid(row=0, column=0, sticky='nsew')
+                panel.tkraise()
+            else:
+                panel.grid_remove()
         for number, button in enumerate(self.buttons):
             button.state(['selected'] if number == index else ['!selected'])
 
