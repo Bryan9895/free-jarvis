@@ -9,6 +9,7 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 ## Documentos de execução
 
 - A especificação vigente é `docs/PROMPT_UNICO_JARVIS.md`; o prompt explícito do usuário prevalece. Os documentos abaixo são contexto histórico, não pré-requisitos adicionais.
+- Prioridade atual: reduzir a latência ponta a ponta e até primeiro texto/áudio útil, com baseline, p50/p95, qualidade preservada e comparação por cenário. A revisão do prompt, baseada na auditoria de `cd08fa2`, distingue correções já entregues de pendências; não reintroduza os cortes antigos de fala.
 - Leia `docs/PLANO_JARVIS_AUTONOMO.md` antes de implementar essa evolução.
 - Consulte `docs/REVISAO_REFERENCIAS_VOZ.md` para evidências, versões e limites das referências.
 - `docs/PROMPT_AGENTE_JARVIS.md` é o briefing executável desta entrega.
