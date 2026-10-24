@@ -1,5 +1,6 @@
 """Testes locais de voz sem hardware nem downloads."""
 import tempfile
+import os
 import sys
 from array import array
 import unittest
@@ -10,6 +11,15 @@ from jarvis.voice import VoiceIO, VoiceError, WakeWordConversation
 
 class VoiceTests(unittest.TestCase):
     def setUp(self):
+        preferences = tempfile.TemporaryDirectory()
+        self.addCleanup(preferences.cleanup)
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        for key in ('JARVIS_PIPER_MODEL', 'JARVIS_AUDIO_DEVICE', 'JARVIS_AUDIO_OUTPUT',
+                    'JARVIS_WHISPER_MODEL', 'JARVIS_SILENCE_MS', 'JARVIS_VAD_THRESHOLD', 'JARVIS_VOICE_MODE'):
+            os.environ.pop(key, None)
+        os.environ['JARVIS_PREFERENCES'] = str(Path(preferences.name) / 'preferences.json')
         # Estes testes verificam captura/lifecycle, não a precisão do classificador.
         activity = patch('jarvis.audio_activity.SileroActivity', side_effect=lambda **_:
             SimpleNamespace(active=lambda pcm: bool(abs(pcm).max() >= 180)))

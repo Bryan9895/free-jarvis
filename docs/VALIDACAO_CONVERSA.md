@@ -135,3 +135,15 @@ Falhou historicamente: cortes de 6/15 s e baseline E2E de abas, corrigidos nos c
 - Executar o roteiro físico deste documento, incluindo recuperação, janelas e voz audível. Barge-in depende desse gate e não foi entregue.
 
 Publicação anterior: instalador em `61d2669ec922665e667399f003599ff207da5feb`. O projeto permanece **sem aceite final** até demonstrar chamar Jarvis → fala livre → efeito verificado/resposta → áudio audível → seguimento/recuperação.
+
+## Correção após relato físico — interface de voz
+
+O traceback informado pelo usuário revelou regressão não coberta pelo checkpoint anterior: voice_capture_level contém dbfs, mas o widget ainda exigia elapsed e mostrava /6 s. A exceção saía de _poll antes de reagendar o próximo tick, deixando confirmações de botões sem processamento. Corrigido o contrato da fala livre e protegido o poll por evento, com reagendamento em finally e limite por tick. Erros de apresentação ficam visíveis e os eventos seguintes continuam.
+
+Selecionar voz tem diálogo vinculado à janela e confirmação explícita; instalar/salvar/testar mostram progresso e desativam os botões enquanto ocupados, reativando em falha e permitindo tentativa nova. Salvar passa a aplicar modelo/entrada à sessão ativa com parada/reinício seguro. Estado efetivo é devolvido à GUI.
+
+Pendência implementada: configuração, instalação, diagnóstico, listagem e saída de voz rodam em worker local independente da inicialização/rede FCC. Serviço, ferramentas e SQLite continuam na thread original. O mesmo bloqueio de ações impede execução concorrente e a captura continua exclusiva. Escuta configurada inicia sem aguardar FCC, sem duplicar listener no evento connected.
+
+Reprodução automatizada usa display real: nível sem elapsed → confirmação de voz → busy=False; evento inválido → confirmação de salvamento → poll seguinte; escolha pelo botão real → salvar em arquivo temporário → erro de instalação → botão reativado → nova instalação, mantendo FCC propositalmente bloqueado. Testes de voz agora isolam preferências/ambiente para não sintetizar/reproduzir acidentalmente a voz configurada no notebook. Hardware Bluetooth/GNOME, detector Jarvis e efeitos FCC reais continuam pendentes.
+
+Verificação desta correção: **passou**, 420 testes em 21,045 s, incluindo GUI no display real e jornada dos botões. `git diff --check` passou. A matriz anterior de interface deve ser lida com esta regressão física agora reproduzida e corrigida; teste automatizado não substitui reabrir a aplicação no fone.

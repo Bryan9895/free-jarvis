@@ -99,9 +99,10 @@ def build_voice_panel(window, tabs):
     row = ttk.Frame(output_panel)
     row.pack(fill='x', pady=4)
     ttk.Entry(row, textvariable=window.voice_piper_model, width=12).pack(side='left', fill='x', expand=True)
-    ttk.Button(row, text='Escolher…', command=window._choose_piper_voice).pack(side='left')
-    ttk.Button(output_panel, text='Instalar Faber pt-BR (~63 MB)',
-               command=lambda: window.backend.submit('voice_install')).pack(fill='x', pady=2)
+    window.voice_select_button = ttk.Button(row, text='Escolher…', command=window._choose_piper_voice)
+    window.voice_select_button.pack(side='left')
+    window.voice_install_button = ttk.Button(output_panel, text='Instalar Faber pt-BR (~63 MB)', command=window._install_voice)
+    window.voice_install_button.pack(fill='x', pady=2)
     ttk.Label(output_panel, text='Saída Pulse/PipeWire (vazia = padrão)').pack(anchor='w')
     window.voice_output_choice = ttk.Combobox(output_panel, textvariable=window.voice_output, width=22)
     window.voice_output_choice.pack(fill='x', pady=4)
@@ -116,8 +117,10 @@ def build_voice_panel(window, tabs):
     row.pack(fill='x', pady=4)
     ttk.Label(row, text='Limiar VAD (0.1–0.9):').pack(side='left')
     ttk.Spinbox(row, from_=0.1, to=0.9, increment=0.05, textvariable=window.voice_vad_threshold, width=5).pack(side='left', padx=4)
-    ttk.Button(output_panel, text='Salvar voz, entrada e modo', command=window._save_voice_preferences).pack(fill='x', pady=4)
-    ttk.Button(output_panel, text='Testar voz salva', command=lambda: window.backend.submit(
-        'voice_speak', 'A voz local está configurada. Confirme se você ouviu esta frase com clareza.')).pack(fill='x', pady=4)
+    window.voice_save_button = ttk.Button(output_panel, text='Salvar voz, entrada e modo', command=window._save_voice_preferences)
+    window.voice_save_button.pack(fill='x', pady=4)
+    window.voice_test_button = ttk.Button(output_panel, text='Testar voz salva', command=lambda: window.backend.submit(
+        'voice_speak', 'A voz local está configurada. Confirme se você ouviu esta frase com clareza.'))
+    window.voice_test_button.pack(fill='x', pady=4)
     ttk.Label(output_panel, text='Ambiente explícito tem precedência. Salvar não comprova saída audível. Piper e player precisam estar instalados.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)

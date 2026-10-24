@@ -6,7 +6,7 @@ Use `jarvis-fcc` para CLI, `jarvis-fcc --gui` para GUI ou `jarvis-fcc --voice` p
 
 A tela inicial mostra conversa e controles. Abra **Configurações → Voz**, com **Conversar**, **Microfone**, **Diagnóstico** e **Saída**. O botão **Falar / terminar** ouve até um segundo de silêncio (configurável); outro clique termina manualmente. **Cancelar pedido** descarta captura e resposta atrasada e interrompe a reprodução. Somente o diagnóstico mantém gravação fixa de seis segundos. Em contínuo, comece com “Jarvis” e continue sem repetir a chamada durante a janela de seguimento de 20 segundos, que não corta fala iniciada. A ativação ainda é fallback por Whisper/regex: **detector acústico de Jarvis isolado não está entregue nem aceito fisicamente**. Captura fica protegida durante resposta; barge-in não é anunciado.
 
-Whisper é local CPU int8, com padrão `small` na GUI e CLI, um único cache compartilhado com diagnóstico e carregamento tardio. Silero local decide atividade de fala; RMS mede nível. Taxa/canais são negociados e o áudio é normalizado uma vez para 16 kHz. O primeiro uso de Whisper pode baixar o modelo. Em Saída, salve STT, entrada, modo, silêncio e limiar VAD; aplique entrada/STT em Conversar para a sessão atual. Metas de precisão e latência não são garantidas por existir o VAD.
+Whisper é local CPU int8, com padrão `small` na GUI e CLI, um único cache compartilhado com diagnóstico e carregamento tardio. Silero local decide atividade de fala; RMS mede nível. Taxa/canais são negociados e o áudio é normalizado uma vez para 16 kHz. O primeiro uso de Whisper pode baixar o modelo. Em Saída, salve STT, entrada, modo, silêncio e limiar VAD; Salvar aplica entrada/STT à sessão ativa; Aplicar em Conversar também permite iniciar a escuta. Metas de precisão e latência não são garantidas por existir o VAD.
 
 **Modelos**, no menu lateral, escolhe a IA de conversa no FCC. Filtre por nome/provedor, escolha no campo abaixo e clique **Usar modelo**. O cabeçalho mostra o modelo realmente ativo; editar a seleção não troca o modelo até confirmar. Se aparecer **HTTP 404 em /v1/responses**, o provedor/modelo pode estar indisponível mesmo listado no catálogo. Na captura fornecida pelo usuário, NIM retornou função não encontrada para a conta: troque o modelo, por exemplo para `openai/gpt-5.6-luna` se constar no catálogo, e repita o pedido. Os detalhes técnicos ficam no painel Modelos. Nenhum modelo alternativo é escolhido automaticamente.
 
@@ -57,7 +57,7 @@ Uma falha de transcrição na escuta contínua descarta o WAV e retorna ao modo 
 
 ### Diagnóstico na aba Voz
 
-Abra `jarvis-fcc --gui` e selecione **Configurações → Voz**. Os testes funcionam mesmo após falha da conexão inicial ao FCC; a tentativa inicial de conexão ainda precisa terminar. Instale o extra `voice` para captura e Whisper.
+Abra `jarvis-fcc --gui` e selecione **Configurações → Voz**. Configuração, instalação de voz e diagnóstico usam uma fila local independente e funcionam enquanto o FCC conecta ou está indisponível. Instale o extra `voice` para captura e Whisper.
 
 1. Conecte o fone Bluetooth e confira no Ubuntu se a entrada ativa é o microfone dele. Na camada **Microfone**, clique **Listar entradas**, selecione um nome inequívoco ou mantenha o campo vazio para a entrada padrão/configurada. A lista SoundDevice pode mostrar apenas `pulse`/`default`; nesse caso, a fonte Bluetooth é escolhida pelo sistema ou por `PULSE_SOURCE`, não digitando um nome `bluez_input` como dispositivo SoundDevice.
 2. Clique **Verificar**. Isso consulta taxa/canais aceitos, sem comprovar que sua fala está chegando ou confirmar a fonte PipeWire efetiva. Evite `.monitor` e entradas virtuais.
@@ -71,7 +71,7 @@ A escuta contínua pausa durante cada operação de diagnóstico e retoma depois
 
 ## Tarefas, abas e janelas
 
-A GUI (`jarvis-fcc --gui`) inclui **Minhas tarefas**, **Abas gerenciadas** e **Janelas**. O painel de planos continua separado da lista pessoal. Os painéis de tarefas, abas e janelas ainda exigem conexão inicial com FCC. Os testes locais da aba Voz estão disponíveis após a tentativa de conexão, mesmo se ela falhar.
+A GUI (`jarvis-fcc --gui`) inclui **Minhas tarefas**, **Abas gerenciadas** e **Janelas**. O painel de planos continua separado da lista pessoal. Os painéis de tarefas, abas e janelas ainda exigem conexão inicial com FCC. Os testes locais da aba Voz estão disponíveis mesmo enquanto a conexão FCC está em andamento.
 
 - Tarefas: adicionar título/prioridade (1 baixa, 2 normal, 3 alta), atualizar e marcar pendente/em andamento/concluída. A lista persiste no banco SQLite; marcar concluída é uma decisão do usuário, não evidência de execução de um plano. Capacidades: `tasks.read` e `tasks.write`.
 - Abas: abrir URL pública, atualizar lista, selecionar e fechar por ID da sessão. Fechamento exige confirmação específica por possível perda de formulário. Abas abertas pelo usuário no Firefox pessoal não aparecem. IDs não são reutilizados enquanto o processo Chromium estiver vivo; fechar o Jarvis encerra essa sessão.
@@ -99,7 +99,7 @@ A leitura do teclado e as confirmações ficam na thread principal. Pedidos de v
 
 Inicie com `jarvis-fcc --gui`. Configurações revela a navegação e os painéis de operações, recolhidos no início, mantendo a conversa visível. O tema escuro e o HUD vetorial usam código próprio, sem assets da referência. O HUD indica estados recebidos do backend e não é medidor de áudio.
 
-A voz contínua inicia após conectar ao FCC quando esse é o modo salvo. Use **Voz: ligada/desligada** para alternar ou `jarvis-fcc --gui --text-only` para não iniciar o microfone. Microfone indisponível não impede mensagens digitadas. Durante um pedido digitado, a escuta é pausada e retomada após a execução.
+A voz contínua inicia conforme o modo salvo, sem esperar a conexão ao FCC; a execução de pedidos continua dependendo do serviço. Use **Voz: ligada/desligada** para alternar ou `jarvis-fcc --gui --text-only` para não iniciar o microfone. Microfone indisponível não impede mensagens digitadas. Durante um pedido digitado, a escuta é pausada e retomada após a execução.
 
 Análise e plano: `docs/INTERFACE_MARK_PLANO.md`. Modelo visual ilustrativo: `docs/INTERFACE_MODELO.svg`. Requer ambiente gráfico e Tkinter; no Ubuntu, instale python3-tk se sua instalação Python não incluir Tk. A aparência final no GNOME ainda precisa de verificação física.
 

@@ -34,6 +34,60 @@ class FakeService:
 
 
 class GuiBackendTests(unittest.TestCase):
+    def test_save_restarts_active_listener_with_new_microphone_and_model(self):
+        from jarvis.preferences import PreferenceStore
+        with tempfile.TemporaryDirectory() as td:
+            backend = GuiBackend(None)
+            backend.preference_store = PreferenceStore(Path(td) / 'preferences.json')
+            old = Mock()
+            old.stop.return_value = True
+            backend._voice_listener = old
+            backend._voice = SimpleNamespace(model_name='small', device='old mic')
+            with patch('jarvis.voice.VoiceIO') as voice, patch('jarvis.voice.WakeWordConversation') as listener:
+                backend._dispatch('voice_configure', {'audio_device': '14: new mic', 'stt_model': 'base', 'voice_mode': 'continuous'})
+            old.stop.assert_called_once()
+            self.assertEqual(voice.call_args.kwargs['model'], 'base')
+            self.assertEqual(voice.call_args.kwargs['device'], 'new mic')
+            listener.return_value.start.assert_called_once()
+            self.assertEqual(backend.preference_store.load().audio_device, '14: new mic')
+
+    def test_local_save_and_install_do_not_wait_for_fcc_initialization(self):
+        from jarvis.preferences import PreferenceStore
+        entered, release = threading.Event(), threading.Event()
+        service = FakeService()
+        def connect(*_args, **_kwargs):
+            entered.set()
+            release.wait(10)
+            return service
+        with tempfile.TemporaryDirectory() as td:
+            backend = GuiBackend(None, service_factory=connect)
+            backend.preference_store = PreferenceStore(Path(td) / 'preferences.json')
+            backend.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertTrue(backend.submit('voice_configure', {'voice_mode': 'manual', 'piper_model': '/tmp/selected.onnx'}))
+                events = []
+                while ('busy', False) not in events:
+                    events.append(backend.events.get(timeout=2))
+                self.assertEqual(backend.preference_store.load().piper_model, '/tmp/selected.onnx')
+                installed = Path(td) / 'installed.onnx'
+                with patch('jarvis.voice_setup.install_faber', return_value=installed):
+                    self.assertTrue(backend.submit('voice_install'))
+                    events = []
+                    while ('busy', False) not in events:
+                        events.append(backend.events.get(timeout=2))
+                self.assertIn(('voice_installed', str(installed)), events)
+                self.assertEqual(backend.preference_store.load().piper_model, str(installed))
+                self.assertIsNone(backend.service)
+                self.assertFalse(release.is_set())
+            finally:
+                backend.close()
+                release.set()
+                backend._thread.join(2)
+                backend._local_thread.join(2)
+            self.assertFalse(backend._local_thread.is_alive())
+            self.assertTrue(service.closed)
+
     def test_button_audio_to_verified_effect_and_visual_reply_journey(self):
         import sys
         import numpy as np

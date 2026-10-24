@@ -2,6 +2,10 @@ import os
 import queue
 import unittest
 import tkinter as tk
+import tempfile
+import threading
+import time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from jarvis.gui import JarvisWindow
@@ -10,6 +14,99 @@ from jarvis.tools import DEFAULT_REGISTRY
 
 @unittest.skipUnless(os.getenv('DISPLAY'), 'Display gráfico indisponível')
 class WindowTests(unittest.TestCase):
+    def test_select_save_install_failure_and_retry_with_real_event_loop(self):
+        from jarvis.gui import GuiBackend
+        from jarvis.preferences import PreferenceStore
+        from test_gui_backend import FakeService
+        release, entered = threading.Event(), threading.Event()
+        def connect(*_args, **_kwargs):
+            entered.set()
+            release.wait(10)
+            return FakeService()
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {
+                'JARVIS_GUI_VOICE': '0', 'JARVIS_PREFERENCES': str(Path(td) / 'preferences.json')}):
+            backend = GuiBackend(None, service_factory=connect)
+            root = tk.Tk()
+            errors = []
+            root.report_callback_exception = lambda *args: errors.append(args)
+            def pump_until(predicate):
+                deadline = time.monotonic() + 3
+                while time.monotonic() < deadline:
+                    root.update()
+                    if predicate():
+                        return
+                    time.sleep(.01)
+                self.fail('A interface não confirmou a operação dentro do prazo')
+            try:
+                window = JarvisWindow(root, backend)
+                self.assertTrue(entered.wait(2))
+                selected, installed = Path(td) / 'selected.onnx', Path(td) / 'installed.onnx'
+                with patch('jarvis.gui.filedialog.askopenfilename', return_value=str(selected)) as picker:
+                    window.voice_select_button.invoke()
+                picker.assert_called_once()
+                self.assertIs(picker.call_args.kwargs['parent'], root)
+                self.assertEqual(window.voice_piper_model.get(), str(selected))
+                backend.events.put(('voice_capture_level', {'dbfs': -30}))
+                window.voice_mode.set('manual')
+                window.voice_save_button.invoke()
+                pump_until(lambda: 'Preferências salvas' in window.voice_status.get() and not backend._action_pending.is_set())
+                self.assertEqual(PreferenceStore().load().piper_model, str(selected))
+                with patch('jarvis.voice_setup.install_faber', side_effect=[OSError('rede indisponível'), installed]):
+                    window.voice_install_button.invoke()
+                    pump_until(lambda: 'rede indisponível' in window.chat.get('1.0', 'end') and str(window.voice_install_button['state']) == 'normal')
+                    window.voice_install_button.invoke()
+                    pump_until(lambda: window.voice_piper_model.get() == str(installed) and str(window.voice_save_button['state']) == 'normal')
+                self.assertEqual(PreferenceStore().load().piper_model, str(installed))
+                self.assertIsNone(backend.service)
+                self.assertEqual(errors, [])
+                self.assertIsNotNone(window._poll_timer)
+            finally:
+                backend.close()
+                release.set()
+                backend._thread.join(2)
+                backend._local_thread.join(2)
+                root.destroy()
+
+    def test_capture_level_without_elapsed_keeps_poll_and_buttons_alive(self):
+        backend = Mock()
+        backend.events = queue.Queue()
+        root = tk.Tk()
+        try:
+            window = JarvisWindow(root, backend)
+            root.after_cancel(window._poll_timer)
+            window._poll_timer = None
+            backend.events.put(('voice_capture_level', {'dbfs': -30}))
+            backend.events.put(('voice_installed', '/tmp/voice.onnx'))
+            backend.events.put(('busy', False))
+            window._poll()
+            self.assertEqual(float(window.voice_capture_level['value']), 50)
+            self.assertNotIn('/6 s', window.voice_status.get())
+            self.assertEqual(window.voice_piper_model.get(), '/tmp/voice.onnx')
+            self.assertEqual(str(window.send_button['state']), 'normal')
+            self.assertIsNotNone(window._poll_timer)
+            self.assertTrue(backend.events.empty())
+        finally:
+            root.destroy()
+
+    def test_bad_event_does_not_lose_save_confirmation_or_next_tick(self):
+        backend = Mock()
+        backend.events = queue.Queue()
+        root = tk.Tk()
+        try:
+            window = JarvisWindow(root, backend)
+            root.after_cancel(window._poll_timer)
+            window._poll_timer = None
+            backend.events.put(('voice_test_level', {}))
+            backend.events.put(('voice_status', 'Preferências salvas.'))
+            backend.events.put(('busy', False))
+            window._poll()
+            self.assertEqual(window.voice_status.get(), 'Preferências salvas.')
+            self.assertIn('Falha ao atualizar', window.chat.get('1.0', 'end'))
+            self.assertIsNotNone(window._poll_timer)
+            self.assertTrue(backend.events.empty())
+        finally:
+            root.destroy()
+
     def test_voice_output_scroll_at_larger_scale(self):
         backend = Mock()
         backend.events = queue.Queue()

@@ -25,13 +25,17 @@ class GuiBackend:
 
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
-                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install"})
+                         "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install",
+                         "voice_configure", "voice_listen_start"})
+    LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install',
+                                'voice_listen_start', 'voice_listen_stop', 'voice_speak'})
 
     def __init__(self, config, *, auto=True, service_factory=None):
         self.config = config
         self.auto = auto
         self.service_factory = service_factory or JarvisService.from_config
         self.commands = queue.Queue()
+        self.local_commands = queue.Queue()
         self.events = queue.Queue()
         self.service = None
         self._approval = None
@@ -51,8 +55,10 @@ class GuiBackend:
         self.preference_store = PreferenceStore()
         self.preferences = self.preference_store.load()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
+        self._local_thread = threading.Thread(target=self._run_local, daemon=True, name="jarvis-audio-worker")
 
     def start(self):
+        self._local_thread.start()
         self._thread.start()
 
     def submit(self, command, value=None):
@@ -66,7 +72,8 @@ class GuiBackend:
                 self._action_pending.set()
                 self._cancel_queued.clear()
                 self._capture_cancel.clear()
-            self.commands.put((command, value))
+            destination = self.local_commands if command in self.LOCAL_COMMANDS or command.startswith('voice_test_') else self.commands
+            destination.put((command, value))
             return True
 
     def cancel(self):
@@ -105,6 +112,7 @@ class GuiBackend:
             self._voice_listener.stop(timeout=0)
         self.cancel()
         self.submit("shutdown")
+        self.local_commands.put(('shutdown', None))
 
     def respond_approval(self, request: ApprovalRequest, accepted: bool):
         request.accepted = accepted
@@ -149,46 +157,57 @@ class GuiBackend:
                 command, value = self.commands.get()
                 if command == "shutdown":
                     break
-                action = command in self.ACTIONS
-                try:
-                    if action and self._cancel_queued.is_set():
-                        self.events.put(("progress", "Pedido cancelado antes de iniciar."))
-                        continue
-                    if action:
-                        self.events.put(("busy", True))
-                        if self._voice_listener is not None:
-                            if command.startswith("voice_test_") or command == "voice_push_to_talk":
-                                if not self._voice_listener.pause(timeout=2):
-                                    raise RuntimeError("A captura contínua não liberou o microfone. Pare a escuta e tente novamente.")
-                            else:
-                                self._voice_listener.pause()
-                    if command == "retry":
-                        self._reconnect()
-                    elif self.service is None and command not in {"voice_devices", "voice_listen_start", "voice_listen_stop", "voice_speak", "voice_configure", "voice_outputs", "voice_install"} and not command.startswith("voice_test_"):
-                        self.events.put(("error", "Conecte ao FCC antes de executar uma tarefa."))
-                    else:
-                        self._dispatch(command, value)
-                except Exception as exc:
-                    if command.startswith("voice_test_"):
-                        self.events.put(("voice_test_error", str(exc)))
-                    elif command.startswith("voice_"):
-                        self.events.put(("voice_status", error_message(exc)[:220]))
-                    self.events.put(("connection_error" if command == "retry" else "error", str(exc)))
-                finally:
-                    if action:
-                        self._action_pending.clear()
-                        if self._voice_listener is not None:
-                            self._voice_listener.resume()
-                        self.events.put(("busy", False))
+                self._process_command(command, value)
         finally:
-            if self._voice_test is not None:
-                self._voice_test.close()
             if self.service is not None:
                 try:
                     self.service.close()
                 except RuntimeError:
                     pass
             self.events.put(("closed", None))
+
+    def _run_local(self):
+        """Áudio/configuração não esperam rede; serviço/SQLite ficam no worker original."""
+        try:
+            while not self._closed.is_set():
+                command, value = self.local_commands.get()
+                if command == 'shutdown':
+                    break
+                self._process_command(command, value)
+        finally:
+            if self._voice_listener is not None:
+                self._voice_listener.stop()
+            if self._voice_test is not None:
+                self._voice_test.close()
+
+    def _process_command(self, command, value):
+        action = command in self.ACTIONS
+        try:
+            if action and self._cancel_queued.is_set():
+                self.events.put(('progress', 'Pedido cancelado antes de iniciar.'))
+                return
+            if action:
+                self.events.put(('busy', True))
+                if self._voice_listener is not None and not self._voice_listener.pause(timeout=2):
+                    raise RuntimeError('A escuta não liberou a captura. Pare a escuta e tente novamente.')
+            if command == 'retry':
+                self._reconnect()
+            elif self.service is None and command not in self.LOCAL_COMMANDS and not command.startswith('voice_test_'):
+                self.events.put(('error', 'Conecte ao FCC antes de executar uma tarefa.'))
+            else:
+                self._dispatch(command, value)
+        except Exception as exc:
+            if command.startswith('voice_test_'):
+                self.events.put(('voice_test_error', str(exc)))
+            elif command.startswith('voice_'):
+                self.events.put(('voice_status', error_message(exc)[:220]))
+            self.events.put(('connection_error' if command == 'retry' else 'error', str(exc)))
+        finally:
+            if action:
+                self._action_pending.clear()
+                if self._voice_listener is not None:
+                    self._voice_listener.resume()
+                self.events.put(('busy', False))
 
     def _dispatch(self, command, value):
         service = self.service
@@ -322,23 +341,32 @@ class GuiBackend:
                 self.events.put(('voice_installed', str(model)))
         elif command == "voice_configure":
             preferences = replace(self.preferences, **value).validate()
-            self.preference_store.save(preferences)
-            self.preferences = preferences
-            if preferences.voice_mode != 'continuous' and self._voice_listener is not None:
+            effective = preferences.effective()
+            device = effective.audio_device.split(': ', 1)[-1] or None
+            was_listening = self._voice_listener is not None
+            restart = was_listening and self._voice is not None and (
+                self._voice.model_name != effective.stt_model or self._voice.device != device)
+            if was_listening and (effective.voice_mode != 'continuous' or restart):
                 if not self._voice_listener.stop():
                     raise RuntimeError('A escuta ainda está encerrando; aguarde antes de trocar a entrada')
                 self._voice_listener = None
                 self.events.put(('voice_listening', False))
+            self.preference_store.save(preferences)
+            self.preferences = preferences
             if self._voice is not None:
-                effective = preferences.effective()
                 from pathlib import Path
+                self._voice.model_name = effective.stt_model
+                self._voice.device = device
                 self._voice.piper_model = Path(effective.piper_model).expanduser() if effective.piper_model else None
                 self._voice.output_device = effective.output_device
                 self._voice.silence_seconds = effective.silence_ms / 1000
                 self._voice.vad_threshold = effective.vad_threshold
                 if self._voice_listener is not None:
                     self._voice_listener.silence_seconds = self._voice.silence_seconds
-            self.events.put(("voice_status", "Preferências salvas. Ambiente explícito tem precedência. Teste a voz para confirmar a saída."))
+            self.events.put(('voice_preferences', effective))
+            if restart and effective.voice_mode == 'continuous':
+                self._dispatch('voice_listen_start', {'device': effective.audio_device, 'model': effective.stt_model})
+            self.events.put(("voice_status", "Preferências salvas e aplicadas. Ambiente explícito tem precedência. Teste a voz para confirmar a saída."))
         elif command == "voice_outputs":
             from .voice import VoiceIO
             self.events.put(("voice_outputs", VoiceIO.output_devices()))
@@ -435,6 +463,7 @@ class JarvisWindow:
         self.voice_listening = False
         self._operation_error = False
         self._turn_state = None
+        self._voice_start_requested = False
         self.capability_vars = {}
         self._build()
         if self.preference_store.error:
@@ -442,6 +471,7 @@ class JarvisWindow:
         root.protocol("WM_DELETE_WINDOW", self._close)
         self.backend.start()
         self._poll_timer = root.after(100, self._poll)
+        self._voice_start_timer = root.after_idle(self._start_configured_voice)
         root.bind('<Destroy>', self._destroy, add='+')
 
     def _build(self):
@@ -703,6 +733,14 @@ class JarvisWindow:
         self.backend.submit("voice_listen_start", {
             "device": self.voice_device.get(), "model": self.voice_test_model.get()})
 
+    def _start_configured_voice(self):
+        if self._voice_start_timer is not None:
+            self.root.after_cancel(self._voice_start_timer)
+        self._voice_start_timer = None
+        if not self._voice_start_requested and os.getenv('JARVIS_GUI_VOICE', '1') != '0' and self.preferences.voice_mode == 'continuous':
+            self._voice_start_requested = bool(self.backend.submit('voice_listen_start', {
+                'device': self.voice_device.get(), 'model': self.voice_test_model.get()}))
+
     def _save_voice_preferences(self):
         try:
             silence_ms = int(self.voice_silence.get())
@@ -710,16 +748,23 @@ class JarvisWindow:
         except ValueError:
             self.voice_status.set('Confira silêncio (600–1800 ms) e limiar VAD (0.1–0.9).')
             return
-        self.backend.submit('voice_configure', {
+        accepted = self.backend.submit('voice_configure', {
             'stt_model': self.voice_test_model.get(), 'audio_device': self.voice_device.get(),
             'piper_model': self.voice_piper_model.get(), 'output_device': self.voice_output.get(),
             'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get()})
+        if accepted:
+            self.voice_status.set('Salvando preferências de voz…')
+
+    def _install_voice(self):
+        if self.backend.submit('voice_install'):
+            self.voice_status.set('Preparando instalação da voz Faber. Parar cancela o download.')
 
     def _choose_piper_voice(self):
         filename = filedialog.askopenfilename(title='Selecionar voz Piper local (.onnx)',
-                                             filetypes=[('Modelo Piper', '*.onnx')])
+                                             filetypes=[('Modelo Piper', '*.onnx')], parent=self.root)
         if filename:
             self.voice_piper_model.set(filename)
+            self.voice_status.set('Voz selecionada. Clique Salvar voz, entrada e modo para aplicar.')
 
     def _push_to_talk(self):
         if self.backend.finish_voice_turn():
@@ -759,18 +804,28 @@ class JarvisWindow:
     def _poll(self):
         self._poll_timer = None
         try:
-            while True:
-                kind, payload = self.backend.events.get_nowait()
-                self._handle(kind, payload)
-        except queue.Empty:
-            pass
-        if self.root.winfo_exists():
-            self._poll_timer = self.root.after(100, self._poll)
+            # Limita trabalho por tick para não bloquear cliques durante captura/download.
+            for _ in range(100):
+                try:
+                    kind, payload = self.backend.events.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    self._handle(kind, payload)
+                except Exception as exc:
+                    # Um evento inválido não pode interromper busy=False ou confirmações.
+                    self._handle('error', f'Falha ao atualizar a interface ({kind}): {exc}')
+        finally:
+            if self.root.winfo_exists():
+                self._poll_timer = self.root.after(100, self._poll)
 
     def _destroy(self, event):
-        if event.widget is self.root and self._poll_timer is not None:
-            self.root.after_cancel(self._poll_timer)
-            self._poll_timer = None
+        if event.widget is self.root:
+            for attribute in ('_poll_timer', '_voice_start_timer'):
+                timer = getattr(self, attribute, None)
+                if timer is not None:
+                    self.root.after_cancel(timer)
+                    setattr(self, attribute, None)
 
     def _handle(self, kind, payload):
         if kind == "connected":
@@ -780,8 +835,7 @@ class JarvisWindow:
             self._set_capabilities(payload["capabilities"])
             self.backend.submit("snapshot")
             self.hud.set_state("PRONTO", "Digite ou diga Jarvis seguido do pedido")
-            if os.getenv("JARVIS_GUI_VOICE", "1") != "0" and self.preferences.voice_mode == 'continuous':
-                self._apply_voice_settings()
+            self._start_configured_voice()
         elif kind == "reconnected":
             self.connection.set("Catálogo FCC atualizado · inferência ainda não testada")
             self._show_model(payload)
@@ -813,6 +867,8 @@ class JarvisWindow:
             self.send_button.configure(state="disabled" if payload else "normal")
             for button in (self.push_to_talk_button, self.push_to_talk_quick):
                 button.configure(state="disabled" if payload else "normal")
+            for button in (self.voice_install_button, self.voice_save_button, self.voice_test_button):
+                button.configure(state='disabled' if payload else 'normal')
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))
         elif kind == "plan":
@@ -903,6 +959,8 @@ class JarvisWindow:
             self.voice_output_choice.configure(values=[''] + list(payload))
         elif kind == 'voice_installed':
             self.voice_piper_model.set(payload)
+        elif kind == 'voice_preferences':
+            self.preferences = payload
         elif kind == "voice_test_status":
             self.voice_test_status.set(payload)
         elif kind == "voice_test_error":
@@ -915,7 +973,7 @@ class JarvisWindow:
             self.voice_test_status.set(f"Gravando: {payload['elapsed']:.1f}/6 s · nível {payload['dbfs']:.1f} dBFS")
         elif kind == "voice_capture_level":
             self.voice_capture_level.configure(value=max(0, min(100, (payload["dbfs"] + 60) / 60 * 100)))
-            self.voice_status.set(f"Fale agora: {payload['elapsed']:.1f}/6 s · nível {payload['dbfs']:.1f} dBFS")
+            self.voice_status.set(f"Ouvindo · nível {payload['dbfs']:.1f} dBFS. Termine com silêncio ou outro clique.")
         elif kind in ("voice_test_probe", "voice_test_capture"):
             text = f"Entrada: {payload['device']}\nFonte PulseAudio: {payload['pulse_source']}\nCaptura: {payload['sample_rate']} Hz, mono\n"
             for warning in payload.get("warnings", []):
