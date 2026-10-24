@@ -112,3 +112,9 @@ Para plano interrompido, confira os efeitos no computador. **Repetir etapa** ou 
 O backend aceita um pedido operacional por vez. Cliques/Enter repetidos não enfileiram execuções silenciosamente; a mensagem digitada permanece no campo se o envio for recusado. Reconectar relê o catálogo do FCC mesmo após uma conexão anterior, mantendo o modelo e o navegador gerenciado. Isso verifica acesso ao catálogo, não inferência do modelo.
 
 A janela compacta de 1040×640 foi renderizada e testada em Xvfb (telas de teste de 1366×768). Capturas de `docs/screenshots/` usam dados de demonstração e backend simulado; não provam integração com GNOME/FCC/microfone reais. Os painéis não selecionados agora são removidos do layout e não forçam tamanho mínimo dos demais.
+
+### Espera, seguimento e recuperação de áudio
+
+Em Configurações → Voz → Saída, defina Seguimento sem Jarvis (5–120 s), Espera para começar (3–120 s) e Tentativas de reconexão (0–5). Salvar persiste e aplica à sessão. Espera/seguimento só expiram antes de começar a fala; não são limites da frase. Reconexão usa backoff limitado e não reenvia comandos. Ambiente explícito tem precedência: JARVIS_FOLLOWUP_SECONDS, JARVIS_START_TIMEOUT_SECONDS, JARVIS_AUDIO_RETRIES.
+
+Se uma versão antiga já lançou exceção no poll, feche essa instância e abra `jarvis-fcc --gui` novamente após atualizar. A correção mantém a fila de eventos ativa mesmo se um evento de apresentação estiver inválido.

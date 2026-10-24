@@ -147,3 +147,25 @@ Pendência implementada: configuração, instalação, diagnóstico, listagem e 
 Reprodução automatizada usa display real: nível sem elapsed → confirmação de voz → busy=False; evento inválido → confirmação de salvamento → poll seguinte; escolha pelo botão real → salvar em arquivo temporário → erro de instalação → botão reativado → nova instalação, mantendo FCC propositalmente bloqueado. Testes de voz agora isolam preferências/ambiente para não sintetizar/reproduzir acidentalmente a voz configurada no notebook. Hardware Bluetooth/GNOME, detector Jarvis e efeitos FCC reais continuam pendentes.
 
 Verificação desta correção: **passou**, 420 testes em 21,045 s, incluindo GUI no display real e jornada dos botões. `git diff --check` passou. A matriz anterior de interface deve ser lida com esta regressão física agora reproduzida e corrigida; teste automatizado não substitui reabrir a aplicação no fone.
+
+## Revisão de pendências após recuperação da GUI
+
+Correção principal publicada em `cb56915ff1d2ec9629bda654e8863d1f42167247`. Além do traceback, foram reproduzidos e verificados os comandos reais dos botões pelo loop Tk. Salvar/instalar deixam de esperar rede FCC.
+
+Pendências implementadas neste incremento: janela de seguimento, espera para iniciar fala e número de retentativas persistentes/configuráveis em Saída, com validação e precedência de ambiente. Salvar atualiza esses valores no VoiceIO em uso. Backoff segue limitado; zero tentativas encerra na primeira falha. Tempo de espera só vale antes da fala e nenhum erro de rede reenvia efeitos. Indicador de voz passa a acompanhar instalação/salvamento; teste de voz distingue ausência de configuração e reprodução enviada, sem afirmar escuta física. Encerramento durante um evento não reagenda poll em janela destruída. Operações sem captura, como salvar ou executar texto, não precisam aguardar a carga do microfone.
+
+Automação **passou**: 425 testes em 29,085 s, com display real; `git diff --check` passou. Inclui jornada dos botões com falha/retry e FCC bloqueado, encerramento das duas threads, espera manual configurada, seguimento após resposta, zero retentativas, defaults de arquivo v1 antigo e limites/ambiente das novas preferências. Testes gráficos foram executados sem suites simultâneas para evitar disputa de foco no display.
+
+| Pendência revisada | Estado atual |
+| --- | --- |
+| Callback sem elapsed derruba interface | passou: reproduzido e corrigido |
+| Escolher/salvar/instalar e tentar novamente | passou: widgets reais e loop Tk, adaptadores controlados |
+| Áudio/configuração independentes do FCC | passou: worker local, serviço/SQLite preservados |
+| Preferências de seguimento/espera/reconexão | passou: implementadas e testadas |
+| Detector acústico Jarvis isolado | pendente: falta artefato validado e avaliação pt-BR |
+| Coordenador de captura com todos os IDs/eventos canônicos | pendente: adaptador legado ainda tem estados textuais |
+| Segmentação/remontagem e continuação acima do teto emergencial | pendente: rejeição explícita continua sem executar frase parcial |
+| CPU/RSS e latência em 30 turnos completos | pendente |
+| Bluetooth, saída audível, recuperação física e GNOME/FCC | pendente: ensaio real, não comprovado por estes testes |
+
+Não houve nova captura ambiental nem medição física de wake word neste incremento. Para revalidar o relato, reabrir a aplicação, escolher/instalar voz, Salvar, testar saída e usar Falar/terminar; os estados não devem parar de atualizar após o primeiro nível de áudio. A jornada final continua sem aceite físico.

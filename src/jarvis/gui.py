@@ -188,8 +188,12 @@ class GuiBackend:
                 return
             if action:
                 self.events.put(('busy', True))
-                if self._voice_listener is not None and not self._voice_listener.pause(timeout=2):
-                    raise RuntimeError('A escuta não liberou a captura. Pare a escuta e tente novamente.')
+                if self._voice_listener is not None:
+                    needs_audio = command.startswith('voice_test_') or command in {
+                        'voice_record', 'voice_push_to_talk', 'voice_speak', 'voice_ask'}
+                    released = self._voice_listener.pause(timeout=2 if needs_audio else 0)
+                    if needs_audio and not released:
+                        raise RuntimeError('A escuta não liberou a captura. Pare a escuta e tente novamente.')
             if command == 'retry':
                 self._reconnect()
             elif self.service is None and command not in self.LOCAL_COMMANDS and not command.startswith('voice_test_'):
@@ -361,6 +365,9 @@ class GuiBackend:
                 self._voice.output_device = effective.output_device
                 self._voice.silence_seconds = effective.silence_ms / 1000
                 self._voice.vad_threshold = effective.vad_threshold
+                self._voice.followup_seconds = effective.followup_seconds
+                self._voice.start_timeout_seconds = effective.start_timeout_seconds
+                self._voice.reconnect_attempts = effective.reconnect_attempts
                 if self._voice_listener is not None:
                     self._voice_listener.silence_seconds = self._voice.silence_seconds
             self.events.put(('voice_preferences', effective))
@@ -426,7 +433,10 @@ class GuiBackend:
             voice.prepare_speech()
             self._speaking_voice = voice
             try:
-                self.events.put(("voice_status", voice.speak(value)))
+                result = voice.speak(value)
+                message = ('Voz não configurada. Selecione e salve uma voz local na aba Saída.'
+                    if result == 'disabled' else 'Reprodução enviada à saída selecionada. Confirme se ouviu a frase.')
+                self.events.put(("voice_status", message))
             finally:
                 self._speaking_voice = None
 
@@ -444,6 +454,7 @@ class JarvisWindow:
     def __init__(self, root, backend: GuiBackend):
         self.root, self.backend = root, backend
         self.last_answer = ""
+        self._destroyed = False
         from .gui_theme import apply_theme
         self._style = apply_theme(root)
         root.title("JARVIS | Conversa")
@@ -745,13 +756,17 @@ class JarvisWindow:
         try:
             silence_ms = int(self.voice_silence.get())
             vad_threshold = float(self.voice_vad_threshold.get())
+            followup = int(self.voice_followup.get())
+            start_timeout = int(self.voice_start_timeout.get())
+            retries = int(self.voice_retries.get())
         except ValueError:
-            self.voice_status.set('Confira silêncio (600–1800 ms) e limiar VAD (0.1–0.9).')
+            self.voice_status.set('Confira os valores numéricos de silêncio, VAD, seguimento, espera e reconexão.')
             return
         accepted = self.backend.submit('voice_configure', {
             'stt_model': self.voice_test_model.get(), 'audio_device': self.voice_device.get(),
             'piper_model': self.voice_piper_model.get(), 'output_device': self.voice_output.get(),
-            'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get()})
+            'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get(),
+            'followup_seconds': followup, 'start_timeout_seconds': start_timeout, 'reconnect_attempts': retries})
         if accepted:
             self.voice_status.set('Salvando preferências de voz…')
 
@@ -813,14 +828,17 @@ class JarvisWindow:
                 try:
                     self._handle(kind, payload)
                 except Exception as exc:
+                    if self._destroyed:
+                        break
                     # Um evento inválido não pode interromper busy=False ou confirmações.
                     self._handle('error', f'Falha ao atualizar a interface ({kind}): {exc}')
         finally:
-            if self.root.winfo_exists():
+            if not self._destroyed and self.root.winfo_exists():
                 self._poll_timer = self.root.after(100, self._poll)
 
     def _destroy(self, event):
         if event.widget is self.root:
+            self._destroyed = True
             for attribute in ('_poll_timer', '_voice_start_timer'):
                 timer = getattr(self, attribute, None)
                 if timer is not None:
@@ -959,8 +977,11 @@ class JarvisWindow:
             self.voice_output_choice.configure(values=[''] + list(payload))
         elif kind == 'voice_installed':
             self.voice_piper_model.set(payload)
+            self.voice_output_status.set('Voz instalada. Teste a saída para confirmar áudio.')
         elif kind == 'voice_preferences':
             self.preferences = payload
+            self.voice_output_status.set('Voz selecionada; confirme áudio na aba Saída.' if payload.piper_model else
+                                         'Resposta em texto. Selecione e teste uma voz local na aba Saída.')
         elif kind == "voice_test_status":
             self.voice_test_status.set(payload)
         elif kind == "voice_test_error":

@@ -14,6 +14,19 @@ from jarvis.tools import DEFAULT_REGISTRY
 
 @unittest.skipUnless(os.getenv('DISPLAY'), 'Display gráfico indisponível')
 class WindowTests(unittest.TestCase):
+    def test_destroy_during_event_handling_does_not_rearm_poll(self):
+        backend = Mock()
+        backend.events = queue.Queue()
+        root = tk.Tk()
+        window = JarvisWindow(root, backend)
+        root.after_cancel(window._poll_timer)
+        window._poll_timer = None
+        backend.events.put(('test_close', None))
+        with patch.object(window, '_handle', side_effect=lambda *_: root.destroy()):
+            window._poll()
+        self.assertTrue(window._destroyed)
+        self.assertIsNone(window._poll_timer)
+
     def test_select_save_install_failure_and_retry_with_real_event_loop(self):
         from jarvis.gui import GuiBackend
         from jarvis.preferences import PreferenceStore
@@ -21,7 +34,7 @@ class WindowTests(unittest.TestCase):
         release, entered = threading.Event(), threading.Event()
         def connect(*_args, **_kwargs):
             entered.set()
-            release.wait(10)
+            release.wait()
             return FakeService()
         with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {
                 'JARVIS_GUI_VOICE': '0', 'JARVIS_PREFERENCES': str(Path(td) / 'preferences.json')}):

@@ -17,7 +17,8 @@ class VoiceTests(unittest.TestCase):
         environment.start()
         self.addCleanup(environment.stop)
         for key in ('JARVIS_PIPER_MODEL', 'JARVIS_AUDIO_DEVICE', 'JARVIS_AUDIO_OUTPUT',
-                    'JARVIS_WHISPER_MODEL', 'JARVIS_SILENCE_MS', 'JARVIS_VAD_THRESHOLD', 'JARVIS_VOICE_MODE'):
+                    'JARVIS_WHISPER_MODEL', 'JARVIS_SILENCE_MS', 'JARVIS_VAD_THRESHOLD', 'JARVIS_VOICE_MODE',
+                    'JARVIS_FOLLOWUP_SECONDS', 'JARVIS_START_TIMEOUT_SECONDS', 'JARVIS_AUDIO_RETRIES'):
             os.environ.pop(key, None)
         os.environ['JARVIS_PREFERENCES'] = str(Path(preferences.name) / 'preferences.json')
         # Estes testes verificam captura/lifecycle, não a precisão do classificador.
@@ -315,6 +316,48 @@ class VoiceTests(unittest.TestCase):
         self.assertEqual(listener._listen_for_command.call_count, 3)
         self.assertEqual([call.args[0] for call in listener._stop.wait.call_args_list], [0.5, 1.0])
         self.assertIn('Escuta contínua indisponível:', statuses[-1])
+
+    def test_zero_retries_stops_after_first_capture_failure(self):
+        voice = VoiceIO()
+        voice.reconnect_attempts = 0
+        listener = WakeWordConversation(voice, lambda _: self.fail('não enviar'))
+        listener._listen_for_command = Mock(side_effect=VoiceError('desconectado'))
+        listener._stop.wait = Mock()
+        with patch.dict(sys.modules, {'sounddevice': SimpleNamespace()}):
+            listener._run()
+        listener._listen_for_command.assert_called_once()
+        listener._stop.wait.assert_not_called()
+
+    def test_manual_capture_uses_configured_start_timeout(self):
+        import numpy as np
+        voice = VoiceIO()
+        voice.start_timeout_seconds = 12
+        with patch('jarvis.voice.WakeWordConversation') as listener, patch.dict(sys.modules, {'sounddevice': SimpleNamespace()}):
+            listener.return_value._listen_for_command.return_value = np.array([600], dtype=np.int16)
+            voice.record_turn()
+        self.assertEqual(listener.return_value._listen_for_command.call_args.kwargs['idle_timeout'], 12)
+
+    def test_followup_uses_configured_window_after_answer(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as td:
+            voice = VoiceIO()
+            voice.followup_seconds = 7
+            path = Path(td) / 'sample.wav'
+            path.write_bytes(b'controlled')
+            listener = WakeWordConversation(voice, lambda _: listener.resume())
+            voice.transcribe = Mock(return_value='Jarvis, olá')
+            calls = []
+            def capture(*_args, **kwargs):
+                calls.append(kwargs['idle_timeout'])
+                if len(calls) == 2:
+                    listener._stop.set()
+                    return None
+                return np.array([600], dtype=np.int16)
+            listener._listen_for_command = capture
+            listener._write_recording = Mock(return_value=path)
+            with patch.dict(sys.modules, {'sounddevice': SimpleNamespace()}):
+                listener._run()
+            self.assertEqual(calls, [None, 7])
 
     def test_followup_deadline_never_expires_after_speech_starts(self):
         import numpy as np

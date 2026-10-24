@@ -57,7 +57,7 @@ class GuiBackendTests(unittest.TestCase):
         service = FakeService()
         def connect(*_args, **_kwargs):
             entered.set()
-            release.wait(10)
+            release.wait()
             return service
         with tempfile.TemporaryDirectory() as td:
             backend = GuiBackend(None, service_factory=connect)
@@ -237,6 +237,7 @@ class GuiBackendTests(unittest.TestCase):
             diagnostic.return_value.probe.assert_called_once_with("Bluetooth")
             backend.close()
             backend._thread.join(2)
+            backend._local_thread.join(2)
             diagnostic.return_value.close.assert_called_once()
 
     def test_diagnostic_capture_only_emits_local_events(self):

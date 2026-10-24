@@ -8,6 +8,21 @@ from jarvis.preferences import Preferences, PreferenceStore
 
 
 class PreferenceTests(unittest.TestCase):
+    def test_followup_recovery_roundtrip_and_old_file_defaults(self):
+        with tempfile.TemporaryDirectory() as td:
+            store = PreferenceStore(Path(td) / 'preferences.json')
+            store.path.write_text('{"version": 1, "stt_model": "small"}')
+            self.assertEqual(store.load().followup_seconds, 20)
+            preferences = replace(store.load(), followup_seconds=60, start_timeout_seconds=10, reconnect_attempts=0)
+            store.save(preferences)
+            self.assertEqual(store.load(), preferences)
+            for changes in ({'followup_seconds': 0}, {'start_timeout_seconds': 2}, {'reconnect_attempts': 6}):
+                with self.assertRaises(ValueError):
+                    replace(preferences, **changes).validate()
+        with patch.dict(os.environ, {'JARVIS_FOLLOWUP_SECONDS': '30', 'JARVIS_START_TIMEOUT_SECONDS': '12', 'JARVIS_AUDIO_RETRIES': '4'}):
+            effective = Preferences().effective()
+            self.assertEqual((effective.followup_seconds, effective.start_timeout_seconds, effective.reconnect_attempts), (30, 12, 4))
+
     def test_roundtrip_atomic_private_file_and_no_secrets(self):
         with tempfile.TemporaryDirectory() as td:
             store = PreferenceStore(Path(td) / 'preferences.json')

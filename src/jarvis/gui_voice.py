@@ -47,7 +47,8 @@ def build_voice_panel(window, tabs):
     window.voice_capture_level.pack(fill='x', pady=6)
     output = ('Voz selecionada; confirme áudio na aba Saída.' if window.preferences.piper_model else
               'Resposta em texto. Selecione e teste uma voz local na aba Saída.')
-    ttk.Label(talk, text=output, wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=6)
+    window.voice_output_status = tk.StringVar(value=output)
+    ttk.Label(talk, textvariable=window.voice_output_status, wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=6)
 
     ttk.Label(microphone, text='Entrada de áudio', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
     ttk.Label(microphone, text='Conecte o Bluetooth e selecione seu microfone no Ubuntu. Evite entradas .monitor.',
@@ -93,6 +94,9 @@ def build_voice_panel(window, tabs):
     window.voice_silence = tk.StringVar(value=str(window.preferences.silence_ms))
     window.voice_vad_threshold = tk.StringVar(value=str(window.preferences.vad_threshold))
     window.voice_mode = tk.StringVar(value=window.preferences.voice_mode)
+    window.voice_followup = tk.StringVar(value=str(window.preferences.followup_seconds))
+    window.voice_start_timeout = tk.StringVar(value=str(window.preferences.start_timeout_seconds))
+    window.voice_retries = tk.StringVar(value=str(window.preferences.reconnect_attempts))
     ttk.Label(output_panel, text='Voz Piper local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
     ttk.Label(output_panel, text='Selecione .onnx com .onnx.json ou instale Faber: fonte Piper, SHA256 verificado, dataset CC0.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
@@ -117,6 +121,14 @@ def build_voice_panel(window, tabs):
     row.pack(fill='x', pady=4)
     ttk.Label(row, text='Limiar VAD (0.1–0.9):').pack(side='left')
     ttk.Spinbox(row, from_=0.1, to=0.9, increment=0.05, textvariable=window.voice_vad_threshold, width=5).pack(side='left', padx=4)
+    for label, variable, minimum, maximum in (
+            ('Seguimento sem Jarvis (s):', window.voice_followup, 5, 120),
+            ('Espera para começar (s):', window.voice_start_timeout, 3, 120),
+            ('Tentativas de reconexão:', window.voice_retries, 0, 5)):
+        row = ttk.Frame(output_panel)
+        row.pack(fill='x', pady=3)
+        ttk.Label(row, text=label).pack(side='left')
+        ttk.Spinbox(row, from_=minimum, to=maximum, textvariable=variable, width=5).pack(side='right')
     window.voice_save_button = ttk.Button(output_panel, text='Salvar voz, entrada e modo', command=window._save_voice_preferences)
     window.voice_save_button.pack(fill='x', pady=4)
     window.voice_test_button = ttk.Button(output_panel, text='Testar voz salva', command=lambda: window.backend.submit(

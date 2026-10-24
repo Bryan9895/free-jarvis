@@ -18,6 +18,9 @@ class Preferences:
     silence_ms: int = 1000
     vad_threshold: float = 0.5
     voice_mode: str = 'continuous'
+    followup_seconds: int = 20
+    start_timeout_seconds: int = 20
+    reconnect_attempts: int = 2
 
     def validate(self):
         if self.version != 1:
@@ -34,6 +37,12 @@ class Preferences:
             raise ValueError('Limiar VAD deve estar entre 0.1 e 0.9')
         if self.voice_mode not in ('continuous', 'manual', 'muted'):
             raise ValueError('Modo de voz inválido')
+        for key, label, minimum, maximum in (('followup_seconds', 'Seguimento', 5, 120),
+                ('start_timeout_seconds', 'Espera para começar', 3, 120),
+                ('reconnect_attempts', 'Tentativas de reconexão', 0, 5)):
+            value = getattr(self, key)
+            if type(value) is not int or not minimum <= value <= maximum:
+                raise ValueError(f'{label} deve estar entre {minimum} e {maximum}')
         return self
 
     def effective(self):
@@ -48,6 +57,11 @@ class Preferences:
             values['silence_ms'] = int(os.environ['JARVIS_SILENCE_MS'])
         if 'JARVIS_VAD_THRESHOLD' in os.environ:
             values['vad_threshold'] = float(os.environ['JARVIS_VAD_THRESHOLD'])
+        for key, variable in (('followup_seconds', 'JARVIS_FOLLOWUP_SECONDS'),
+                              ('start_timeout_seconds', 'JARVIS_START_TIMEOUT_SECONDS'),
+                              ('reconnect_attempts', 'JARVIS_AUDIO_RETRIES')):
+            if variable in os.environ:
+                values[key] = int(os.environ[variable])
         return Preferences(**values).validate()
 
 

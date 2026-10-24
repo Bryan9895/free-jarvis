@@ -51,6 +51,9 @@ class VoiceIO:
         self.output_device = os.getenv('JARVIS_AUDIO_OUTPUT', output_device if output_device is not None else preferences.output_device)
         self.silence_seconds = preferences.silence_ms / 1000
         self.vad_threshold = preferences.vad_threshold
+        self.followup_seconds = preferences.followup_seconds
+        self.start_timeout_seconds = preferences.start_timeout_seconds
+        self.reconnect_attempts = preferences.reconnect_attempts
         self._stt = None
         self._speech_cancel = threading.Event()
 
@@ -258,7 +261,7 @@ class VoiceIO:
         listener = WakeWordConversation(self, lambda _: None, silence_seconds=self.silence_seconds)
         if cancel is not None:
             listener._stop = cancel
-        samples = listener._listen_for_command(sd, np, idle_timeout=20,
+        samples = listener._listen_for_command(sd, np, idle_timeout=self.start_timeout_seconds,
                                               finish=finish, on_level=on_level)
         if samples is None:
             raise VoiceError("Captura cancelada ou nenhuma fala recebida; pedido não enviado")
@@ -355,14 +358,14 @@ class WakeWordConversation:
                 generation = self._generation
                 try:
                     samples = self._listen_for_command(
-                        sd, np, idle_timeout=20 if conversation else None)
+                        sd, np, idle_timeout=self.voice.followup_seconds if conversation else None)
                 except VoiceError as exc:
                     conversation = False
                     self.on_status(f"Turno descartado: {exc}")
                     capture_failures += 1
-                    if capture_failures >= 3:
+                    if capture_failures > self.voice.reconnect_attempts:
                         raise
-                    self.on_status(f"Recuperando áudio: tentativa {capture_failures}/2…")
+                    self.on_status(f"Recuperando áudio: tentativa {capture_failures}/{self.voice.reconnect_attempts}…")
                     if self._stop.wait(0.5 * 2 ** (capture_failures - 1)):
                         break
                     continue
@@ -409,7 +412,7 @@ class WakeWordConversation:
                             pass
                         conversation = False
                         continue
-                    self.on_status("Comando enviado; conversação por voz ativa por até 20 s após a resposta.")
+                    self.on_status(f"Comando enviado; conversação por voz ativa por até {self.voice.followup_seconds} s após a resposta.")
                     while not self._stop.is_set() and not self._resume.wait(0.2):
                         pass
                     conversation = True
