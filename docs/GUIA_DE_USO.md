@@ -118,3 +118,37 @@ A janela compacta de 1040×640 foi renderizada e testada em Xvfb (telas de teste
 Em Configurações → Voz → Saída, defina Seguimento sem Jarvis (5–120 s), Espera para começar (3–120 s) e Tentativas de reconexão (0–5). Salvar persiste e aplica à sessão. Espera/seguimento só expiram antes de começar a fala; não são limites da frase. Reconexão usa backoff limitado e não reenvia comandos. Ambiente explícito tem precedência: JARVIS_FOLLOWUP_SECONDS, JARVIS_START_TIMEOUT_SECONDS, JARVIS_AUDIO_RETRIES.
 
 Se uma versão antiga já lançou exceção no poll, feche essa instância e abra `jarvis-fcc --gui` novamente após atualizar. A correção mantém a fila de eventos ativa mesmo se um evento de apresentação estiver inválido.
+
+
+## Autorizações persistentes e administração
+
+Configurações → Permissões permite escolher categorias e pastas e clicar
+Salvar autorizações. As concessões só são ampliadas por esse controle ou pelo
+comando explícito da CLI, nunca pelo modelo. O modo auto anterior não habilita
+terminal, dados sensíveis ou administração. Pastas antigas e JARVIS_ALLOWED_DIRS
+continuam válidas. A raiz / não é autorizável pelo seletor de arquivos.
+
+Terminal requer as categorias terminal e secrets: código e scripts executam
+como o usuário e podem acessar dados da conta. Não há promessa de isolamento de
+credenciais para código arbitrário. Variáveis como FCC_TOKEN não são herdadas
+pelo executor. A saída é limitada a 32 KiB por stream, tempo máximo 300 s, com
+cancelamento do grupo e recolhimento dos processos de primeiro plano. Exit code
+zero comprova término do processo, não o objetivo; Jarvis deve observar o efeito.
+Não use esse executor para manter servidores em background.
+
+Administração disponibiliza manage_packages (install/remove por apt-get) e
+manage_service (start/stop/restart de unidades .service). A autenticação é do
+Ubuntu, por pkexec; senha não é capturada nem salva pelo Jarvis. Estado é
+consultado após o comando. Cancelamento de processo privilegiado pode depender
+das permissões do sistema: efeito incerto encerra o pedido sem repetição automática.
+
+CLI: /concessoes lista categorias; /autorizar pasta /caminho adiciona pasta;
+/autorizar files libera seu uso; /autorizar terminal e /autorizar secrets
+habilitam execução da conta; /autorizar administration habilita pacotes/serviços.
+/revogar CATEGORIA remove uma concessão. /permissoes revogar remove as concessões
+salvas e bloqueia a sessão até escolher outro modo. Sem autorização salva,
+uma ação sensível pode ser aprovada pontualmente pelo diálogo existente.
+
+Concessões ficam em ~/.config/jarvis-fcc/authorizations.json (ou
+JARVIS_AUTHORIZATIONS), versão 1, com substituição atômica e sem segredos.
+Arquivo inválido resulta em nenhuma concessão adicional e erro visível.

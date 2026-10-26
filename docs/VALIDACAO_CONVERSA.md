@@ -208,3 +208,32 @@ antes dos headers depende do timeout de conexão (padrão 5 s); leitura após he
 Verificação final do incremento: passou, 441 testes em 15,617 s. O teste novo
 de GUI foi ajustado para cancelar seu timer antes de chamar polling manualmente;
 a janela do produto mantém um único timer. `git diff --check` deve acompanhar o commit.
+
+
+## Evolução 26/10/2026 — concessões e ferramentas de administração
+
+Streaming/voz publicado pela integração GitHub em
+`fcf0730a80f0d98d15861ae85ad80f77e0973198`; árvore idêntica ao commit local
+3c4045d antes da sincronização. Push HTTPS por shell não tinha credencial.
+
+Implementado: concessões atômicas/versionadas por categoria e pasta, controles
+GUI com rolagem e comandos CLI; revogação cancela novas ações e remove concessões
+salvas. Auto legado não concede terminal/administração/segredos. Ferramentas de
+arquivo verificam raízes resolvidas e tratam caminhos sensíveis separadamente.
+Terminal exige consentimento também para dados da conta, pois executa código
+com os privilégios do usuário; não simula isolamento de credenciais. Ambiente
+herdado é mínimo, saída tem teto e cancelamento recolhe grupo de processos.
+Pacotes e serviços usam programas fixos via pkexec e observação dpkg/systemctl;
+não há senha armazenada nem instalação real durante os testes. Falha/timeout
+incerto encerra a sequência do agente sem replay automático de efeitos.
+
+Testes novos passaram: 8 testes em 0,100 s, incluindo processo real sem token
+herdado, saída limitada, cancelamento de filho, persistência/corrupção/falha
+atômica, raízes/symlinks, revogação e adaptadores administrativos controlados.
+Ensaio administrativo físico/autenticação GNOME continua pendente. Nenhuma
+concessão ampla foi habilitada no perfil real do notebook durante esta entrega.
+
+Suíte deste checkpoint: passou, 449 testes em 19,948 s, com GUI/Chromium/HTTP.
+Após a proteção contra sequência automática após efeito incerto, o conjunto
+focado de concessões passou com 9 testes em 0,121 s. Testes de administração
+usaram adaptadores controlados, sem alterar pacotes/serviços da máquina.

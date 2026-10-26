@@ -10,8 +10,9 @@ from .registry import CapabilityPolicy, ToolRegistry
 from .schema_validation import validate_arguments
 from .cancellation import CancelledError
 from .filesystem_tools import FilesystemTools, ToolError, MAX_FILE_BYTES
+from .command_execution import CommandTools
 
-class Toolkit(FilesystemTools):
+class Toolkit(FilesystemTools, CommandTools):
     def __init__(self, workspace: Path, approve=None, layout_db=None, registry=None,
                  enabled_capabilities=None):
         self.workspace = workspace.expanduser().resolve()
@@ -28,13 +29,26 @@ class Toolkit(FilesystemTools):
         self._browser = None
         from .process_manager import ProcessManager
         self._processes = ProcessManager()
+        self._execution_token = None
         roots = []
         for value in os.getenv("JARVIS_ALLOWED_DIRS", "").split(os.pathsep):
             if value.strip():
                 root = Path(value.strip()).expanduser().resolve()
                 if root.is_dir() and root != Path.home().resolve() and root != Path("/"):
                     roots.append(root)
-        self.allowed_roots = [self.workspace] + [p for p in roots if p != self.workspace]
+        self._allowed_roots = [self.workspace] + [p for p in roots if p != self.workspace]
+
+    @property
+    def allowed_roots(self):
+        roots = list(self._allowed_roots)
+        store = getattr(self.approve, 'authorizations', None)
+        if store is not None and self.approve.granted('files'):
+            roots.extend(Path(p) for p in store.snapshot().roots)
+        return list(dict.fromkeys(roots))
+
+    @allowed_roots.setter
+    def allowed_roots(self, roots):
+        self._allowed_roots = list(roots)
 
     def task_list(self, status=None):
         from .task_board import TaskBoard
@@ -330,10 +344,18 @@ class Toolkit(FilesystemTools):
                 if cancel_token is not None:
                     cancel_token.check()
                 handler = getattr(self, entry.handler) if isinstance(entry.handler, str) else entry.handler
-                outcome = {"result": handler(**arguments) if isinstance(entry.handler, str)
-                           else handler(self, **arguments)}
+                previous_token, self._execution_token = self._execution_token, cancel_token
+                try:
+                    from .approval import action_category
+                    with action_category(entry.capability):
+                        outcome = {"result": handler(**arguments) if isinstance(entry.handler, str)
+                                   else handler(self, **arguments)}
+                finally:
+                    self._execution_token = previous_token
             except CancelledError:
                 raise
+            except (TimeoutError, subprocess.TimeoutExpired) as exc:
+                outcome = {'result': {'status': 'execution_uncertain', 'reason': str(exc)}}
             except (ToolError, OSError, UnicodeError, subprocess.TimeoutExpired, TypeError, ValueError) as exc:
                 outcome = {"error": str(exc)}
             except RuntimeError as exc:
@@ -357,6 +379,8 @@ _CAPABILITY_TOOLS = {
     "tasks.read": {"task_list"},
     "tasks.write": {"task_add", "task_update"},
     "command.read": {"run_command"},
+    "command.execute": {"execute_process"},
+    "system.admin": {"manage_packages", "manage_service"},
     "browser.read": {"browser_inspect", "browser_tabs"},
     "browser.control": {"browser_open", "browser_navigate", "browser_click",
                         "browser_fill", "browser_screenshot", "browser_new_tab",

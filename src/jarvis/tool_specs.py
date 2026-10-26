@@ -4,6 +4,23 @@ Mantidos separados dos executores para facilitar plugins e auditoria.
 """
 
 TOOL_SPECS = [
+    {'type': 'function', 'name': 'execute_process',
+     'description': 'Executa processo de primeiro plano ou script com argv explícito e diretório autorizado. Exige autorização de terminal e dados da conta; sem shell implícito. Saída limitada, timeout e cancelamento do grupo. Exit code zero NÃO comprova o objetivo: verifique arquivos/efeitos antes de confirmar.',
+     'parameters': {'type': 'object', 'properties': {
+         'argv': {'type': 'array', 'minItems': 1, 'maxItems': 128, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 8192}},
+         'cwd': {'type': 'string'}, 'timeout': {'type': 'integer', 'minimum': 1, 'maximum': 300}},
+         'required': ['argv'], 'additionalProperties': False}},
+    {'type': 'function', 'name': 'manage_packages',
+     'description': 'Instala/remove pacotes Ubuntu por apt-get com autorização administrativa e autenticação nativa pkexec. Verifica estado dpkg depois; nunca repetir automaticamente após falha incerta.',
+     'parameters': {'type': 'object', 'properties': {
+         'action': {'type': 'string', 'enum': ['install', 'remove']},
+         'packages': {'type': 'array', 'minItems': 1, 'maxItems': 30, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 120}}},
+         'required': ['action', 'packages'], 'additionalProperties': False}},
+    {'type': 'function', 'name': 'manage_service',
+     'description': 'Inicia, para ou reinicia unidade .service do sistema por pkexec/systemctl com autorização administrativa e verificação ActiveState. Não confirma reinício somente pelo estado ativo se o comando falhar.',
+     'parameters': {'type': 'object', 'properties': {'action': {'type': 'string', 'enum': ['start', 'stop', 'restart']},
+         'unit': {'type': 'string', 'minLength': 1, 'maxLength': 200}},
+         'required': ['action', 'unit'], 'additionalProperties': False}},
     {"type":"function","name":"place_window","description":"Posiciona UMA janela na área útil: left, right, center, bottom_right ou custom. Percentuais opcionais definem tamanho relativo (10 a 100). custom exige x_px, y_px, width_px, height_px em pixels relativos à área útil e dentro dela. Revalida ID e confirma geometria GNOME após MoveResize e Move.","parameters":{"type":"object","properties":{"app":{"type":"string"},"position":{"type":"string","enum":["left","right","center","bottom_right","custom"]},"title":{"type":"string"},"width_percent":{"type":"integer"},"height_percent":{"type":"integer"},"x_px":{"type":"integer"},"y_px":{"type":"integer"},"width_px":{"type":"integer"},"height_px":{"type":"integer"}},"required":["app","position"],"additionalProperties":False}},
     {"type":"function","name":"close_window","description":"Solicita fechamento educado de UMA janela GNOME identificada sem ambiguidade. Segue o modo de autorização da sessão; só declara sucesso quando o ID desaparece do inventário. Diálogos de dados não salvos ficam a cargo do aplicativo.","parameters":{"type":"object","properties":{"app":{"type":"string"},"title":{"type":"string"}},"required":["app"],"additionalProperties":False}},
     {"type":"function","name":"focused_window","description":"Consulta a janela atualmente em foco via Window Control GetFocused e confirma ID, classe e título no inventário GNOME. Somente leitura.","parameters":{"type":"object","properties":{},"additionalProperties":False}},

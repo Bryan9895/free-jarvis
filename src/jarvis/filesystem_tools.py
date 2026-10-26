@@ -23,6 +23,11 @@ class FilesystemTools:
         p = (self.workspace / requested).resolve()
         if not any(p.is_relative_to(root) for root in self.allowed_roots):
             raise ToolError("Acesso fora dos diretórios autorizados bloqueado")
+        from .authorizations import is_sensitive_path
+        if is_sensitive_path(p):
+            authorize = getattr(self.approve, 'authorize', None)
+            if authorize is None or not authorize('secrets', 'ACESSAR DADO SENSÍVEL: ' + str(p)):
+                raise ToolError('Acesso a dados sensíveis não autorizado')
         return p
 
     def _safe_mutation_path(self, requested):

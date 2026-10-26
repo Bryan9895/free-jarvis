@@ -33,6 +33,7 @@ _NOT_FOUND = frozenset({"not_found", "not_observed", "content_mismatch"})
 _FAILED = frozenset({"failed", "refused", "not_activated", "changed"})
 _PARTIAL = frozenset({"profile_partial"})
 _SENT = frozenset({"launched_unverified", "sent_unverified", "opened_unverified",
+                   "execution_uncertain",
                    "launch_uncertain", "close_unverified", "state_unverified",
                    "focus_unverified", "geometry_unverified", "layout_unverified",
                    "workspace_unverified", "window_workspace_unverified",
@@ -78,7 +79,8 @@ def classify_tool_outcome(outcome: dict, *, capability: str = "") -> ExecutionRe
     if status == "ambiguous":
         return ExecutionResult(ResultState.AMBIGUOUS, status)
     if status in _FAILED:
-        return ExecutionResult(ResultState.FAILED, status)
+        return ExecutionResult(ResultState.FAILED, status,
+                               effect_sent=capability in ('command.execute', 'system.admin'))
     if status in _PARTIAL:
         return ExecutionResult(ResultState.PARTIAL, status, effect_sent=True)
     if status in _SENT or status in _APPLIED:

@@ -57,7 +57,9 @@ def main():
     if args.audio_device is not None:
         os.environ["JARVIS_AUDIO_DEVICE"] = args.audio_device
     c = Config.from_env()
-    approval = ApprovalPolicy(auto=not args.manual_approve, manual_callback=globals()["confirm"])
+    from .authorizations import AuthorizationStore
+    approval = ApprovalPolicy(auto=not args.manual_approve, manual_callback=globals()["confirm"],
+                              authorizations=AuthorizationStore())
     confirm = approval
     if args.gui:
         if args.text_only:
@@ -203,6 +205,7 @@ def main():
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
         print("Autorizações: /permissoes auto | manual | revogar | status  (atual: " + approval.mode + ")")
+        print('Concessões salvas: /concessoes, /autorizar CATEGORIA, /autorizar pasta CAMINHO, /revogar CATEGORIA')
         if approval.auto:
             print("⚡ AUTOAPROVAÇÃO ATIVA: ferramentas atuais executam sem pedir SIM. "
                   "Limites do workspace, comandos e permissões GNOME continuam valendo.")
@@ -309,6 +312,31 @@ def main():
                     continue
                 if msg.lower() == "/historico-planos":
                     print(format_history(planner.history()))
+                    continue
+                if msg == '/concessoes' or msg.startswith(('/autorizar ', '/revogar ')):
+                    from .authorizations import CATEGORIES, Grants
+                    store = approval.authorizations
+                    if msg == '/concessoes':
+                        print('Categorias:', CATEGORIES)
+                        print('Concessões:', sorted(store.snapshot().categories), 'Pastas:', store.snapshot().roots)
+                        print('Terminal exige também secrets: scripts têm acesso aos dados da conta.')
+                    else:
+                        try:
+                            verb, value = msg.split(' ', 1)
+                            current = store.snapshot()
+                            categories, roots = set(current.categories), list(current.roots)
+                            if verb == '/autorizar' and value.startswith('pasta '):
+                                roots.append(value[6:].strip())
+                            elif value not in CATEGORIES:
+                                raise ValueError('Categoria desconhecida; consulte /concessoes')
+                            elif verb == '/autorizar':
+                                categories.add(value)
+                            else:
+                                categories.discard(value)
+                            store.save(Grants(frozenset(categories), tuple(roots)))
+                            print('Concessões salvas. O modo revogado continua bloqueando a sessão.')
+                        except (ValueError, OSError) as exc:
+                            print('Concessões não alteradas:', exc, file=sys.stderr)
                     continue
                 if msg.lower() in ("/permissoes", "/permissões",
                                    "/permissoes status", "/permissões status"):

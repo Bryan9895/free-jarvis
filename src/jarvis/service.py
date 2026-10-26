@@ -34,7 +34,12 @@ class JarvisService:
 
     @classmethod
     def from_config(cls, config, *, manual_callback=None, auto=True, report=print):
-        approval = ApprovalPolicy(auto=auto, manual_callback=manual_callback, report=report)
+        from .authorizations import AuthorizationStore
+        authorizations = AuthorizationStore()
+        if authorizations.error:
+            report('Concessões não carregadas: ' + authorizations.error)
+        approval = ApprovalPolicy(auto=auto, manual_callback=manual_callback, report=report,
+                                  authorizations=authorizations)
         raw = FCCClient(config.url, config.token)
         client = AutoModelClient(raw, preferred=config.model,
                                  backups=[x.strip() for x in os.getenv(

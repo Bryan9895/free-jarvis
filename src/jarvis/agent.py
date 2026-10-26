@@ -519,6 +519,15 @@ class Agent:
                         "call_id": call_id,
                         "output": json.dumps(outcome, ensure_ascii=False),
                     })
+                    detail = outcome.get('result') if isinstance(outcome, dict) else None
+                    entry = self.toolkit.registry.get(call.get('name'))
+                    if (entry and entry.capability in ('command.execute', 'system.admin')
+                            and isinstance(detail, dict) and detail.get('status') in ('failed', 'execution_uncertain')):
+                        answer = ('A execução não foi concluída com segurança. Efeitos parciais podem ter ocorrido; '
+                                  'confira o resultado antes de repetir. Nenhuma outra ação deste pedido foi executada.')
+                        self.memory.add('user', message)
+                        self.memory.add('assistant', answer)
+                        return answer
                 if chosen == "tools" and not compound_request(message):
                     direct_result = (_local_focus_reply(calls, round_outcomes, message)
                                      or _local_window_state_reply(calls, round_outcomes)

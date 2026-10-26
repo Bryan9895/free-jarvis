@@ -28,7 +28,8 @@ class GuiBackend:
                          "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install",
                          "voice_configure", "voice_listen_start"})
     LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install',
-                                'voice_listen_start', 'voice_listen_stop', 'voice_speak'})
+                                'voice_listen_start', 'voice_listen_stop', 'voice_speak',
+                                'authorization_save', 'authorization_load'})
 
     def __init__(self, config, *, auto=True, service_factory=None):
         self.config = config
@@ -54,6 +55,8 @@ class GuiBackend:
         from .preferences import PreferenceStore
         self.preference_store = PreferenceStore()
         self.preferences = self.preference_store.load()
+        from .authorizations import AuthorizationStore
+        self.authorization_store = AuthorizationStore()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
         self._local_thread = threading.Thread(target=self._run_local, daemon=True, name="jarvis-audio-worker")
 
@@ -106,9 +109,17 @@ class GuiBackend:
     def revoke(self):
         service = self.service
         if service is not None:
-            service.approval.revoke()
-            self.cancel()
+            try:
+                service.approval.revoke()
+            except OSError as exc:
+                self.events.put(('error', 'Sessão revogada, mas não foi possível apagar concessões salvas: ' + str(exc)))
+            finally:
+                self.cancel()
             self.events.put(("approval_mode", "revoked"))
+        else:
+            from .authorizations import Grants
+            self.authorization_store.save(Grants())
+        self.events.put(('authorizations', self.authorization_store.snapshot()))
 
     def close(self):
         self._closed.set()
@@ -136,6 +147,7 @@ class GuiBackend:
         self.service = self.service_factory(
             self.config, auto=self.auto, manual_callback=self._approve,
             report=lambda message: self.events.put(("progress", message)))
+        self.service.approval.authorizations = self.authorization_store
         self.events.put(("connected", {
             "model": self.service.client.active_model,
             "approval": self.service.approval.mode,
@@ -219,7 +231,14 @@ class GuiBackend:
 
     def _dispatch(self, command, value):
         service = self.service
-        if command.startswith("voice_test_"):
+        if command == 'authorization_save':
+            self.authorization_store.save(value)
+            self.events.put(('authorizations', self.authorization_store.snapshot()))
+        elif command == 'authorization_load':
+            self.events.put(('authorizations', self.authorization_store.snapshot()))
+            if self.authorization_store.error:
+                self.events.put(('error', 'Concessões inválidas: ' + self.authorization_store.error))
+        elif command.startswith("voice_test_"):
             from .voice_diagnostics import VoiceDiagnostics
             if self._voice_test is None:
                 self._voice_test = VoiceDiagnostics()
@@ -495,7 +514,7 @@ class JarvisWindow:
         root.bind('<Destroy>', self._destroy, add='+')
 
     def _build(self):
-        from .gui_shell import WorkspacePanels, AssistantHud
+        from .gui_shell import WorkspacePanels, AssistantHud, ScrollPanel
         from .gui_theme import PANEL, TEXT, ACCENT, BORDER
         header = ttk.Frame(self.root, padding=(18, 10))
         header.pack(fill="x")
@@ -638,14 +657,31 @@ class JarvisWindow:
         ttk.Button(windows, text="Organizar lado a lado", command=lambda: self._tool_action(
             "arrange_windows", {"left_app": self.window_app.get(), "right_app": self.second_app.get()})).pack(fill="x")
 
-        permissions = ttk.Frame(tabs, padding=8)
-        tabs.add(permissions, text="Permissões")
+        permissions_panel = ScrollPanel(tabs)
+        permissions = permissions_panel.content
+        tabs.add(permissions_panel, text="Permissões")
         ttk.Label(permissions, text="Modo da sessão").pack(anchor="w")
         ttk.Combobox(permissions, textvariable=self.approval_mode,
                      values=("auto", "manual"), state="readonly").pack(fill="x")
         ttk.Button(permissions, text="Aplicar modo", command=lambda: self.backend.submit(
             "approval_mode", self.approval_mode.get())).pack(fill="x")
         ttk.Button(permissions, text="Revogar e cancelar", command=self._revoke).pack(fill="x", pady=5)
+        from .authorizations import CATEGORIES
+        ttk.Label(permissions, text='Autorizações salvas', style='Muted.TLabel').pack(anchor='w', pady=(8, 0))
+        self.authorization_vars = {}
+        for category, label in CATEGORIES.items():
+            selected = tk.BooleanVar(value=False)
+            self.authorization_vars[category] = selected
+            ttk.Checkbutton(permissions, text=label, variable=selected).pack(anchor='w')
+        ttk.Label(permissions, text='Terminal exige também dados sensíveis: scripts executam com acesso da conta. Administração usa autenticação do Ubuntu.',
+                  wraplength=275).pack(anchor='w', pady=5)
+        self.authorization_roots = tk.Listbox(permissions, height=3)
+        self.authorization_roots.pack(fill='x')
+        ttk.Button(permissions, text='Adicionar pasta autorizada', command=self._add_authorized_root).pack(fill='x')
+        ttk.Button(permissions, text='Remover pasta selecionada', command=lambda:
+            self.authorization_roots.delete('anchor')).pack(fill='x')
+        ttk.Button(permissions, text='Salvar autorizações', command=self._save_authorizations).pack(fill='x', pady=5)
+        self.backend.submit('authorization_load')
         ttk.Label(permissions, text="Capacidades habilitadas").pack(anchor="w", pady=(8, 0))
         self.capabilities_frame = ttk.Frame(permissions)
         self.capabilities_frame.pack(fill="both", expand=True)
@@ -949,6 +985,12 @@ class JarvisWindow:
             self._append_chat("Sistema", "Modelo de conversa selecionado: " + payload + ". Repita o pedido para testar a resposta.")
         elif kind == "approval_mode":
             self.approval_mode.set(payload)
+        elif kind == 'authorizations':
+            for key, selected in self.authorization_vars.items():
+                selected.set(key in payload.categories)
+            self.authorization_roots.delete(0, 'end')
+            for path in payload.roots:
+                self.authorization_roots.insert('end', path)
         elif kind == "capabilities":
             self._set_capabilities(payload)
         elif kind == "profiles":
@@ -1067,6 +1109,23 @@ class JarvisWindow:
             selected = tk.BooleanVar(value=name in enabled)
             self.capability_vars[name] = selected
             ttk.Checkbutton(self.capabilities_frame, text=name, variable=selected).pack(anchor="w")
+
+    def _add_authorized_root(self):
+        path = filedialog.askdirectory(parent=self.root, title='Escolha uma pasta para o Jarvis')
+        if path and path not in self.authorization_roots.get(0, 'end'):
+            self.authorization_roots.insert('end', path)
+
+    def _save_authorizations(self):
+        from .authorizations import Grants
+        grants = Grants(frozenset(key for key, value in self.authorization_vars.items() if value.get()),
+                        tuple(self.authorization_roots.get(0, 'end')))
+        try:
+            grants.validate()
+        except ValueError as exc:
+            self._append_chat('Erro', str(exc))
+            return
+        self.backend.cancel()
+        self.backend.submit('authorization_save', grants)
 
     def _clear_partial(self):
         if getattr(self, '_partial_slot', None) is not None:

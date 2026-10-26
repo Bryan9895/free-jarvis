@@ -26,7 +26,8 @@ class FakeClient:
 
 class RegistryTests(unittest.TestCase):
     def test_builtin_catalog_has_one_executor_and_capability_per_spec(self):
-        self.assertEqual(len(DEFAULT_REGISTRY.capabilities), 11)
+        self.assertTrue({'command.execute', 'system.admin'}.issubset(DEFAULT_REGISTRY.capabilities))
+        self.assertEqual(len(DEFAULT_REGISTRY.capabilities), 13)
         self.assertEqual({spec["name"] for spec in TOOL_SPECS},
                          {spec["name"] for spec in DEFAULT_REGISTRY.available_specs(
                              DEFAULT_REGISTRY.capabilities, desktop_input=True)})
