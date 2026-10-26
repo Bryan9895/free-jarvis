@@ -160,7 +160,14 @@ class VoiceIO:
             raise VoiceError("Arquivo de gravação inexistente")
         try:
             from .stt_cache import whisper_model
+            trace = getattr(self, 'last_capture_trace', None)
+            if trace is not None:
+                trace.mark('stt_queued')
+                trace.mark('stt_cache_start')
             with nullcontext(self._stt) if self._stt is not None else whisper_model(self.model_name) as model:
+                if trace is not None:
+                    trace.mark('stt_model_ready')
+                    trace.mark('stt_start')
                 segments, _ = model.transcribe(str(filename), language=self.language,
                                                 vad_filter=True, beam_size=5,
                                                 condition_on_previous_text=False)
@@ -169,6 +176,8 @@ class VoiceIO:
                        getattr(segment, 'avg_logprob', 0) < -1.0 for segment in segments):
                     raise VoiceError('Transcrição incerta; repita o pedido brevemente')
                 text = " ".join(segment.text.strip() for segment in segments).strip()
+                if trace is not None:
+                    trace.mark('stt_end')
             if not text:
                 raise VoiceError("Nenhuma fala reconhecida")
             return text
@@ -180,33 +189,23 @@ class VoiceIO:
             raise VoiceError(f"Falha na transcrição: {exc}") from exc
 
     def speak(self, text):
-        """Piper sintetiza localmente. Sem configuração, não envia fala para nuvem."""
         from .speech_text import spoken_text, speech_chunks
         text = spoken_text(text)
         if not text.strip():
-            return "empty"
+            return 'empty'
+        return self.speak_stream(speech_chunks(text))
+
+    def speak_stream(self, chunks):
         if self.piper_model is None:
-            return "disabled"
+            return 'disabled'
         if not self.piper_model.is_file():
-            raise VoiceError("Modelo de voz Piper não encontrado em JARVIS_PIPER_MODEL")
+            raise VoiceError('Modelo de voz Piper não encontrado em JARVIS_PIPER_MODEL')
         if self.output_device and not shutil.which('paplay'):
             raise VoiceError('Saída selecionada requer paplay (pulseaudio-utils)')
-        if not self.output_device and not shutil.which("aplay"):
+        if not self.output_device and not shutil.which('aplay'):
             raise VoiceError("Instale 'alsa-utils' para executar aplay")
-        fd, location = tempfile.mkstemp(prefix="jarvis_speech_", suffix=".wav")
-        os.close(fd)
-        wav_path = Path(location)
-        try:
-            for chunk in speech_chunks(text):
-                from .tts_engine import synthesizer
-                synthesizer.synthesize(self.piper_model, chunk, wav_path, self._speech_cancel)
-                player = ['paplay', '--device=' + self.output_device, str(wav_path)] if self.output_device else ['aplay', '-q', str(wav_path)]
-                self._run_audio(player)
-            return "spoken"
-        except subprocess.TimeoutExpired as exc:
-            raise VoiceError("Tempo limite de síntese/reprodução excedido") from exc
-        finally:
-            wav_path.unlink(missing_ok=True)
+        from .audio_output import play_pipeline
+        return play_pipeline(self, chunks)
 
     def prepare_speech(self):
         self._speech_cancel.clear()
@@ -405,7 +404,9 @@ class WakeWordConversation:
                         self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
                         continue
                     self._resume.clear()
-                    accepted = self.on_command(transcript)
+                    from .latency import TracedText
+                    accepted = self.on_command(TracedText(transcript,
+                        getattr(self.voice, 'last_capture_trace', None)))
                     if accepted is False:
                         self.on_status("Pedido de voz não enviado: aguarde a tarefa atual e diga Jarvis novamente.")
                         while not self._stop.is_set() and not self._resume.wait(0.2):
@@ -427,6 +428,10 @@ class WakeWordConversation:
     @exclusive_capture
     def _listen_for_command(self, sd, np, *, idle_timeout=None, finish=None, on_level=None):
         from .audio_endpoint import AudioEndpoint
+        from .latency import TurnTrace
+        trace = self.voice.last_capture_trace = TurnTrace()
+        trace.mark('capture_start')
+        last_speech_at = None
         frames = queue.Queue(maxsize=64)
         lost = threading.Event()
 
@@ -492,10 +497,16 @@ class WakeWordConversation:
                         from .voice_diagnostics import signal_metrics
                         on_level(signal_metrics(chunk.tobytes()))
                     was_started = endpoint.started
-                    ended = endpoint.feed(chunk, activity.active(chunk))
+                    active = activity.active(chunk)
+                    if active:
+                        last_speech_at = captured_at
+                    ended = endpoint.feed(chunk, active)
                     if endpoint.started and not was_started:
                         self.on_status('Ouvindo')
                     if ended:
+                        if last_speech_at is not None:
+                            trace.mark('last_speech_audio', at=last_speech_at)
+                        trace.mark('endpoint_decided')
                         break
                     if not endpoint.started and idle_timeout is not None and time.monotonic() - idle_started >= idle_timeout:
                         return None
@@ -511,6 +522,7 @@ class WakeWordConversation:
                 self.audio_metrics['lost_turns'] += 1
             raise VoiceError(f"{stage} indisponível: {exc}") from exc
         finally:
+            trace.mark('capture_released')
             self._capture_idle.set()
         if self._stop.is_set():
             return None

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from time import monotonic
 from threading import Lock
 
 from .agent import Agent
@@ -61,14 +62,20 @@ class JarvisService:
             raise
 
     def ask(self, message: str) -> str:
+        return self.ask_stream(message)
+
+    def ask_stream(self, message: str, *, on_text=None) -> str:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há uma tarefa em execução")
-        token = CancellationToken()
+        token = CancellationToken(deadline=monotonic() + float(os.getenv('JARVIS_TURN_TIMEOUT', '120')))
         self._current_token = token
         try:
             answer = self.tasks.handle(message)
             if answer is None:
-                answer = self.agent.ask(message, cancel_token=token)
+                if on_text is None:
+                    answer = self.agent.ask(message, cancel_token=token)
+                else:
+                    answer = self.agent.ask(message, cancel_token=token, on_text=on_text)
             return answer
         finally:
             self._current_token = None

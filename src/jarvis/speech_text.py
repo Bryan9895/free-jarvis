@@ -44,8 +44,48 @@ def spoken_text(text):
     return re.sub(r"\s+", " ", ' '.join(lines)).strip()
 
 
-def speech_chunks(text, max_chars=700):
+_ABBREVIATIONS = frozenset(('sr.', 'sra.', 'dr.', 'dra.', 'prof.', 'profa.', 'etc.', 'ex.', 'av.', 'art.'))
+
+
+def _boundaries(text):
+    for match in re.finditer(r'[.!?](?:["”\')\]]*)\s+', text):
+        end = match.end()
+        prefix = text[:match.start() + 1]
+        word = prefix.rsplit(None, 1)[-1].casefold()
+        if word in _ABBREVIATIONS or re.fullmatch(r'[A-ZÀ-Ú]\.', word.upper()):
+            continue
+        # Não dividir links, código ou marcação ainda incompleta.
+        if prefix.count('```') % 2 or prefix.count('`') % 2 or prefix.count('[') != prefix.count(']'):
+            continue
+        yield end
+
+
+class SentenceBuffer:
+    def __init__(self):
+        self.pending = ''
+
+    def feed(self, text):
+        self.pending += text
+        chunks = []
+        for end in list(_boundaries(self.pending)):
+            chunks.append(end)
+        if not chunks:
+            return []
+        parts, start = [], 0
+        for end in chunks:
+            parts.append(self.pending[start:end].strip())
+            start = end
+        self.pending = self.pending[start:]
+        return [part for part in parts if part]
+
+    def finish(self):
+        tail, self.pending = self.pending.strip(), ''
+        return [tail] if tail else []
+
+
+def speech_chunks(text, max_chars=240):
     """Frases em ordem; frases grandes dividem por palavras, sem perder conteúdo."""
-    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
+    buffer = SentenceBuffer()
+    for sentence in buffer.feed(text) + buffer.finish():
         yield from textwrap.wrap(sentence, width=max_chars, break_long_words=False,
                                  break_on_hyphens=False)

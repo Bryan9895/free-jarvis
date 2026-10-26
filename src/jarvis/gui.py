@@ -72,6 +72,10 @@ class GuiBackend:
                 self._action_pending.set()
                 self._cancel_queued.clear()
                 self._capture_cancel.clear()
+            if command in ('ask', 'voice_ask') and isinstance(value, str):
+                from .latency import TracedText
+                value = value if isinstance(value, TracedText) else TracedText(value)
+                value.trace.mark('intent_enqueued')
             destination = self.local_commands if command in self.LOCAL_COMMANDS or command.startswith('voice_test_') else self.commands
             destination.put((command, value))
             return True
@@ -310,6 +314,8 @@ class GuiBackend:
             recording = voice.record_turn(cancel=self._capture_cancel)
             try:
                 transcript = voice.transcribe(recording)
+                from .latency import TracedText
+                transcript = TracedText(transcript, getattr(voice, 'last_capture_trace', None))
                 if not self._capture_cancel.is_set():
                     self.events.put(("transcript", transcript))
             finally:
@@ -405,6 +411,8 @@ class GuiBackend:
             try:
                 self.events.put(("voice_status", f"Whisper {model}: transcrevendo seu pedido…"))
                 transcript = voice.transcribe(recording)
+                from .latency import TracedText
+                transcript = TracedText(transcript, getattr(voice, 'last_capture_trace', None))
                 if self._capture_cancel.is_set() or self._closed.is_set():
                     return
                 self.events.put(("voice_heard", transcript))
@@ -441,12 +449,13 @@ class GuiBackend:
                 self._speaking_voice = None
 
     def _conversation_turn(self, message, *, voice=None):
-        from .conversation import ConversationController
+        from .conversation import ConversationController, TextMailbox
         if self._conversation is None or self._conversation.service is not self.service:
             self._conversation = ConversationController(self.service,
                 emit=lambda event: self.events.put(("conversation_event", event)),
                 on_end=lambda: self._dispatch('voice_listen_stop', None))
-        return self._conversation.run(message, voice=voice,
+        updates = TextMailbox(lambda slot: self.events.put(('answer_partial', slot)))
+        return self._conversation.run(message, voice=voice, on_text=updates.publish,
             display=lambda answer: self.events.put(("answer", answer)))
 
 
@@ -863,10 +872,27 @@ class JarvisWindow:
             self.hud.set_state("SEM CONEXÃO", "Confira o servidor FCC e use Reconectar")
             self._append_chat("Sistema", payload)
         elif kind == "answer":
+            self._clear_partial()
             self.last_answer = payload
             self.hud.set_state("RESPOSTA RECEBIDA", "Conversa e operações no mesmo lugar")
             self._append_chat("JARVIS", payload)
+        elif kind == 'answer_partial':
+            text = payload.take()
+            if not hasattr(self, '_partial_slot') or self._partial_slot is not payload:
+                self._clear_partial()
+                self._partial_slot = payload
+                self.chat.configure(state='normal')
+                self.chat.mark_set('partial_start', 'end-1c')
+                self.chat.mark_gravity('partial_start', 'left')
+                self.chat.mark_set('partial_end', 'end-1c')
+                self.chat.mark_gravity('partial_end', 'right')
+            self.chat.configure(state='normal')
+            self.chat.delete('partial_start', 'partial_end')
+            self.chat.insert('partial_start', 'JARVIS\n' + text)
+            self.chat.see('end')
+            self.chat.configure(state='disabled')
         elif kind == "error":
+            self._finish_interrupted_partial()
             self._operation_error = True
             self._append_chat("Erro", error_message(payload))
             self._write(self.error_details, str(payload))
@@ -943,6 +969,8 @@ class JarvisWindow:
             for button in (self.push_to_talk_button, self.push_to_talk_quick):
                 button.configure(state='normal' if payload else 'disabled')
         elif kind == "conversation_event":
+            if payload.state == 'cancelado':
+                self._finish_interrupted_partial()
             self._turn_state = payload.state
             labels = {'executando': 'Executando', 'falando': 'Falando',
                       'aguardando_seguimento': 'Aguardando seguimento',
@@ -1039,6 +1067,21 @@ class JarvisWindow:
             selected = tk.BooleanVar(value=name in enabled)
             self.capability_vars[name] = selected
             ttk.Checkbutton(self.capabilities_frame, text=name, variable=selected).pack(anchor="w")
+
+    def _clear_partial(self):
+        if getattr(self, '_partial_slot', None) is not None:
+            self.chat.configure(state='normal')
+            self.chat.delete('partial_start', 'partial_end')
+            self.chat.mark_unset('partial_start', 'partial_end')
+            self.chat.configure(state='disabled')
+            self._partial_slot = None
+
+    def _finish_interrupted_partial(self):
+        slot = getattr(self, '_partial_slot', None)
+        if slot is not None:
+            text = slot.take()
+            self._clear_partial()
+            self._append_chat('JARVIS · resposta interrompida', text)
 
     def _close(self):
         self.backend.close()

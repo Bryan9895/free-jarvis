@@ -21,3 +21,10 @@ class ModelProvider(Protocol):
     def select_model(self, name: str) -> str:
         """Seleciona um modelo conhecido pelo adaptador."""
         ...
+
+
+class StreamingModelProvider(ModelProvider, Protocol):
+    def stream_responses(self, payload: dict, *, on_event=None,
+                         cancel_token=None, deadline=None) -> dict:
+        """Texto público incremental e resultado terminal consolidado."""
+        ...

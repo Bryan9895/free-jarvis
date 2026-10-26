@@ -169,3 +169,42 @@ Automação **passou**: 425 testes em 29,085 s, com display real; `git diff --ch
 | Bluetooth, saída audível, recuperação física e GNOME/FCC | pendente: ensaio real, não comprovado por estes testes |
 
 Não houve nova captura ambiental nem medição física de wake word neste incremento. Para revalidar o relato, reabrir a aplicação, escolher/instalar voz, Salvar, testar saída e usar Falar/terminar; os estados não devem parar de atualizar após o primeiro nível de áudio. A jornada final continua sem aceite físico.
+
+
+## Evolução 26/10/2026 — streaming, roteamento e voz em pipeline
+
+Base verificada local/remota: `1702cd7297dc38b83dce1946a361c16e44ed0c31`.
+A branch remota work/v1-foundation já é ancestral da main. Arquivos locais
+modelos/ e src/jarvis_fcc.egg-info/ foram preservados e não são parte da entrega.
+
+Implementado: pedidos indiretos mantêm ferramentas; pedidos compostos não têm
+seu catálogo reduzido à primeira ação nem encerram por uma resposta local parcial.
+SSE encaminha somente deltas públicos; terminal válido encerra sem esperar EOF.
+Deadline compartilhado entre tentativas, limite de tentativas, watchdog de leitura
+com shutdown do socket em cancelamento/inatividade e bloqueio de fallback após
+texto emitido. GUI usa mailbox com um evento pendente por turno; CLI mostra deltas.
+Ações continuam com texto consolidado. Pipeline de voz tem fila de dois WAVs,
+limpeza, ordem, backpressure e primeira frase antes do terminal para informação.
+Traços monotônicos limitados em memória correlacionam captura/STT/execução/saída;
+player_start_proxy não comprova som físico. Sem áudio/prompt novo em logs.
+
+Automação intermediária passou: 440 testes em 15,431 s, display/Chromium/HTTP local,
+antes dos acréscimos finais de correlação e teste gráfico de streaming. A execução
+final deste checkpoint será registrada abaixo; não equivale ao aceite físico.
+
+Replay HTTP controlado: `PYTHONPATH=src .venv/bin/python tools/benchmark_transport.py --samples 30`.
+30 amostras por versão, ordem alternada, baseline FCC obtido por git show 1702cd7.
+Servidor local emite delta em 20 ms, terminal em 40 ms e EOF em 120 ms.
+Baseline conclusão p50/p95: 121,94/123,10 ms; atual: 41,82/45,34 ms;
+primeiro delta atual: 21,48/24,72 ms. Redução mediana 65,71% neste replay,
+causada pela remoção da espera por EOF. Não representa ganho ponta a ponta no
+notebook, STT, rede FCC real ou áudio audível. Script preserva apenas métricas.
+
+Pendente: ensaio físico Bluetooth/FCC/GNOME, precisão de fala humana, corpus STT
+consentido e benchmark de 30 turnos completos. Cancelamento durante conexão/DNS
+antes dos headers depende do timeout de conexão (padrão 5 s); leitura após headers
+é interrompível. Não se declara barge-in nem detector acústico Jarvis validado.
+
+Verificação final do incremento: passou, 441 testes em 15,617 s. O teste novo
+de GUI foi ajustado para cancelar seu timer antes de chamar polling manualmente;
+a janela do produto mantém um único timer. `git diff --check` deve acompanhar o commit.

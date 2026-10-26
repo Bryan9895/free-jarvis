@@ -2,6 +2,10 @@
 import json
 import sys
 import os
+from time import monotonic
+from uuid import uuid4
+from .latency import mark
+from .transport import ReadBudget
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -9,6 +13,8 @@ TRANSIENT = frozenset({429, 500, 502, 503, 504})
 
 def may_fallback(error):
     """404 só autoriza fallback se vier de erro explicitamente atribuído ao provedor."""
+    if error.category in ("invalid_response", "deadline", "partial_stream"):
+        return False
     if error.status in TRANSIENT or error.status is None:
         return True
     if error.status == 400:
@@ -74,62 +80,119 @@ class FCCClient:
         return self.request("GET", "/v1/models?view=responses")
 
     def responses(self, payload):
-        """FCC exige stream=true; monta a resposta final do evento SSE response.completed."""
+        return self.stream_responses(payload)
+
+    def stream_responses(self, payload, *, on_event=None, cancel_token=None, deadline=None):
+        """SSE incremental; o evento terminal libera o socket sem esperar EOF."""
+        deadline = deadline or monotonic() + self.timeout
+        if cancel_token is not None:
+            cancel_token.check()
+            if cancel_token.deadline is not None:
+                deadline = min(deadline, cancel_token.deadline)
+        if monotonic() >= deadline:
+            raise FCCError('Prazo total da requisição excedido', category='deadline')
         headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         body = json.dumps({**payload, "stream": True}).encode()
         req = Request(self.base_url + "/v1/responses", data=body, headers=headers, method="POST")
+        request_id = uuid4().hex
+        mark('provider_start', request_id=request_id)
         try:
-            with urlopen(req, timeout=self.timeout) as response:
-                final = None
-                failed = None
-                event = ""
-                lines = []
-                def process():
-                    nonlocal final, failed
-                    if not lines:
-                        return
-                    try:
-                        data = json.loads("\n".join(lines))
-                    except ValueError as exc:
-                        raise FCCError("Evento SSE inválido do FCC") from exc
-                    kind = data.get("type", event) if isinstance(data, dict) else event
-                    if kind == "response.completed":
-                        final = data.get("response")
-                    elif kind in ("response.failed", "response.incomplete", "error"):
-                        failed = data
-                for raw in response:
-                    line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-                    if not line:
-                        process()
-                        event, lines = "", []
-                    elif line.startswith("event:"):
-                        event = line[6:].strip()
-                    elif line.startswith("data:"):
-                        if line[5:].strip() == "[DONE]":
+            connect = min(float(os.getenv('FCC_CONNECT_TIMEOUT', '5')), deadline - monotonic())
+            with urlopen(req, timeout=max(.001, connect)) as response:
+                # O watchdog aplica os prazos após headers, inclusive se vierem
+                # heartbeats. O deadline absoluto não reinicia a cada evento.
+                sock = getattr(getattr(getattr(response, 'fp', None), 'raw', None), '_sock', None)
+                if sock is not None:
+                    sock.settimeout(max(.001, deadline - monotonic()))
+                with ReadBudget(response, token=cancel_token, deadline=deadline,
+                        first=float(os.getenv('FCC_FIRST_EVENT_TIMEOUT', '30')),
+                        idle=float(os.getenv('FCC_IDLE_TIMEOUT', '20'))) as budget:
+                    event, lines, size = '', [], 0
+                    first_event = True
+                    first_text = True
+
+                    def process():
+                        nonlocal first_event, first_text
+                        if not lines:
+                            return None
+                        try:
+                            data = json.loads('\n'.join(lines))
+                        except ValueError as exc:
+                            raise FCCError('Evento SSE inválido do FCC', category='invalid_response') from exc
+                        if not isinstance(data, dict):
+                            raise FCCError('Evento SSE inválido do FCC', category='invalid_response')
+                        kind = data.get('type', event)
+                        if first_event:
+                            mark('provider_first_event', request_id=request_id)
+                            first_event = False
+                        if kind in ('response.failed', 'response.incomplete', 'error'):
+                            result = data.get('response') or {}
+                            reason = (result.get('incomplete_details') or {}).get('reason', 'não informado') if isinstance(result, dict) else 'não informado'
+                            raise FCCError('FCC retornou ' + str(kind) + ' (motivo: ' + str(reason)[:100] + ')', category='invalid_response')
+                        if kind == 'response.completed':
+                            final = data.get('response')
+                            if not isinstance(final, dict) or not isinstance(final.get('output'), list):
+                                raise FCCError('Evento response.completed inválido', category='invalid_response')
+                            mark('provider_final', request_id=request_id)
+                            return final
+                        # Apenas texto público. Não encaminhar raciocínio ou
+                        # argumentos parciais às interfaces.
+                        if kind == 'response.output_text.delta' and isinstance(data.get('delta'), str):
+                            if first_text and data['delta'].strip():
+                                mark('provider_first_text', request_id=request_id)
+                                first_text = False
+                            if on_event is not None:
+                                on_event({'type': kind, 'delta': data['delta']})
+                        return None
+
+                    while True:
+                        budget.check()
+                        raw = response.readline(1024 * 1024 + 1)
+                        budget.check()
+                        if not raw:
+                            final = process()
+                            if final is not None:
+                                return final
                             break
-                        lines.append(line[5:].lstrip())
-                process()
-                if failed is not None:
-                    result = failed.get("response")
-                    if failed.get("type") == "response.incomplete" and isinstance(result, dict):
-                        details = result.get("incomplete_details") or {}
-                        reason = details.get("reason", "não informado") if isinstance(details, dict) else "não informado"
-                        raise FCCError("FCC retornou response.incomplete (motivo: " + str(reason) + "). Verifique limite de saída/raciocínio do modelo.")
-                    detail = result.get("error") if isinstance(result, dict) else failed.get("error")
-                    raise FCCError("FCC não concluiu a resposta: " + str(detail or failed.get("type"))[:300])
-                if not isinstance(final, dict) or not isinstance(final.get("output"), list):
-                    raise FCCError("Streaming encerrado sem evento response.completed válido")
-                return final
+                        if len(raw) > 1024 * 1024:
+                            raise FCCError('Evento SSE excedeu limite', category='invalid_response')
+                        line = raw.decode('utf-8', errors='strict').rstrip('\r\n')
+                        if not line:
+                            if lines:
+                                budget.touch()
+                            final = process()
+                            event, lines, size = '', [], 0
+                            if final is not None:
+                                return final
+                        elif line.startswith('event:'):
+                            event = line[6:].strip()
+                        elif line.startswith('data:'):
+                            value = line[5:].removeprefix(' ')
+                            if value.strip() == '[DONE]':
+                                final = process()
+                                if final is not None:
+                                    return final
+                                break
+                            lines.append(value)
+                            size += len(raw)
+                            if size > 1024 * 1024:
+                                raise FCCError('Evento SSE excedeu limite', category='invalid_response')
+                    raise FCCError('Streaming encerrado sem evento response.completed válido', category='invalid_response')
         except HTTPError as exc:
             try:
-                detail = exc.read(700).decode(errors="replace")
+                detail = exc.read(700).decode(errors='replace')
             finally:
                 exc.close()
-            raise FCCError(f"HTTP {exc.code} em /v1/responses: {detail}", exc.code) from exc
-        except (URLError, TimeoutError, ConnectionError) as exc:
-            raise FCCError(f"Conexão FCC interrompida: {exc}") from exc
+            raise FCCError(f'HTTP {exc.code} em /v1/responses: {detail}', exc.code) from exc
+        except (URLError, TimeoutError, ConnectionError, OSError) as exc:
+            if cancel_token is not None:
+                cancel_token.check()
+            category = 'deadline' if isinstance(exc, TimeoutError) or monotonic() >= deadline else 'unavailable'
+            raise FCCError('Conexão FCC interrompida: ' + str(exc), category=category) from exc
+        except UnicodeError as exc:
+            raise FCCError('UTF-8 inválido no SSE', category='invalid_response') from exc
 
 class AutoModelClient:
     """Seleciona modelo inicial e tenta outro para falhas transitórias.
@@ -195,6 +258,16 @@ class AutoModelClient:
         return list(self.candidates)
 
     def responses(self, payload):
+        return self.stream_responses(payload)
+
+    def stream_responses(self, payload, *, on_event=None, cancel_token=None, deadline=None):
+        deadline = deadline or monotonic() + getattr(self.client, 'timeout', 100)
+        emitted = False
+        def forward(event):
+            nonlocal emitted
+            if on_event is not None:
+                emitted = True
+                on_event(event)
         if not self.candidates:
             self.initialize()
         candidates = [self.active_model] + [m for m in self.candidates if m != self.active_model]
@@ -207,11 +280,20 @@ class AutoModelClient:
                 model for model in candidates[1:] if model in self.backups
             ]
         last_error = None
-        for index, model in enumerate(candidates):
+        for index, model in enumerate(candidates[:max(1, int(os.getenv("FCC_MAX_ATTEMPTS", "3")))]):
+            if cancel_token is not None:
+                cancel_token.check()
+            if monotonic() >= deadline:
+                raise FCCError("Prazo total da requisição excedido", category="deadline")
+            mark("provider_attempt", attempt=index + 1)
             if getattr(self, "_diagnosing", False):
                 print(f"FCC: testando {model} ...", file=sys.stderr, flush=True)
             try:
-                response = self.client.responses({**payload, "model": model})
+                if callable(getattr(type(self.client), 'stream_responses', None)):
+                    response = self.client.stream_responses({**payload, 'model': model},
+                        on_event=forward, cancel_token=cancel_token, deadline=deadline)
+                else:
+                    response = self.client.responses({**payload, 'model': model})
                 if index and self.on_switch:
                     self.on_switch(model)
                 self.active_model = model
@@ -220,7 +302,7 @@ class AutoModelClient:
                 last_error = exc
                 if getattr(self, "_diagnosing", False):
                     print(f"FCC: modelo {model} falhou: {str(exc)[:160]}", file=sys.stderr, flush=True)
-                if not may_fallback(exc):
+                if emitted or not may_fallback(exc):
                     raise
                 # Erros de transporte podem significar que o servidor está desligado,
                 # mas tentar outro modelo não executa ações externas no computador.

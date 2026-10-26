@@ -423,8 +423,10 @@ def main():
                           "/plano para o plano atual.")
                     continue
                 try:
-                    conversation.run(msg, voice=voice,
-                        display=lambda answer: print("JARVIS >", answer, "\n"))
+                    from .conversation import TerminalText
+                    presentation = TerminalText()
+                    conversation.run(msg, voice=voice, on_text=presentation.delta,
+                                     display=presentation.finish)
                     if os.getenv("JARVIS_SHOW_TIMING") == "1":
                         print("Tempo:", agent.last_metrics, "\n")
                 except (FCCError, ValueError) as exc:

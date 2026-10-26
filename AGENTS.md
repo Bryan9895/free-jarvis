@@ -62,3 +62,13 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 - Mark-LVI: referência de experiência/arquitetura sob CC BY-NC 4.0. Escreva código e assets próprios; não importe seu avatar, identidade, arquivos ou implementação.
 - OpenJarvis: referência modular sob Apache-2.0. Não adicione seu framework inteiro como dependência para copiar uma abstração; eventual reutilização de código exige os avisos aplicáveis.
 - Não instale dependências das referências nem execute seus scripts de setup só para analisá-las.
+
+## Decisões confirmadas em 26/10/2026
+
+- Evolução autorizada: autonomia máxima com autorizações persistentes/revogáveis
+  por categoria, incluindo administração via autenticação nativa. Implementar os
+  controles não equivale a habilitar concessões amplas silenciosamente no notebook.
+- Personalidade discreta e sofisticada; manter profundidade quando solicitada e
+  separar concisão da fala de capacidade de raciocínio.
+- Streaming de ações não confirma efeito antes da verificação. Deadline é total
+  entre tentativas; fallback após conteúdo exibido/falado deve ser interrompido.

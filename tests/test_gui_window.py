@@ -14,6 +14,28 @@ from jarvis.tools import DEFAULT_REGISTRY
 
 @unittest.skipUnless(os.getenv('DISPLAY'), 'Display gráfico indisponível')
 class WindowTests(unittest.TestCase):
+    def test_stream_updates_replace_partial_and_final_without_duplication(self):
+        from jarvis.conversation import TextMailbox
+        backend = Mock()
+        backend.events = queue.Queue()
+        root = tk.Tk()
+        try:
+            window = JarvisWindow(root, backend)
+            slot = TextMailbox(lambda value: backend.events.put(('answer_partial', value)))
+            slot.publish('Primeira ')
+            slot.publish('frase.')
+            root.after_cancel(window._poll_timer)
+            window._poll()
+            self.assertIn('Primeira frase.', window.chat.get('1.0', 'end'))
+            slot.publish(' Segunda frase.')
+            root.after_cancel(window._poll_timer)
+            window._poll()
+            window._handle('answer', 'Primeira frase. Segunda frase.')
+            self.assertEqual(window.chat.get('1.0', 'end').count('Primeira frase.'), 1)
+            self.assertIn('Segunda frase.', window.chat.get('1.0', 'end'))
+        finally:
+            root.destroy()
+
     def test_destroy_during_event_handling_does_not_rearm_poll(self):
         backend = Mock()
         backend.events = queue.Queue()

@@ -18,6 +18,8 @@ _ACTION = re.compile(
     r"arquivo|pasta|navegador|janela|tela|desktop|mouse|teclado|"
     r"minha|meu|meus|minhas|agora|hoje|atual|recentes|online|"
     r"acesse|execute|terminal|crie|criar|liste|listar|encontre|verifique|"
+    r"inicie|iniciar|inicia|adicione|adicionar|instale|instalar|remova|remover|"
+    r"encerre|encerrar|toque|tocar|reproduza|reproduzir|envie|enviar|"
     r"monitores?|workspaces?|(?:área|area)s? de trabalho)\b",
     re.IGNORECASE,
 )
@@ -42,6 +44,15 @@ def route(message: str, mode="auto") -> str:
     return "tools"
 
 
+def compound_request(message):
+    """Conjunção de ações, preservando alvos como 'Firefox e VS Code'."""
+    return bool(re.search(r'\b(?:depois|então|entao|também|tambem|após|apos|em seguida)\b|[;\n]|'
+        r'\be\s+(?:abra|abrir|inicie|iniciar|crie|criar|salve|salvar|feche|fechar|'
+        r'mova|mover|coloque|organize|liste|listar|mostre|leia|escreva|edite|'
+        r'instale|remova|envie|adicione|traga|ative|clique|pesquise|execute)\b',
+        message.casefold()))
+
+
 def tool_catalog(message: str, available: list[dict]) -> list[dict]:
     """Seleciona um conjunto mínimo só em intenções inequívocas.
 
@@ -58,6 +69,10 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
 
     normalized = fold(message).strip()
     normalized = re.sub(r"^jarvis[,.:!\s]+", "", normalized)
+    # A conjunção pode ligar alvos ou ações. Preservar o catálogo nesses casos
+    # custa contexto, mas nunca remove a segunda metade de uma intenção.
+    if compound_request(normalized):
+        return available
     if len(normalized) > 180 or "\n" in normalized:
         return available
     if re.search(r"\b(?:ambiente|ambientes)\b", normalized):

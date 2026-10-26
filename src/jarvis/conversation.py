@@ -6,6 +6,46 @@ from uuid import uuid4
 
 from .cancellation import CancelledError
 from .speech_text import ResponseText
+from .latency import TurnTrace, tracing, mark
+
+
+class TextMailbox:
+    """Um evento pendente por turno, independentemente do número de tokens."""
+    def __init__(self, notify):
+        self.text = ''
+        self.pending = False
+        self.lock = Lock()
+        self.notify = notify
+
+    def publish(self, delta):
+        with self.lock:
+            self.text += delta
+            send = not self.pending
+            self.pending = True
+        if send:
+            self.notify(self)
+
+    def take(self):
+        with self.lock:
+            self.pending = False
+            return self.text
+
+
+class TerminalText:
+    def __init__(self):
+        self.text = ''
+
+    def delta(self, text):
+        if not self.text:
+            print('JARVIS > ', end='', flush=True)
+        self.text += text
+        print(text, end='', flush=True)
+
+    def finish(self, text):
+        if self.text == text:
+            print('\n')
+        else:
+            print(('\n' if self.text else '') + 'JARVIS > ' + text + '\n')
 
 
 @dataclass(frozen=True)
@@ -28,6 +68,7 @@ class ConversationController:
         self._lock = Lock()
         self._guard = Lock()
         self._voice = None
+        self.last_trace = None
 
     def _event(self, turn, state, reason):
         self.emit(ConversationEvent(self.session_id, turn, state, reason, monotonic()))
@@ -38,6 +79,8 @@ class ConversationController:
                 raise CancelledError("Turno cancelado; resultado atrasado descartado")
 
     def cancel(self):
+        if self.last_trace is not None:
+            self.last_trace.mark('cancel_requested')
         with self._guard:
             self._cancelled = True
             turn, voice = self._turn_id, self._voice
@@ -47,10 +90,15 @@ class ConversationController:
         if turn:
             self._event(turn, 'cancelado', 'solicitado pelo usuário')
 
-    def run(self, message, *, voice=None, display=lambda _: None):
+    def run(self, message, *, voice=None, display=lambda _: None, on_text=None, trace=None):
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há um turno em execução")
-        turn = uuid4().hex
+        trace = trace or getattr(message, 'trace', None) or TurnTrace(session_id=self.session_id)
+        trace.session_id = self.session_id
+        turn = trace.turn_id
+        self.last_trace = trace
+        trace.mark('intent_accepted')
+        live = None
         with self._guard:
             self._turn_id, self._cancelled, self._voice = turn, False, voice
         try:
@@ -62,16 +110,34 @@ class ConversationController:
                 return response
             if voice is not None:
                 voice.prepare_speech()
+                if on_text is not None and callable(getattr(type(voice), 'speak_stream', None)):
+                    from .audio_output import LiveSpeech
+                    with tracing(trace):
+                        live = LiveSpeech(voice)
             self._check(turn)
             self._event(turn, 'executando', 'intenção recebida')
-            response = ResponseText.from_display(self.service.ask(message))
+            def receive(delta):
+                self._check(turn)
+                if on_text is not None:
+                    on_text(delta)
+                    mark('visual_delta')
+                if live is not None:
+                    live.feed(delta)
+            with tracing(trace):
+                if on_text is not None and callable(getattr(type(self.service), 'ask_stream', None)):
+                    answer = self.service.ask_stream(message, on_text=receive)
+                else:
+                    answer = self.service.ask(message)
+            response = ResponseText.from_display(answer)
             self._check(turn)
             display(response.display_text)
+            trace.mark('visual_final')
             if voice is not None:
                 self._check(turn)
                 self._event(turn, 'falando', 'resposta disponível')
                 try:
-                    status = voice.speak(response.spoken_text)
+                    with tracing(trace):
+                        status = live.finish(response.display_text) if live is not None else voice.speak(response.spoken_text)
                     self._check(turn)
                     if status == 'disabled':
                         self._event(turn, 'erro', 'tts: voz local não configurada')
@@ -91,6 +157,12 @@ class ConversationController:
             self._event(turn, 'erro', 'modelo/execução: resposta indisponível')
             raise
         finally:
+            if live is not None and live.worker.is_alive():
+                live.abort()
+            trace.mark('turn_released')
+            metrics = getattr(getattr(self.service, 'agent', None), 'last_metrics', None)
+            if isinstance(metrics, dict):
+                metrics['latency'] = trace.snapshot()
             with self._guard:
                 self._voice = None
             self._lock.release()

@@ -294,8 +294,11 @@ class Toolkit(FilesystemTools):
         return agent_step(self.approve, action, dx=dx, dy=dy, text=text)
 
     def execute(self, name, arguments, cancel_token=None):
+        from .latency import mark
+        mark('tool_start')
         started = time.monotonic()
         def finish(outcome, capability=None):
+            mark('tool_end')
             detail = outcome.get("result") if isinstance(outcome, dict) else None
             status = "error" if "error" in outcome else (
                 detail.get("status", "ok") if isinstance(detail, dict) else "ok")
