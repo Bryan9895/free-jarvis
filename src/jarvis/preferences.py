@@ -21,11 +21,12 @@ class Preferences:
     followup_seconds: int = 20
     start_timeout_seconds: int = 20
     reconnect_attempts: int = 2
+    wake_manifest: str = ''
 
     def validate(self):
         if self.version != 1:
             raise ValueError('Versão de preferências não suportada')
-        for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device'):
+        for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest'):
             value = getattr(self, key)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
                 raise ValueError('Preferência inválida: ' + key)
@@ -50,6 +51,7 @@ class Preferences:
         for key, variable in {'stt_model': 'JARVIS_WHISPER_MODEL',
                               'conversation_model': 'FCC_MODEL', 'audio_device': 'JARVIS_AUDIO_DEVICE',
                               'piper_model': 'JARVIS_PIPER_MODEL', 'output_device': 'JARVIS_AUDIO_OUTPUT',
+                              'wake_manifest': 'JARVIS_WAKE_MANIFEST',
                               'voice_mode': 'JARVIS_VOICE_MODE'}.items():
             if variable in os.environ:
                 values[key] = os.environ[variable]

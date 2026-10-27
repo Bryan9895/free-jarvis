@@ -48,6 +48,8 @@ _ABBREVIATIONS = frozenset(('sr.', 'sra.', 'dr.', 'dra.', 'prof.', 'profa.', 'et
 
 
 def _boundaries(text):
+    if text.lstrip().startswith(('{', '[', '|')):
+        return
     for match in re.finditer(r'[.!?](?:["”\')\]]*)\s+', text):
         end = match.end()
         prefix = text[:match.start() + 1]

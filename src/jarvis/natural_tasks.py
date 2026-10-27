@@ -104,7 +104,8 @@ class NaturalTaskController:
         if kind == "resume":
             return self._continue(message)
         if kind in ("plan", "plan_execute"):
-            state = self.planner.prepare(message)
+            token = self.cancel_token_provider()
+            state = self.planner.prepare(message, cancel_token=token) if token is not None else self.planner.prepare(message)
             display = self._show(state)
             if kind == "plan":
                 return display + "\nDiga 'execute o plano' para iniciar."

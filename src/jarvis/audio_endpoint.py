@@ -13,7 +13,7 @@ class TurnLimitError(RuntimeError):
 
 class AudioEndpoint:
     def __init__(self, sample_rate, *, silence_seconds=1.0, max_seconds=120,
-                 preroll_seconds=0.8):
+                 preroll_seconds=0.8, chunk_sink=None):
         if sample_rate <= 0 or silence_seconds <= 0 or max_seconds <= silence_seconds:
             raise ValueError("Configuração de endpoint inválida")
         self.rate = sample_rate
@@ -26,6 +26,13 @@ class AudioEndpoint:
         self.samples = 0
         self.quiet = 0
         self.started = False
+        self.chunk_sink = chunk_sink
+
+    def store_chunk(self, chunk):
+        if self.chunk_sink is not None:
+            self.chunk_sink(chunk)
+        else:
+            self.chunks.append(chunk)
 
     def feed(self, chunk, active):
         """Retorna True apenas após silêncio completo; teto sempre levanta erro."""
@@ -38,11 +45,12 @@ class AudioEndpoint:
             if not active:
                 return False
             self.started = True
-            self.chunks.extend(self.recent)
+            for frame in self.recent:
+                self.store_chunk(frame)
             self.samples = self.recent_samples
             self.recent.clear()
         else:
-            self.chunks.append(chunk)
+            self.store_chunk(chunk)
             self.samples += size
         self.quiet = 0 if active else self.quiet + size
         if self.samples >= self.limit:

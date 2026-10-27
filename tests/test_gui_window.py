@@ -14,6 +14,19 @@ from jarvis.tools import DEFAULT_REGISTRY
 
 @unittest.skipUnless(os.getenv('DISPLAY'), 'Display gráfico indisponível')
 class WindowTests(unittest.TestCase):
+    def test_pending_speech_stays_visible_after_busy_and_can_be_discarded(self):
+        backend = Mock()
+        backend.events = queue.Queue()
+        root = tk.Tk()
+        try:
+            window = JarvisWindow(root, backend)
+            window._handle('voice_status', 'Pedido pendente: continue ou descarte.')
+            window._handle('busy', False)
+            self.assertEqual(window.hud.label, 'Pedido pendente')
+            window._handle('voice_status', 'Pedido pendente descartado. Nenhuma ação foi executada.')
+            self.assertEqual(window.hud.label, 'Pedido descartado')
+        finally:
+            root.destroy()
     def test_stream_updates_replace_partial_and_final_without_duplication(self):
         from jarvis.conversation import TextMailbox
         backend = Mock()

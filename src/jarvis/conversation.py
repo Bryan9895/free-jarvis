@@ -58,11 +58,11 @@ class ConversationEvent:
 
 
 class ConversationController:
-    def __init__(self, service, *, emit=lambda _: None, on_end=lambda: None):
+    def __init__(self, service, *, emit=lambda _: None, on_end=lambda: None, session_id=None):
         self.service = service
         self.emit = emit
         self.on_end = on_end
-        self.session_id = uuid4().hex
+        self.session_id = session_id or uuid4().hex
         self._turn_id = None
         self._cancelled = False
         self._lock = Lock()
@@ -79,11 +79,11 @@ class ConversationController:
                 raise CancelledError("Turno cancelado; resultado atrasado descartado")
 
     def cancel(self):
-        if self.last_trace is not None:
-            self.last_trace.mark('cancel_requested')
         with self._guard:
             self._cancelled = True
             turn, voice = self._turn_id, self._voice
+        if turn and self.last_trace is not None:
+            self.last_trace.mark('cancel_requested')
         self.service.cancel_current()
         if voice is not None:
             voice.cancel_speech()
@@ -94,7 +94,8 @@ class ConversationController:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há um turno em execução")
         trace = trace or getattr(message, 'trace', None) or TurnTrace(session_id=self.session_id)
-        trace.session_id = self.session_id
+        if trace.session_id != self.session_id and getattr(message, 'trace', None) is not None:
+            self.session_id = trace.session_id
         turn = trace.turn_id
         self.last_trace = trace
         trace.mark('intent_accepted')
@@ -165,4 +166,5 @@ class ConversationController:
                 metrics['latency'] = trace.snapshot()
             with self._guard:
                 self._voice = None
+                self._turn_id = None
             self._lock.release()

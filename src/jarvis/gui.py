@@ -26,12 +26,16 @@ class GuiBackend:
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
                          "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install",
-                         "voice_configure", "voice_listen_start"})
+                         "voice_configure", "voice_listen_start", 'voice_warmup'})
     LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install',
                                 'voice_listen_start', 'voice_listen_stop', 'voice_speak',
+                                'voice_discard_pending',
+                                'voice_warmup',
                                 'authorization_save', 'authorization_load'})
 
     def __init__(self, config, *, auto=True, service_factory=None):
+        from uuid import uuid4
+        self.session_id = uuid4().hex
         self.config = config
         self.auto = auto
         self.service_factory = service_factory or JarvisService.from_config
@@ -77,7 +81,8 @@ class GuiBackend:
                 self._capture_cancel.clear()
             if command in ('ask', 'voice_ask') and isinstance(value, str):
                 from .latency import TracedText
-                value = value if isinstance(value, TracedText) else TracedText(value)
+                from .latency import TurnTrace
+                value = value if isinstance(value, TracedText) else TracedText(value, TurnTrace(session_id=self.session_id))
                 value.trace.mark('intent_enqueued')
             destination = self.local_commands if command in self.LOCAL_COMMANDS or command.startswith('voice_test_') else self.commands
             destination.put((command, value))
@@ -85,6 +90,15 @@ class GuiBackend:
 
     def cancel(self):
         self._capture_cancel.set()
+        if self._voice is not None:
+            had_pending = self._voice.pending_audio is not None
+            self._voice.discard_pending()
+            if had_pending:
+                self.events.put(('voice_status', 'Pedido pendente descartado. Nenhuma ação foi executada.'))
+        if self._voice_listener is not None:
+            self._voice_listener.pause()
+            if not self._action_pending.is_set():
+                self._voice_listener.resume()
         if self._conversation is not None:
             self._conversation.cancel()
         if self._speaking_voice is not None:
@@ -93,6 +107,8 @@ class GuiBackend:
         cancelled = service.cancel_current() if service is not None else False
         if self._action_pending.is_set():
             self._cancel_queued.set()
+            cancelled = True
+        if self._voice_listener is not None:
             cancelled = True
         request = self._approval
         if request is not None:
@@ -206,7 +222,7 @@ class GuiBackend:
                 self.events.put(('busy', True))
                 if self._voice_listener is not None:
                     needs_audio = command.startswith('voice_test_') or command in {
-                        'voice_record', 'voice_push_to_talk', 'voice_speak', 'voice_ask'}
+                        'voice_record', 'voice_push_to_talk', 'voice_speak', 'voice_ask', 'voice_warmup'}
                     released = self._voice_listener.pause(timeout=2 if needs_audio else 0)
                     if needs_audio and not released:
                         raise RuntimeError('A escuta não liberou a captura. Pare a escuta e tente novamente.')
@@ -217,6 +233,10 @@ class GuiBackend:
             else:
                 self._dispatch(command, value)
         except Exception as exc:
+            from .voice import PendingVoiceTurn
+            if isinstance(exc, PendingVoiceTurn):
+                self.events.put(('voice_status', str(exc)))
+                return
             if command.startswith('voice_test_'):
                 self.events.put(('voice_test_error', str(exc)))
             elif command.startswith('voice_'):
@@ -238,6 +258,23 @@ class GuiBackend:
             self.events.put(('authorizations', self.authorization_store.snapshot()))
             if self.authorization_store.error:
                 self.events.put(('error', 'Concessões inválidas: ' + self.authorization_store.error))
+        elif command == 'voice_discard_pending':
+            if self._voice is not None:
+                self._voice.discard_pending()
+            if self._voice_listener is not None:
+                self._voice_listener.resume()
+            self.events.put(('voice_status', 'Pedido pendente descartado. Nenhuma ação foi executada.'))
+        elif command == 'voice_warmup':
+            from .voice import VoiceIO
+            voice = self._voice or VoiceIO()
+            voice.prepare_speech()
+            self._speaking_voice = voice
+            self.events.put(('voice_status', 'Preparando voz local sem reproduzir…'))
+            try:
+                voice.warmup()
+                self.events.put(('voice_status', 'Voz preparada. Teste a saída para confirmar áudio audível.'))
+            finally:
+                self._speaking_voice = None
         elif command.startswith("voice_test_"):
             from .voice_diagnostics import VoiceDiagnostics
             if self._voice_test is None:
@@ -353,11 +390,12 @@ class GuiBackend:
             self._voice = VoiceIO(model=model,
                                   language=os.getenv("JARVIS_LANGUAGE", "pt"),
                                   piper_model=os.getenv("JARVIS_PIPER_MODEL", ""),
-                                  device=device)
+                                  device=device, session_id=self.session_id)
             self._voice_listener = WakeWordConversation(
                 self._voice, on_command=lambda text: self.submit("voice_ask", text),
                 on_status=lambda text: self.events.put(("voice_status", f"Whisper {model}: {text}")),
                 on_transcript=lambda text: self.events.put(("voice_heard", text)),
+                on_event=lambda event: self.events.put(('capture_event', event)),
                 device=device)
             self.events.put(("voice_listening", True))
             self._voice_listener.start()
@@ -374,7 +412,8 @@ class GuiBackend:
             device = effective.audio_device.split(': ', 1)[-1] or None
             was_listening = self._voice_listener is not None
             restart = was_listening and self._voice is not None and (
-                self._voice.model_name != effective.stt_model or self._voice.device != device)
+                self._voice.model_name != effective.stt_model or self._voice.device != device
+                or self._voice.wake_manifest != effective.wake_manifest)
             if was_listening and (effective.voice_mode != 'continuous' or restart):
                 if not self._voice_listener.stop():
                     raise RuntimeError('A escuta ainda está encerrando; aguarde antes de trocar a entrada')
@@ -393,6 +432,7 @@ class GuiBackend:
                 self._voice.followup_seconds = effective.followup_seconds
                 self._voice.start_timeout_seconds = effective.start_timeout_seconds
                 self._voice.reconnect_attempts = effective.reconnect_attempts
+                self._voice.wake_manifest = effective.wake_manifest
                 if self._voice_listener is not None:
                     self._voice_listener.silence_seconds = self._voice.silence_seconds
             self.events.put(('voice_preferences', effective))
@@ -416,13 +456,16 @@ class GuiBackend:
             voice = self._voice
             if voice is None or voice.model_name != model or voice.device != configured_device:
                 voice = VoiceIO(model=model, language=os.getenv("JARVIS_LANGUAGE", "pt"),
-                                piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), device=device)
+                                piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), device=device,
+                                session_id=self.session_id)
             self._capture_finish.clear()
+            self._voice = voice
             self._capturing.set()
             self.events.put(("voice_capturing", True))
             self.events.put(("voice_status", "Ouvindo. Termine com um segundo de silêncio ou clique novamente para enviar."))
             try:
                 recording = voice.record_turn(cancel=self._capture_cancel, finish=self._capture_finish,
+                    continue_pending=value.get('continue_pending', False),
                     on_level=lambda level: self.events.put(("voice_capture_level", level)))
             finally:
                 self._capturing.clear()
@@ -471,6 +514,7 @@ class GuiBackend:
         from .conversation import ConversationController, TextMailbox
         if self._conversation is None or self._conversation.service is not self.service:
             self._conversation = ConversationController(self.service,
+                session_id=self.session_id,
                 emit=lambda event: self.events.put(("conversation_event", event)),
                 on_end=lambda: self._dispatch('voice_listen_stop', None))
         updates = TextMailbox(lambda slot: self.events.put(('answer_partial', slot)))
@@ -757,7 +801,8 @@ class JarvisWindow:
 
     def _cancel(self):
         if self.backend.cancel():
-            self._append_chat("Sistema", "Cancelamento solicitado; aguardando a chamada atual terminar.")
+            self._append_chat('Sistema', 'Cancelamento solicitado. Efeitos já enviados não são desfeitos.')
+            self.hud.set_state('Cancelando', 'Interrompendo trabalho e descartando resultados atrasados')
 
     def _tool_action(self, name, arguments):
         self.backend.submit("tool_action", (name, arguments))
@@ -811,6 +856,7 @@ class JarvisWindow:
             'stt_model': self.voice_test_model.get(), 'audio_device': self.voice_device.get(),
             'piper_model': self.voice_piper_model.get(), 'output_device': self.voice_output.get(),
             'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get(),
+            'wake_manifest': self.voice_wake.get(),
             'followup_seconds': followup, 'start_timeout_seconds': start_timeout, 'reconnect_attempts': retries})
         if accepted:
             self.voice_status.set('Salvando preferências de voz…')
@@ -826,11 +872,19 @@ class JarvisWindow:
             self.voice_piper_model.set(filename)
             self.voice_status.set('Voz selecionada. Clique Salvar voz, entrada e modo para aplicar.')
 
-    def _push_to_talk(self):
+    def _choose_wake_manifest(self):
+        filename = filedialog.askopenfilename(parent=self.root, title='Manifesto do detector Jarvis',
+                                             filetypes=[('Manifesto JSON', '*.json')])
+        if filename:
+            self.voice_wake.set(filename)
+
+    def _push_to_talk(self, *, continue_pending=False):
         if self.backend.finish_voice_turn():
             return
-        if self.backend.submit("voice_push_to_talk", {
-                "device": self.voice_device.get(), "model": self.voice_test_model.get()}):
+        options = {'device': self.voice_device.get(), 'model': self.voice_test_model.get()}
+        if continue_pending:
+            options['continue_pending'] = True
+        if self.backend.submit('voice_push_to_talk', options):
             self.voice_capture_level.configure(value=0)
             self.voice_status.set("Preparando gravação. Aguarde Fale agora…")
 
@@ -1010,11 +1064,17 @@ class JarvisWindow:
         elif kind == "voice_capturing":
             for button in (self.push_to_talk_button, self.push_to_talk_quick):
                 button.configure(state='normal' if payload else 'disabled')
-        elif kind == "conversation_event":
+        elif kind in ('conversation_event', 'capture_event'):
+            if kind == 'capture_event' and payload.state == 'captura_liberada':
+                return
             if payload.state == 'cancelado':
                 self._finish_interrupted_partial()
             self._turn_state = payload.state
             labels = {'executando': 'Executando', 'falando': 'Falando',
+                      'aguardando_ativacao': 'Aguardando Jarvis', 'ouvindo': 'Ouvindo',
+                      'aguardando_fala': 'Aguardando fala',
+                      'transcrevendo': 'Entendendo', 'mudo': 'Mudo',
+                      'pedido_pendente': 'Pedido pendente',
                       'aguardando_seguimento': 'Aguardando seguimento',
                       'cancelado': 'Cancelado', 'erro': 'Erro'}
             label = labels.get(payload.state, payload.state)
@@ -1025,8 +1085,16 @@ class JarvisWindow:
         elif kind == "voice_status":
             self.voice_status.set(str(payload))
             status = str(payload).split(': ', 1)[-1] if str(payload).startswith('Whisper ') else str(payload)
+            if status.startswith(('Pedido pendente:', 'Pedido pendente.')):
+                self._turn_state = 'pedido_pendente'
+                self.hud.set_state('Pedido pendente', 'Continue ou descarte. Nenhuma ação foi executada.')
+            elif status.startswith('Pedido pendente descartado'):
+                self._turn_state = None
+                self.hud.set_state('Pedido descartado', 'Nenhuma ação foi executada')
             if "Aguardando Jarvis" in str(payload):
-                self.hud.set_state("Aguardando Jarvis", "Fallback por transcrição; detector acústico não validado")
+                self.hud.set_state('Aguardando Jarvis',
+                    'Detector acústico local' if 'detector acústico local' in str(payload) else
+                    'Fallback por transcrição; detector acústico não validado')
             elif status == 'Ouvindo':
                 self.hud.set_state('Ouvindo', 'Fala detectada pelo VAD local')
             elif status.startswith('Entendendo'):

@@ -198,7 +198,7 @@ def main():
             from .voice import VoiceIO
             voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL"),
                             language=os.getenv("JARVIS_LANGUAGE", "pt"),
-                            piper_model=os.getenv("JARVIS_PIPER_MODEL", ""))
+                            piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), session_id=conversation.session_id)
             if args.push_to_talk:
                 print("MODO VOZ: Enter inicia fala até silêncio; digite sair para encerrar.")
         print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
@@ -237,7 +237,8 @@ def main():
                             try:
                                 recording = voice.record_turn()
                                 try:
-                                    msg = voice.transcribe(recording)
+                                    from .latency import TracedText
+                                    msg = TracedText(voice.transcribe(recording), voice.last_capture_trace)
                                 finally:
                                     recording.unlink(missing_ok=True)
                             except Exception as exc:
@@ -249,7 +250,8 @@ def main():
                                 if correction.casefold() == "/cancelar":
                                     continue
                                 if correction:
-                                    msg = correction
+                                    msg.trace.mark('transcript_corrected')
+                                    msg = TracedText(correction, msg.trace)
                     else:
                         msg = input("Você > ").strip()
                 except (KeyboardInterrupt, EOFError):
@@ -446,10 +448,31 @@ def main():
                         print("Erro na análise da tela:", exc, file=sys.stderr)
                     continue
                 if msg.startswith("/"):
-                    print("Comando desconhecido. Digite /modelos para listar, "
-                          "/modelo ID para selecionar, /metricas para métricas, "
-                          "/plano para o plano atual.")
-                    continue
+                    if msg in ('/continuar-voz', '/descartar-voz') and voice is not None:
+                        if msg == '/descartar-voz':
+                            voice.discard_pending()
+                            print('Pedido pendente descartado.')
+                            continue
+                        if voice.pending_audio is None:
+                            print('Nenhum pedido de voz pendente.')
+                            continue
+                        if mixed is not None:
+                            mixed.listener.pause(timeout=2)
+                        try:
+                            recording = voice.record_turn(continue_pending=True)
+                            try:
+                                from .latency import TracedText
+                                msg = TracedText(voice.transcribe(recording), voice.last_capture_trace)
+                            finally:
+                                recording.unlink(missing_ok=True)
+                        except Exception as exc:
+                            print('Pedido não enviado:', exc, file=sys.stderr)
+                            continue
+                    else:
+                        print("Comando desconhecido. Digite /modelos para listar, "
+                              "/modelo ID para selecionar, /metricas para métricas, "
+                              "/plano para o plano atual. Voz pendente: /continuar-voz ou /descartar-voz.")
+                        continue
                 try:
                     from .conversation import TerminalText
                     presentation = TerminalText()
@@ -457,7 +480,7 @@ def main():
                                      display=presentation.finish)
                     if os.getenv("JARVIS_SHOW_TIMING") == "1":
                         print("Tempo:", agent.last_metrics, "\n")
-                except (FCCError, ValueError) as exc:
+                except (FCCError, ValueError, TimeoutError) as exc:
                     print("Erro de modelo/protocolo:", exc, file=sys.stderr)
                 except KeyboardInterrupt:
                     conversation.cancel()

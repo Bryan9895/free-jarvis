@@ -37,7 +37,8 @@ def run_voice_session(service, voice: VoiceIO, *, report=print, listener_factory
                 if command.casefold().strip(" .,!?:;") in {"sair", "encerrar jarvis"}:
                     break
                 report("Você (voz) > " + command)
-                controller.run(command, voice=voice, display=lambda answer: report("JARVIS > " + answer))
+                controller.run(command, voice=voice, on_text=lambda _: None,
+                               display=lambda answer: report("JARVIS > " + answer))
             except Exception as exc:
                 report("Falha no turno de voz: " + str(exc))
             finally:

@@ -283,3 +283,70 @@ e pastas ancestrais que o contêm não podem ser movidos para contornar essa pro
 Caminhos ~/ são expandidos antes da checagem de raízes. Testes focados de concessões:
 10 passaram em 0,177 s. A suíte de integração antes desses dois acréscimos registrou
 467 testes em 26,032 s; a contagem final será registrada no checkpoint de integração.
+
+
+## Integração concluída em 27/10/2026 — captura e avaliação
+
+Criação/títulos/permissões pontuais publicados em
+`d32f11a449ee0bff5c05dc89e73fd2d3dd79625b`. Proteção contra fallback por cota
+esgotada publicada em `5c79f8149b0411f301800ebca2da8ab512fc9fb4`.
+
+Implementado: coordenador de exclusão entre captura/diagnóstico/saída; eventos
+com sessão e turno desde a captura, encaminhados à conversa e à CLI/GUI. Captura
+usa PCM segmentado: até 20 s em memória e depois arquivo temporário sem nome
+persistente; remontagem exata em WAV só após endpoint completo. Ao atingir 120 s,
+retém pedido pendente sem STT/execução parcial. Continuar pendente é explícito;
+Descartar ou Parar elimina o áudio. Limite total 10 min descarta sem execução.
+A continuação preserva IDs; um pedido descartado não empresta IDs ao próximo.
+
+Detector acústico opcional: contrato ONNX próprio para PCM float32 mono 16 kHz,
+janela de 1 s, CPU/uma thread e buffer limitado. Manifesto exige Jarvis isolado,
+pt-BR, licença, SHA256 e evidência do gate acústico. Não há artefato aceito no
+repositório: o padrão continua fallback por transcrição, identificado. Testes
+com sessão ONNX controlada validam contrato/buffer/limiar, não precisão acústica.
+Configurações permitem escolher manifesto local sem download no startup.
+
+Voz: Preparar voz sem reproduzir aquece o Piper por ação explícita, sem player
+nem download e com cancelamento. A carga fria continua identificada; não se
+promete primeiro áudio rápido quando o modelo ainda precisa carregar. STT small,
+beam 5 e VAD interno continuam padrão: não houve corpus humano consentido para
+justificar troca. Ferramenta de avaliação externa permite comparar beam 5/3/1,
+WER, números/negações e tempos sem versionar áudio ou transcrições.
+
+Passou: frames/PCM de 60 s remontados sem perda; limite de segmento mantém áudio
+incompleto não executável; continuação explícita, descarte e pré-áudio de ativação
+cobertos com adaptadores controlados. UI exibe Pedido pendente após busy=False;
+preparo de voz não toca player. Suíte de integração: 469 testes em 32,005 s,
+com display, Chromium e HTTP local. git diff --check acompanha cada commit.
+Nenhuma captura ambiental foi feita nesta entrega. Barge-in permanece pendente.
+
+A saúde do FCC foi consultada e inferências reais funcionaram. Durante a
+comparação alternada posterior, o provedor retornou HTTP 429 usage_limit_reached:
+o conjunto ficou incompleto (18 amostras baseline e 19 da versão intermediária,
+antes da resolução local de tarefa). Não se publicam p50/p95 desse conjunto como
+aceite de 30 turnos. Um número de título foi interpretado como prioridade na
+versão intermediária; o caminho local explícito corrigiu essa ambiguidade.
+Benchmark agora captura classes de erro das duas versões, preserva checkpoints
+sanitizados e encerra no 429; produção não percorre outros modelos para cota
+explicitamente esgotada. Não houve nova tentativa de inferência após esse limite.
+
+Síntese Piper real, sem reprodução, 30 execuções da mesma frase controlada:
+SHA256 `858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7`.
+Carga fria até primeiro WAV: 8,914 s. Aquecido, N=29: primeiro WAV p50/p95
+0,357/0,571 s; síntese das duas frases e sink WAV p50/p95 0,779/1,216 s.
+O sink leu WAVs válidos, não enviou som ao fone. RSS principal exclui o worker
+Piper. Esses números não substituem a latência fim de fala → áudio físico.
+
+Gates finais: automação passou; replay HTTP de 30 pares passou; 30 jornadas
+controladas passaram com falhas/cancelamentos injetados esperados; 30 inclusões
+locais verificadas passaram; Piper real em sink WAV passou. FCC real comprovou
+quatro jornadas, mas a comparação completa foi bloqueada por cota. Detector
+pt-BR aceito, áudio humano/STT, Bluetooth, eco/barge-in, autenticação administrativa,
+efeitos GNOME reais e 30 turnos físicos completos permanecem pendentes. Não se
+declara o produto aceito fisicamente ou a meta ponta a ponta atingida.
+
+Verificação final de integração: **passou**, 469 testes em 43,557 s, incluindo GUI
+real, HTTP local, Chromium, cancelamento, permissões, escrita concorrente, captura
+segmentada e jornadas completas controladas. Ajuste posterior de rótulo de estado
+distingue aguardar ativação, fala manual e seguimento; verificação focada de voz
+acompanha esse ajuste. Não há ensaio físico de captura ambiental nesta execução.

@@ -41,6 +41,10 @@ def build_voice_panel(window, tabs):
     window.push_to_talk_button = ttk.Button(talk, text='Falar / terminar pedido', style='Accent.TButton',
                                            command=window._push_to_talk)
     window.push_to_talk_button.pack(fill='x')
+    pending = ttk.Frame(talk)
+    pending.pack(fill='x', pady=3)
+    ttk.Button(pending, text='Continuar pendente', command=lambda: window._push_to_talk(continue_pending=True)).pack(side='left')
+    ttk.Button(pending, text='Descartar pendente', command=lambda: window.backend.submit('voice_discard_pending')).pack(side='right')
     ttk.Label(talk, text='Clique e fale. Um segundo de silêncio termina o pedido; outro clique envia. Parar descarta a captura. Não precisa dizer Jarvis.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
     window.voice_capture_level = ttk.Progressbar(talk, maximum=100)
@@ -97,6 +101,7 @@ def build_voice_panel(window, tabs):
     window.voice_followup = tk.StringVar(value=str(window.preferences.followup_seconds))
     window.voice_start_timeout = tk.StringVar(value=str(window.preferences.start_timeout_seconds))
     window.voice_retries = tk.StringVar(value=str(window.preferences.reconnect_attempts))
+    window.voice_wake = tk.StringVar(value=window.preferences.wake_manifest)
     ttk.Label(output_panel, text='Voz Piper local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
     ttk.Label(output_panel, text='Selecione .onnx com .onnx.json ou instale Faber: fonte Piper, SHA256 verificado, dataset CC0.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
@@ -129,10 +134,17 @@ def build_voice_panel(window, tabs):
         row.pack(fill='x', pady=3)
         ttk.Label(row, text=label).pack(side='left')
         ttk.Spinbox(row, from_=minimum, to=maximum, textvariable=variable, width=5).pack(side='right')
+    ttk.Label(output_panel, text='Detector acústico Jarvis · manifesto local').pack(anchor='w', pady=(8, 0))
+    ttk.Entry(output_panel, textvariable=window.voice_wake).pack(fill='x')
+    ttk.Button(output_panel, text='Escolher manifesto do detector…', command=window._choose_wake_manifest).pack(fill='x')
+    ttk.Label(output_panel, text='Opcional: exige artefato pt-BR avaliado, licença e hash. Vazio mantém fallback por transcrição identificado.',
+              wraplength=300, style='Muted.TLabel').pack(anchor='w')
     window.voice_save_button = ttk.Button(output_panel, text='Salvar voz, entrada e modo', command=window._save_voice_preferences)
     window.voice_save_button.pack(fill='x', pady=4)
     window.voice_test_button = ttk.Button(output_panel, text='Testar voz salva', command=lambda: window.backend.submit(
         'voice_speak', 'A voz local está configurada. Confirme se você ouviu esta frase com clareza.'))
     window.voice_test_button.pack(fill='x', pady=4)
+    ttk.Button(output_panel, text='Preparar voz sem reproduzir', command=lambda:
+        window.backend.submit('voice_warmup')).pack(fill='x', pady=4)
     ttk.Label(output_panel, text='Ambiente explícito tem precedência. Salvar não comprova saída audível. Piper e player precisam estar instalados.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)

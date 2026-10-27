@@ -282,6 +282,17 @@ class VoiceTests(unittest.TestCase):
                 self.assertEqual(synthesize.call_args.args[1], 'Olá')
                 self.assertEqual(run.call_args_list[0].args[0][0], "aplay")
 
+    def test_explicit_warmup_synthesizes_without_playback_or_leftover_wav(self):
+        with tempfile.TemporaryDirectory() as td:
+            model = Path(td) / 'voice.onnx'
+            model.write_bytes(b'fixture')
+            voice = VoiceIO(piper_model=str(model))
+            with patch('jarvis.tts_engine.synthesizer.synthesize') as synthesize, patch.object(voice, '_run_audio') as player:
+                voice.warmup()
+            synthesize.assert_called_once()
+            player.assert_not_called()
+            self.assertFalse(synthesize.call_args.args[2].exists())
+
     def test_overflow_invalidates_turn_instead_of_transcribing_missing_audio(self):
         import numpy as np
         class Stream:

@@ -140,7 +140,7 @@ class TaskPlanner:
         self._save()
         return self.snapshot()
 
-    def prepare(self, goal):
+    def prepare(self, goal, cancel_token=None):
         if not isinstance(goal, str) or not 1 <= len(goal.strip()) <= MAX_GOAL:
             raise ValueError("Objetivo deve ter entre 1 e 500 caracteres")
         # Invalida plano anterior antes da nova consulta, inclusive se falhar.
@@ -188,7 +188,17 @@ class TaskPlanner:
         model = getattr(self.client, "active_model", self.agent.model)
         if model.startswith("ollama/"):
             payload["reasoning"] = {"effort": "none"}
-        response = self.client.responses(payload)
+        from .latency import mark
+        mark('planning_start')
+        if cancel_token is not None:
+            cancel_token.check()
+        if callable(getattr(type(self.client), 'stream_responses', None)):
+            response = self.client.stream_responses(payload, cancel_token=cancel_token)
+        else:
+            response = self.client.responses(payload)
+        if cancel_token is not None:
+            cancel_token.check()
+        mark('planning_end')
         steps = _extract_plan(_output_text(response))
         self.plan = {"goal": goal.strip(), "model": model, "status": "ready",
                      "steps": steps, "created_at": time.time()}

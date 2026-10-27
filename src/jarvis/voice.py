@@ -14,12 +14,18 @@ from contextlib import nullcontext
 from functools import wraps
 from array import array
 from math import sqrt
+from .latency import TurnTrace
 
 class VoiceError(RuntimeError):
     """Falha recuperável de áudio."""
 
 
-_capture_owner = threading.Lock()
+class PendingVoiceTurn(VoiceError):
+    """Áudio mantido sem intenção executável até continuação explícita."""
+
+
+from .capture import coordinator
+_capture_owner = coordinator.lock
 
 
 def exclusive_capture(method):
@@ -36,7 +42,7 @@ def exclusive_capture(method):
 
 class VoiceIO:
     def __init__(self, model=None, language="pt", piper_model="", sample_rate=16000,
-                 device=None, silence_rms=150, output_device=None):
+                 device=None, silence_rms=150, output_device=None, session_id=None):
         from .preferences import PreferenceStore
         preferences = PreferenceStore().load().effective()
         self.model_name = os.getenv('JARVIS_WHISPER_MODEL', model or preferences.stt_model)
@@ -54,8 +60,18 @@ class VoiceIO:
         self.followup_seconds = preferences.followup_seconds
         self.start_timeout_seconds = preferences.start_timeout_seconds
         self.reconnect_attempts = preferences.reconnect_attempts
+        self.wake_manifest = preferences.wake_manifest
+        from uuid import uuid4
+        self.session_id = session_id or uuid4().hex
         self._stt = None
         self._speech_cancel = threading.Event()
+        self.pending_audio = None
+        self._continue_pending = False
+
+    def discard_pending(self):
+        recording, self.pending_audio = self.pending_audio, None
+        if recording is not None:
+            recording.close()
 
     @staticmethod
     def input_devices():
@@ -154,7 +170,9 @@ class VoiceIO:
             Path(location).unlink(missing_ok=True)
             raise
 
-    def transcribe(self, filename):
+    def transcribe(self, filename, *, beam_size=5, vad_filter=True):
+        if type(beam_size) is not int or beam_size not in (1, 3, 5) or type(vad_filter) is not bool:
+            raise VoiceError('Perfil STT inválido')
         filename = Path(filename)
         if not filename.is_file():
             raise VoiceError("Arquivo de gravação inexistente")
@@ -164,12 +182,14 @@ class VoiceIO:
             if trace is not None:
                 trace.mark('stt_queued')
                 trace.mark('stt_cache_start')
+                coordinator.transition(trace, 'transcrevendo', 'transcrição local iniciada',
+                                       getattr(self, '_capture_emit', lambda _: None))
             with nullcontext(self._stt) if self._stt is not None else whisper_model(self.model_name) as model:
                 if trace is not None:
                     trace.mark('stt_model_ready')
                     trace.mark('stt_start')
                 segments, _ = model.transcribe(str(filename), language=self.language,
-                                                vad_filter=True, beam_size=5,
+                                                vad_filter=vad_filter, beam_size=beam_size,
                                                 condition_on_previous_text=False)
                 segments = list(segments)
                 if any(getattr(segment, 'no_speech_prob', 0) >= 0.6 and
@@ -205,7 +225,20 @@ class VoiceIO:
         if not self.output_device and not shutil.which('aplay'):
             raise VoiceError("Instale 'alsa-utils' para executar aplay")
         from .audio_output import play_pipeline
-        return play_pipeline(self, chunks)
+        with coordinator.output(self._speech_cancel):
+            return play_pipeline(self, chunks)
+
+    def warmup(self):
+        """Prepara Piper residente por ação explícita, sem download ou player."""
+        if self.piper_model is None or not self.piper_model.is_file():
+            raise VoiceError('Selecione uma voz local instalada antes de preparar')
+        from .tts_engine import synthesizer
+        fd, filename = tempfile.mkstemp(prefix='jarvis_warmup_', suffix='.wav')
+        os.close(fd)
+        try:
+            synthesizer.synthesize(self.piper_model, 'Voz preparada.', Path(filename), self._speech_cancel)
+        finally:
+            Path(filename).unlink(missing_ok=True)
 
     def prepare_speech(self):
         self._speech_cancel.clear()
@@ -250,7 +283,7 @@ class VoiceIO:
         finally:
             recording.unlink(missing_ok=True)
 
-    def record_turn(self, *, cancel=None, finish=None, on_level=None):
+    def record_turn(self, *, cancel=None, finish=None, on_level=None, continue_pending=False):
         """Botão usa o mesmo endpoint do contínuo, sem janela fixa de pedido."""
         try:
             import numpy as np
@@ -258,6 +291,7 @@ class VoiceIO:
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
         listener = WakeWordConversation(self, lambda _: None, silence_seconds=self.silence_seconds)
+        self._continue_pending = continue_pending
         if cancel is not None:
             listener._stop = cancel
         samples = listener._listen_for_command(sd, np, idle_timeout=self.start_timeout_seconds,
@@ -282,7 +316,7 @@ class WakeWordConversation:
     def __init__(self, voice: VoiceIO, on_command, on_status=lambda _message: None,
                  *, device=None, silence_seconds=None,
                  max_command_seconds=120, on_transcript=lambda _text: None,
-                 activity_factory=None):
+                 activity_factory=None, wake_engine=None, on_event=lambda _: None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
@@ -300,6 +334,9 @@ class WakeWordConversation:
         self._capture_idle.set()
         self._generation = 0
         self.capture_rate = voice.sample_rate
+        self.on_event = on_event
+        self.wake_engine = wake_engine
+        self._acoustically_activated = False
         self.audio_metrics = {'frames': 0, 'lost_turns': 0, 'queue_peak': 0}
 
     @classmethod
@@ -324,6 +361,7 @@ class WakeWordConversation:
         self._generation += 1
         self._stop.set()
         self._resume.set()
+        self.voice.discard_pending()
         if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=timeout)
         return self._thread is None or not self._thread.is_alive()
@@ -347,17 +385,35 @@ class WakeWordConversation:
                     "Escuta contínua requer os pacotes do extra 'voice'."
                 ) from exc
 
-            self.on_status("Aguardando Jarvis — fallback por transcrição local; detector acústico não validado.")
+            if self.wake_engine is None and self.voice.wake_manifest:
+                try:
+                    from .wake_word import WakeArtifact, OnnxWakeWordEngine
+                    self.wake_engine = OnnxWakeWordEngine(WakeArtifact.load(self.voice.wake_manifest))
+                except Exception as exc:
+                    self.on_status('Detector acústico indisponível: ' + str(exc))
+            self.on_status('Aguardando Jarvis — detector acústico local.' if self.wake_engine is not None else
+                           'Aguardando Jarvis — fallback por transcrição local; detector acústico não validado.')
             conversation = False
             capture_failures = 0
             while not self._stop.is_set():
                 if not self._resume.wait(0.2):
                     continue
                 woke = not conversation
+                self._waiting_activation = woke
+                self._following_up = conversation
+                self._require_wake = woke and self.wake_engine is not None
+                self._acoustically_activated = False
+                if self.wake_engine is not None:
+                    self.wake_engine.reset()
                 generation = self._generation
                 try:
                     samples = self._listen_for_command(
                         sd, np, idle_timeout=self.voice.followup_seconds if conversation else None)
+                except PendingVoiceTurn as exc:
+                    conversation = False
+                    self._resume.clear()
+                    self.on_status(str(exc))
+                    continue
                 except VoiceError as exc:
                     conversation = False
                     self.on_status(f"Turno descartado: {exc}")
@@ -382,7 +438,7 @@ class WakeWordConversation:
                 try:
                     transcript = self.voice.transcribe(recording)
                     self.on_transcript(transcript)
-                    if woke:
+                    if woke and not self._acoustically_activated:
                         activated, transcript = self.extract_wake_command(transcript)
                         if not activated:
                             self.on_status("Fala reconhecida, mas sem ativação. Comece o pedido com Jarvis.")
@@ -427,10 +483,24 @@ class WakeWordConversation:
 
     @exclusive_capture
     def _listen_for_command(self, sd, np, *, idle_timeout=None, finish=None, on_level=None):
-        from .audio_endpoint import AudioEndpoint
+        from .audio_endpoint import AudioEndpoint, TurnLimitError
         from .latency import TurnTrace
-        trace = self.voice.last_capture_trace = TurnTrace()
+        from .recording import PCMRecording
+        pending = self.voice.pending_audio
+        if pending is not None and not self.voice._continue_pending:
+            raise PendingVoiceTurn('Pedido pendente. Use Continuar pendente ou descarte; nenhuma ação foi executada.')
+        self.voice._continue_pending = False
+        self.voice.pending_audio = None
+        trace = self.voice.last_capture_trace = pending.trace if pending is not None else TurnTrace(session_id=self.voice.session_id)
+        recording = pending if pending is not None else PCMRecording(16000, trace)
+        retained = False
+        successful = False
+        capture_generation = self._generation
+        self.voice._capture_emit = self.on_event
         trace.mark('capture_start')
+        state = ('aguardando_ativacao' if getattr(self, '_waiting_activation', getattr(self, '_require_wake', False))
+                 else 'aguardando_seguimento' if getattr(self, '_following_up', False) else 'aguardando_fala')
+        coordinator.transition(trace, state, 'captura exclusiva iniciada', self.on_event)
         last_speech_at = None
         frames = queue.Queue(maxsize=64)
         lost = threading.Event()
@@ -460,7 +530,9 @@ class WakeWordConversation:
             self.capture_rate = 16000
             self.on_status(f'Entrada SoundDevice: {selected.name}; {selected.rate} Hz, {selected.channels} canal(is). Fonte Pulse deve ser conferida separadamente.')
             endpoint = AudioEndpoint(16000, silence_seconds=self.silence_seconds,
-                                     max_seconds=self.max_command_seconds)
+                                     max_seconds=self.max_command_seconds,
+                                     preroll_seconds=0 if pending is not None else .8,
+                                     chunk_sink=recording.append)
             blocksize = round(self.FRAME_SAMPLES * selected.rate / 16000)
             stage = 'Captura de áudio'
             with sd.InputStream(samplerate=selected.rate, blocksize=blocksize,
@@ -468,8 +540,9 @@ class WakeWordConversation:
                                 callback=receive):
                 idle_started = time.monotonic()
                 last_frame = idle_started
+                wake_wait_started = None
                 while not self._stop.is_set():
-                    if not self._resume.is_set():
+                    if not self._resume.is_set() or capture_generation != self._generation:
                         return None
                     if lost.is_set():
                         raise VoiceError("Perda de quadros/overflow; pedido descartado, repita a fala")
@@ -498,11 +571,30 @@ class WakeWordConversation:
                         on_level(signal_metrics(chunk.tobytes()))
                     was_started = endpoint.started
                     active = activity.active(chunk)
+                    if getattr(self, '_require_wake', False):
+                        if self.wake_engine.process(chunk):
+                            self._require_wake = False
+                            self._acoustically_activated = True
+                            wake_wait_started = last_frame
+                            trace.mark('wake_detected')
+                            self.on_status('Jarvis ativado. Ouvindo o pedido.')
+                            coordinator.transition(trace, 'ouvindo', 'ativação acústica', self.on_event)
+                        else:
+                            # Pré-áudio permanece no endpoint, mas não inicia
+                            # um turno/STT para toda fala ambiente.
+                            endpoint.feed(chunk, False)
+                            continue
+                    if (wake_wait_started is not None and not endpoint.started and
+                            last_frame - wake_wait_started >= self.voice.start_timeout_seconds):
+                        return None
                     if active:
                         last_speech_at = captured_at
                     ended = endpoint.feed(chunk, active)
+                    if len(recording) >= 16000 * 600:
+                        raise VoiceError('Teto total de 10 minutos atingido; áudio descartado sem execução. Divida o pedido.')
                     if endpoint.started and not was_started:
                         self.on_status('Ouvindo')
+                        coordinator.transition(trace, 'ouvindo', 'fala detectada', self.on_event)
                     if ended:
                         if last_speech_at is not None:
                             trace.mark('last_speech_audio', at=last_speech_at)
@@ -516,17 +608,37 @@ class WakeWordConversation:
                 if len(tail) and endpoint.started:
                     if endpoint.samples + len(tail) >= endpoint.limit:
                         raise VoiceError('Limite de segurança atingido; pedido não enviado')
-                    endpoint.chunks.append(tail)
+                    endpoint.store_chunk(tail)
+                successful = not self._stop.is_set() and capture_generation == self._generation
+        except TurnLimitError as exc:
+            if self._stop.is_set() or capture_generation != self._generation:
+                return None
+            if len(recording) >= 16000 * 600:
+                raise VoiceError('Teto total de 10 minutos atingido; áudio descartado sem execução.') from exc
+            self.voice.pending_audio = recording
+            retained = True
+            trace.mark('capture_pending')
+            coordinator.transition(trace, 'pedido_pendente', 'teto do segmento; sem execução', self.on_event)
+            raise PendingVoiceTurn('Pedido pendente: limite do segmento atingido. Continue pelo botão Continuar pendente ou descarte. Nenhuma ação foi executada.') from exc
+        except PendingVoiceTurn:
+            raise
         except Exception as exc:
             if lost.is_set():
                 self.audio_metrics['lost_turns'] += 1
             raise VoiceError(f"{stage} indisponível: {exc}") from exc
         finally:
             trace.mark('capture_released')
+            coordinator.transition(trace, 'captura_liberada', 'dispositivo liberado', self.on_event)
             self._capture_idle.set()
+            if not retained and not successful:
+                recording.close()
         if self._stop.is_set():
             return None
-        return np.concatenate(endpoint.chunks) if endpoint.chunks else None
+        if not len(recording):
+            recording.close()
+            return None
+        recording.complete = True
+        return recording
 
     def _write_recording(self, samples):
         fd, location = tempfile.mkstemp(prefix="jarvis_command_", suffix=".wav")
@@ -537,8 +649,14 @@ class WakeWordConversation:
                     wav.setsampwidth(2)
                     # STT decodifica/ressample uma vez a partir da taxa nativa.
                     wav.setframerate(self.capture_rate)
-                    wav.writeframes(samples.tobytes())
+                    if hasattr(samples, 'write_to'):
+                        samples.write_to(wav)
+                    else:
+                        wav.writeframes(samples.tobytes())
             return Path(location)
         except BaseException:
             Path(location).unlink(missing_ok=True)
             raise
+        finally:
+            if hasattr(samples, 'write_to'):
+                samples.close()

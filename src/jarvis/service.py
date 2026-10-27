@@ -92,12 +92,12 @@ class JarvisService:
             raise ValueError("Ação de plano desconhecida")
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há uma tarefa em execução")
-        token = CancellationToken()
+        token = CancellationToken(deadline=monotonic() + float(os.getenv('JARVIS_TURN_TIMEOUT', '120')))
         self._current_token = token
         try:
             token.check()
             if action == "prepare":
-                result = self.planner.prepare(value)
+                result = self.planner.prepare(value, cancel_token=token)
             elif action == "execute":
                 result = self.planner.execute(self.approval, report=self._report, cancel_token=token)
             elif action == "select":
