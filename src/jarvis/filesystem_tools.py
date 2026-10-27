@@ -3,6 +3,7 @@ import os
 import hashlib
 import difflib
 import shlex
+import re
 import subprocess
 import tempfile
 import uuid
@@ -20,11 +21,14 @@ class FilesystemTools:
     def path(self, requested: str) -> Path:
         if not isinstance(requested, str):
             raise ToolError("Caminho inválido")
-        p = (self.workspace / requested).resolve()
+        p = (self.workspace / Path(requested).expanduser()).resolve()
         if not any(p.is_relative_to(root) for root in self.allowed_roots):
             raise ToolError("Acesso fora dos diretórios autorizados bloqueado")
         from .authorizations import is_sensitive_path
-        if is_sensitive_path(p):
+        store_path = getattr(getattr(self.approve, 'authorizations', None), 'path', None)
+        metadata = (Path(store_path).expanduser().resolve()
+                    if isinstance(store_path, (str, Path)) else None)
+        if is_sensitive_path(p) or metadata is not None and p == metadata:
             authorize = getattr(self.approve, 'authorize', None)
             if authorize is None or not authorize('secrets', 'ACESSAR DADO SENSÍVEL: ' + str(p)):
                 raise ToolError('Acesso a dados sensíveis não autorizado')
@@ -44,7 +48,18 @@ class FilesystemTools:
                     if candidate.is_symlink():
                         raise ToolError("Links simbólicos não são aceitos em alterações")
                     candidate = candidate.parent
-                return self.path(requested)
+                resolved = self.path(requested)
+                from .authorizations import protected_paths, is_sensitive_path
+                protected = protected_paths()
+                store_path = getattr(getattr(self.approve, 'authorizations', None), 'path', None)
+                if isinstance(store_path, (str, Path)):
+                    protected.append(Path(store_path).expanduser().resolve())
+                if (not is_sensitive_path(resolved) and any(
+                        path != resolved and path.is_relative_to(resolved) for path in protected)):
+                    authorize = getattr(self.approve, 'authorize', None)
+                    if authorize is None or not authorize('secrets', 'ALTERAR PASTA QUE CONTÉM DADOS SENSÍVEIS: ' + str(resolved)):
+                        raise ToolError('A pasta contém dados sensíveis; alteração não autorizada')
+                return resolved
         raise ToolError("Acesso fora dos diretórios autorizados bloqueado")
 
     def _is_root(self, path):
@@ -74,7 +89,16 @@ class FilesystemTools:
             raise ToolError("Arquivo existente muito grande para edição segura")
         before = p.read_bytes() if p.exists() else None
         before_hash = hashlib.sha256(before).hexdigest() if before is not None else None
-        if expected_sha256 is not None and expected_sha256 != before_hash:
+        if expected_sha256 == '':
+            # Sentinel de criação: ausência é diferente de um arquivo vazio.
+            # As revalidações abaixo continuam exigindo before=None até o rename.
+            if before is not None:
+                raise ToolError('O arquivo já existe; consulte verify_file e informe seu SHA256 para editar')
+        elif expected_sha256 is not None:
+            if not isinstance(expected_sha256, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', expected_sha256):
+                raise ToolError('SHA256 inválido; para arquivo novo use string vazia ou omita o campo')
+            expected_sha256 = expected_sha256.lower()
+        if expected_sha256 not in (None, '') and expected_sha256 != before_hash:
             raise ToolError("Arquivo mudou desde a leitura; conteúdo esperado não confere")
         try:
             previous = before.decode("utf-8") if before is not None else ""

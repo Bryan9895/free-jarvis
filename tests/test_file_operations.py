@@ -111,5 +111,30 @@ class FilesOperationsTests(unittest.TestCase):
         self.assertIn("error", result)
         self.assertEqual(outside.read_text(encoding="utf-8"), "outside")
 
+    def test_empty_hash_creates_only_when_target_is_absent(self):
+        outcome = self.allowed.execute('write_file', {'path': 'new.txt', 'content': 'teste', 'expected_sha256': ''})
+        self.assertEqual(outcome['result']['status'], 'written')
+        self.assertEqual((self.root / 'new.txt').read_text(), 'teste')
+        empty = self.root / 'empty.txt'
+        empty.write_text('')
+        denied = self.allowed.execute('write_file', {'path': 'empty.txt', 'content': 'replace', 'expected_sha256': ''})
+        self.assertIn('error', denied)
+        self.assertEqual(empty.read_text(), '')
+
+    def test_home_shorthand_resolves_before_root_authorization(self):
+        self.allowed.allowed_roots = [Path.home()]
+        self.assertEqual(self.allowed.path('~/Documents'), Path.home() / 'Documents')
+
+    def test_creation_sentinel_still_rejects_concurrent_file_creation(self):
+        target = self.root / 'concurrent.txt'
+        def race(_):
+            target.write_text('someone else')
+            return True
+        kit = Toolkit(self.root, approve=race)
+        result = kit.execute('write_file', {'path': target.name, 'content': 'jarvis', 'expected_sha256': ''})
+        self.assertIn('error', result)
+        self.assertEqual(target.read_text(), 'someone else')
+
+
 if __name__ == "__main__":
     unittest.main()

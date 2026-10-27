@@ -32,6 +32,9 @@ def route(message: str, mode="auto") -> str:
     if mode != "auto":
         return mode
     normalized = message.strip().lower()
+    normalized = re.sub(r'^jarvis[,.:!\s]+', '', normalized)
+    if re.match(r'^(?:(?:você|voce)\s+)?(?:pode|poderia|consegue|conseguiria|dá para|da para|daria para)\b', normalized):
+        return 'tools'
     if len(normalized) > 180 or _ACTION.search(normalized):
         return "tools"
     if re.match(_INFO, normalized):
@@ -166,7 +169,7 @@ def tool_catalog(message: str, available: list[dict]) -> list[dict]:
         if len(matches) == 1:
             kind = matches[0]
             names = {
-                "write": {"read_file", "write_file"} if re.search(r"\b(?:edite|editar)\b", normalized) else {"write_file"},
+                "write": {"read_file", "verify_file", "write_file"} if re.search(r"\b(?:edite|editar)\b", normalized) else {"write_file"},
                 "read": {"read_file"}, "list": {"list_files"}, "mkdir": {"make_directory"},
                 "project": {"create_python_project"}, "move": {"move_path"}, "delete": {"delete_path"},
             }[kind]

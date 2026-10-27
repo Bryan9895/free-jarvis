@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from contextlib import contextmanager
 
 _category = ContextVar('jarvis_action_category', default=None)
+_one_time = ContextVar('jarvis_one_time_authorizations', default=None)
 
 
 @contextmanager
@@ -15,10 +16,12 @@ def action_category(capability):
     category = {'filesystem.write': 'files', 'desktop.control': 'applications',
                 'browser.control': 'external'}.get(capability)
     token = _category.set(category)
+    permissions = _one_time.set(frozenset())
     try:
         yield
     finally:
         _category.reset(token)
+        _one_time.reset(permissions)
 
 
 class ApprovalPolicy:
@@ -42,7 +45,12 @@ class ApprovalPolicy:
             return False
         if self.granted(category):
             return True
-        return bool(self.manual_callback(action))
+        if category in (_one_time.get() or ()):
+            return True
+        accepted = bool(self.manual_callback(action))
+        if accepted and _one_time.get() is not None:
+            _one_time.set(_one_time.get() | {category})
+        return accepted
 
     def __call__(self, action):
         if not isinstance(action, str):

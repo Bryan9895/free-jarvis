@@ -237,3 +237,49 @@ Suíte deste checkpoint: passou, 449 testes em 19,948 s, com GUI/Chromium/HTTP.
 Após a proteção contra sequência automática após efeito incerto, o conjunto
 focado de concessões passou com 9 testes em 0,121 s. Testes de administração
 usaram adaptadores controlados, sem alterar pacotes/serviços da máquina.
+
+
+## Falha real de criação — detectada no benchmark FCC em 26/10/2026
+
+Base publicada de concessões: `de8159ceb6b82964db4df5efb0e5b302b51585a0`.
+O FCC real respondeu no ambiente, sem FCC_TOKEN explícito; modelo anunciado e
+usado: openai/gpt-5.6-terra. A comparação inicial mostrou falha composta nas duas
+versões (1702cd7 e árvore atual); foi interrompida para investigar, não é uma
+medição completa de 30 turnos nem demonstra um ganho consolidado.
+
+Reprodução em diretório/banco temporários confirmou argumentos de write_file:
+expected_sha256 vazio ao criar arquivo ausente → erro de comparação com None;
+em seguida o modelo tentou hash de conteúdo vazio e leu um arquivo inexistente.
+O assistente adicionava a tarefa, mas informava a falha na criação. Não foi falha
+de microfone. Esta jornada real revelou um contrato incompleto além dos mocks.
+
+Corrigido: expected_sha256="" significa exigir destino ausente. Um arquivo
+existente, inclusive vazio, é recusado nesse modo. Hash válido continua exigindo
+conteúdo anterior correspondente, e as verificações contra corrida antes do
+rename permanecem. Hash malformado recebe erro de argumento, não uma alegação
+incorreta de alteração concorrente. Edição anuncia verify_file para obter o hash.
+
+Passou: 12 testes focados de arquivos em 0,038 s, incluindo criação, ausência vs
+arquivo vazio e criação concorrente durante autorização. FCC real após correção:
+as quatro jornadas textuais (pergunta curta, longa, tarefa e tarefa+arquivo)
+passaram, N=1 por classe, sem afirmar estabilidade de percentis. Ação composta
+teve arquivo e tarefa observados em recursos temporários. Aceite físico de
+GNOME/Bluetooth continua pendente. A comparação completa será registrada em
+checkpoint posterior com alvos únicos por amostra.
+
+
+Complementos deste checkpoint: títulos no formato explícito “Adicione às tarefas:
+…” são resolvidos localmente, pelo mesmo registro/executor, autorizações,
+verificação e histórico. Não há chamada ao modelo; números do título não viram
+prioridade. Pedidos compostos, prioridade explícita e formatos ambíguos seguem
+para o modelo. Três testes passaram em 0,017 s, incluindo recusa de autorização.
+30 inclusões reais em SQLite temporário, com FCC configurado mas zero inferências:
+p50/p95 de conclusão 2,53/4,16 ms, zero falhas, 30 efeitos observados. Não inclui STT.
+
+Autorizações pontuais para dados sensíveis são reaproveitadas somente dentro de
+uma execução de ferramenta; não geram vários diálogos durante a revalidação do
+mesmo arquivo e não persistem. Arquivo de concessões, inclusive caminho customizado,
+e pastas ancestrais que o contêm não podem ser movidos para contornar essa proteção.
+Caminhos ~/ são expandidos antes da checagem de raízes. Testes focados de concessões:
+10 passaram em 0,177 s. A suíte de integração antes desses dois acréscimos registrou
+467 testes em 26,032 s; a contagem final será registrada no checkpoint de integração.

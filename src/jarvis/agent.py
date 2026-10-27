@@ -12,6 +12,7 @@ from .execution_result import classify_tool_outcome, ResultState
 from .loop_guard import LoopGuard
 from .providers import ModelProvider
 from .latency import mark
+from .local_intents import task_add_intent
 
 SYSTEM = (
     "Você é JARVIS, assistente em português brasileiro. Use ferramentas quando necessário. "
@@ -24,7 +25,11 @@ SYSTEM = (
     "Evite solicitar novamente a mesma ferramenta quando o resultado já foi fornecido. "
     "Use list_files, não run_command, para localizar pastas. Ao receber um pedido "
     "de criar, editar ou abrir arquivos, chame as ferramentas disponíveis: não "
-    "substitua execução por pedidos de confirmação no texto. Use open_file para "
+    "substitua execução por pedidos de confirmação no texto. Ao criar arquivo novo, "
+    "omita expected_sha256 ou envie string vazia "
+    "para exigir que o destino não exista. Não use o hash de texto vazio para um "
+    "arquivo inexistente. Para editar uma versão já lida, obtenha o hash por verify_file; "
+    "não invente hashes. Use open_file para "
     "arquivos individuais e open_project para pastas. Para conferir se uma "
     "janela apareceu, consulte verify_app_window; resultado não observado "
     "não demonstra que o aplicativo esteja fechado. desktop_windows retorna "
@@ -338,6 +343,7 @@ class Agent:
             self.toolkit.capabilities.enabled,
             desktop_input=os.getenv("JARVIS_ENABLE_DESKTOP_INPUT") == "1")
         available = tool_catalog(message, available) if chosen == "tools" else []
+        local_task = task_add_intent(message, available) if chosen == 'tools' else None
         advertised_tool_count = len(available)
         timings = []
         calls_executed = 0
@@ -370,8 +376,12 @@ class Agent:
                 if isinstance(active_model, str) and active_model.startswith("ollama/"):
                     payload["reasoning"] = {"effort": "none"}
                 t0 = time.monotonic()
-                mark('model_round_start', round=round_index + 1)
-                if callable(getattr(type(self.client), 'stream_responses', None)):
+                if local_task is not None and round_index == 0:
+                    mark('local_intent_resolved')
+                    result = {'output': [{'type': 'function_call', 'name': 'task_add',
+                        'call_id': uuid.uuid4().hex, 'arguments': json.dumps(local_task, ensure_ascii=False)}]}
+                elif callable(getattr(type(self.client), 'stream_responses', None)):
+                    mark('model_round_start', round=round_index + 1)
                     def receive(event):
                         # Rodadas que podem executar ferramentas são consolidadas
                         # antes da apresentação. Não vocalizar promessas de efeito.
@@ -380,11 +390,14 @@ class Agent:
                     result = self.client.stream_responses(payload, on_event=receive,
                                                           cancel_token=cancel_token)
                 else:
+                    mark('model_round_start', round=round_index + 1)
                     result = self.client.responses(payload)
-                mark('model_round_end', round=round_index + 1)
+                if local_task is None:
+                    mark('model_round_end', round=round_index + 1)
                 if cancel_token is not None:
                     cancel_token.check()
-                timings.append(round(time.monotonic() - t0, 3))
+                if local_task is None:
+                    timings.append(round(time.monotonic() - t0, 3))
                 if not isinstance(result, dict) or not isinstance(result.get("output"), list):
                     raise ValueError("Resposta do FCC inválida: campo output ausente")
                 output = result["output"]
@@ -528,6 +541,13 @@ class Agent:
                         self.memory.add('user', message)
                         self.memory.add('assistant', answer)
                         return answer
+                if local_task is not None:
+                    detail = round_outcomes[0].get('result', {})
+                    direct_result = ('Tarefa adicionada.' if isinstance(detail, dict) and detail.get('status') == 'state_verified'
+                                     else 'Não foi possível adicionar a tarefa. Confira a autorização e o resultado.')
+                    self.memory.add('user', message)
+                    self.memory.add('assistant', direct_result)
+                    return direct_result
                 if chosen == "tools" and not compound_request(message):
                     direct_result = (_local_focus_reply(calls, round_outcomes, message)
                                      or _local_window_state_reply(calls, round_outcomes)
@@ -540,6 +560,7 @@ class Agent:
         finally:
             self.last_metrics = {
                 "route": chosen,
+                'local_intent': local_task is not None,
                 "task_id": task_id,
                 "model": getattr(self.client, "active_model", self.model),
                 "total_s": round(time.monotonic() - started, 3),

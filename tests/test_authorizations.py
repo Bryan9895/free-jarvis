@@ -16,6 +16,25 @@ from jarvis.tools import Toolkit
 
 
 class AuthorizationTests(unittest.TestCase):
+    def test_sensitive_approval_is_scoped_to_one_operation_and_cannot_move_parent_around_check(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            config = root / 'config'
+            config.mkdir()
+            store = AuthorizationStore(config / 'authorizations.json')
+            store.save(Grants())
+            accepted = Mock(return_value=True)
+            policy = ApprovalPolicy(auto=True, manual_callback=accepted, authorizations=store, report=lambda _: None)
+            kit = Toolkit(root, approve=policy)
+            (root / '.env').write_text('before')
+            outcome = kit.execute('write_file', {'path': '.env', 'content': 'after'})
+            self.assertEqual(outcome['result']['status'], 'written')
+            accepted.assert_called_once()
+            policy.manual_callback = lambda _: False
+            self.assertIn('error', kit.execute('read_file', {'path': '.env'}))
+            self.assertIn('error', kit.execute('read_file', {'path': str(store.path)}))
+            self.assertIn('error', kit.execute('move_path', {'source': 'config', 'destination': 'moved'}))
+            self.assertTrue(store.path.exists())
     def setup_policy(self, root, categories=(), roots=()):
         store = AuthorizationStore(root / 'authorizations.json')
         store.save(Grants(frozenset(categories), tuple(str(p) for p in roots)))

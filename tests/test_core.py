@@ -288,7 +288,7 @@ class CoreTests(unittest.TestCase):
             "Liste os arquivos da pasta": {"list_files"},
             "Crie uma pasta rascunhos": {"make_directory"},
             "Crie um projeto Python": {"create_python_project"},
-            "Edite o arquivo notas.txt": {"read_file", "write_file"},
+            "Edite o arquivo notas.txt": {"read_file", "verify_file", "write_file"},
         }
         for prompt, expected in cases.items():
             with self.subTest(prompt=prompt):
