@@ -350,3 +350,9 @@ real, HTTP local, Chromium, cancelamento, permissões, escrita concorrente, capt
 segmentada e jornadas completas controladas. Ajuste posterior de rótulo de estado
 distingue aguardar ativação, fala manual e seguimento; verificação focada de voz
 acompanha esse ajuste. Não há ensaio físico de captura ambiental nesta execução.
+
+Captura/continuação/coordenador publicados em
+`1bc0f27c5f093d4023bff31a4acdc5bd89b68d03`. Verificação focada após distinguir
+estados de ativação/fala/seguimento: passou, 33 testes de voz em 0,339 s.
+Os scripts de avaliação e o relatório LATENCIA_2026-10-27.md completam a entrega
+sem ampliar concessões reais nem declarar os gates físicos como realizados.

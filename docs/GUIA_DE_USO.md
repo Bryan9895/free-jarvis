@@ -152,3 +152,48 @@ uma ação sensível pode ser aprovada pontualmente pelo diálogo existente.
 Concessões ficam em ~/.config/jarvis-fcc/authorizations.json (ou
 JARVIS_AUTHORIZATIONS), versão 1, com substituição atômica e sem segredos.
 Arquivo inválido resulta em nenhuma concessão adicional e erro visível.
+
+
+## Conversa progressiva, pedidos longos e preparo de voz
+
+Perguntas informativas atualizam o texto durante a resposta e podem começar a
+ser faladas por frases completas. Resultados de ações continuam dependendo de
+verificação. Parar interrompe leitura HTTP já conectada, síntese/player e novas
+ações; efeitos enviados antes do cancelamento não são desfeitos. Conexão/DNS
+antes dos headers ainda dependem do timeout de conexão (padrão 5 s).
+
+Voz → Saída → Preparar voz sem reproduzir carrega o Piper por síntese controlada
+sem tocar no fone. É opcional, explícito e cancelável; não baixa modelos nem
+bloqueia a abertura do aplicativo. Testar voz salva continua sendo o teste de
+saída audível. A primeira chamada fria é medida separadamente.
+
+Fala longa mantém PCM contínuo em segmentos temporários, sem corte obrigatório
+em 6 s. Após o teto de segmento de 120 s, o pedido fica pendente e não é
+transcrito/executado parcialmente. Use Continuar pendente e termine normalmente
+com silêncio ou o botão; Descarta pendente/Parar apaga o prefixo. CLI:
+/continuar-voz e /descartar-voz. O teto total de 10 min descarta com aviso.
+Não é um modo de transcrição ilimitada. Áudio temporário não é log persistente.
+
+“Adicione às tarefas: revisar relatório 3” preserva o título e executa localmente
+com prioridade normal. Pedidos compostos ou com prioridade explícita continuam
+no modelo. O registro, autorizações, verificação e histórico são os mesmos.
+Para criar arquivo, expected_sha256 vazio exige destino ausente; para editar uma
+versão anterior, o agente consulta verify_file e usa o hash correspondente.
+
+## Detector acústico opcional
+
+O padrão continua fallback por transcrição. Não há um modelo acústico de Jarvis
+isolado pt-BR aceito e distribuído neste repositório. Não selecione hey_jarvis
+como se comprovasse esse requisito. Campo Manifesto local em Voz → Saída ou
+JARVIS_WAKE_MANIFEST aceita artefato compatível previamente avaliado. Salvar uma
+troca reinicia o listener sem streams concorrentes.
+
+Manifesto versão 1: keyword=jarvis, language=pt-BR,
+format=pcm_float32_16000, model=caminho relativo do ONNX, sha256=hash real,
+license=licença do artefato, threshold entre 0 e 1; evaluation contém calls,
+correct, negative_minutes, false_activations e evidence. O gate exige pelo menos
+20 chamadas, 90% corretas, 30 min negativos e no máximo uma falsa ativação.
+O arquivo deve documentar ensaio real, não copiar os números de teste sintético.
+ONNX recebe tensor float32 [1,16000] de PCM normalizado e retorna probabilidade
+escalar. Outros formatos são recusados; falha mantém fallback explicitamente
+identificado. Sem artefato e ensaio do fone, wake word dedicada fica pendente.

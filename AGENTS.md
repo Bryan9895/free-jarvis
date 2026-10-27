@@ -72,3 +72,15 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
   separar concisão da fala de capacidade de raciocínio.
 - Streaming de ações não confirma efeito antes da verificação. Deadline é total
   entre tentativas; fallback após conteúdo exibido/falado deve ser interrompido.
+
+## Checkpoint de implementação em 27/10/2026
+
+- Streaming público, terminal SSE, orçamento/cancelamento de leitura e pipeline
+  TTS já existem; não recriar clientes/executores paralelos. Resposta de ação
+  continua exigindo efeito observado. Cota esgotada não autoriza varredura de modelos.
+- Captura segmentada mantém pedido pendente ao atingir o teto; continuação é
+  explícita. Parar/descartar elimina o áudio. Fallback STT é o padrão enquanto
+  não houver manifesto/artefato acústico pt-BR aceito; adaptador não é aceite físico.
+- Consulte docs/LATENCIA_2026-10-27.md e VALIDACAO_CONVERSA.md. Comparação FCC foi
+  interrompida por 429; não copiar replay HTTP, tarefas locais ou sink WAV como
+  latência fim de fala → som no fone. Defaults STT não mudam sem corpus consentido.

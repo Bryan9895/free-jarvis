@@ -54,3 +54,20 @@ jarvis-fcc --doctor
 Os testes automatizados não comprovam comportamento físico no seu GNOME, FCC ou dois monitores. Consulte [arquitetura](docs/ARQUITETURA.md), [matriz de validação](docs/V1_DIAGNOSTICO.md), [acompanhamento](docs/V1_EXECUCAO.md) e [guia de uso e recuperação](docs/GUIA_DE_USO.md). O [README histórico](docs/README_HISTORICO.md) preserva os experimentos e instruções anteriores.
 
 Atualização local sem apagar histórico SQLite: `git pull --ff-only`, ativar a venv e repetir `python -m pip install -e ".[desktop]"`. Faça backup do banco antes de atualizações importantes; a migração é versionada e não destrutiva.
+
+
+### Evolução de conversa e autonomia
+
+Respostas informativas chegam progressivamente; voz usa frases e pipeline
+limitado. Parar cancela rede conectada/voz e descarta resultados atrasados. Voz →
+Saída permite preparar Piper sem reproduzir. Pedidos que atingem o teto de áudio
+ficam pendentes, com Continuação/Descarte explícitos, sem executar texto parcial.
+
+Configurações → Permissões reúne concessões persistentes por categoria e pasta,
+terminal e administração via autenticação nativa. Nenhuma concessão ampla é
+habilitada silenciosamente. “Adicione às tarefas: …” executa localmente; pedidos
+compostos continuam no executor/modelo. Detector acústico pt-BR aceito ainda não
+acompanha o projeto; o fallback por transcrição permanece identificado.
+
+Resultados, procedimentos e pendências físicas: [relatório de latência](docs/LATENCIA_2026-10-27.md)
+e [validação por checkpoint](docs/VALIDACAO_CONVERSA.md).

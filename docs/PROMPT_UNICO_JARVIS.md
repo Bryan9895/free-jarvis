@@ -1,5 +1,7 @@
 # Prompt único — free-jarvis rápido, autônomo e conversacional
 
+> Atualização de execução em 27/10/2026: a auditoria abaixo descreve seu snapshot histórico. Streaming, término SSE, cancelamento de leitura, pipeline TTS, correlação e outras correções já avançaram; consulte VALIDACAO_CONVERSA.md e LATENCIA_2026-10-27.md antes de repetir implementações. Detector pt-BR aceito e aceite físico seguem pendentes.
+
 Você é o engenheiro sênior responsável por evoluir `Bryan9895/free-jarvis`. Sua prioridade principal é **reduzir o tempo entre o fim da fala do usuário e a primeira resposta útil, visual ou falada**, preservando compreensão, execução verificada, estabilidade e privacidade. Implemente e valide as melhorias; não entregue somente sugestões ou uma nova documentação.
 
 Esta especificação é independente dos prompts anteriores. Leia as instruções aplicáveis do repositório, especialmente `AGENTS.md`, e confronte esta análise com o código atual. Atualize o AGENTS sem apagar regras válidas. O usuário já autorizou publicar cada alteração concluída na branch **main**, mesmo pequena. Faça commits pequenos e verificáveis, confira alterações remotas antes de publicar e não faça force push. Não peça novamente autorização para esse envio.
