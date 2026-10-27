@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 from time import monotonic
 from threading import Lock
 
@@ -18,7 +19,25 @@ from .registry import CapabilityPolicy
 from .tools import DEFAULT_REGISTRY, Toolkit
 
 
+def _turn_token(existing=None):
+    try:
+        seconds = float(os.getenv('JARVIS_TURN_TIMEOUT', '120'))
+    except ValueError as exc:
+        raise ValueError('JARVIS_TURN_TIMEOUT deve ser um número entre 1 e 3600 segundos') from exc
+    if not math.isfinite(seconds) or not 1 <= seconds <= 3600:
+        raise ValueError('JARVIS_TURN_TIMEOUT deve estar entre 1 e 3600 segundos')
+    from .latency import current_trace
+    trace = current_trace()
+    enqueued = [] if trace is None else [event['at'] for event in trace.snapshot()['events']
+                                       if event['stage'] == 'intent_enqueued']
+    deadline = (enqueued[0] if enqueued else monotonic()) + seconds
+    token = existing or CancellationToken()
+    token.deadline = min(token.deadline, deadline) if token.deadline is not None else deadline
+    return token
+
+
 class JarvisService:
+    supports_turn_cancellation = True
     def __init__(self, client, agent, toolkit, memory, planner, approval, *, report=print):
         self.client = client
         self.agent = agent
@@ -69,12 +88,13 @@ class JarvisService:
     def ask(self, message: str) -> str:
         return self.ask_stream(message)
 
-    def ask_stream(self, message: str, *, on_text=None) -> str:
+    def ask_stream(self, message: str, *, on_text=None, cancel_token=None) -> str:
+        token = _turn_token(cancel_token)
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há uma tarefa em execução")
-        token = CancellationToken(deadline=monotonic() + float(os.getenv('JARVIS_TURN_TIMEOUT', '120')))
         self._current_token = token
         try:
+            token.check()
             answer = self.tasks.handle(message)
             if answer is None:
                 if on_text is None:
@@ -90,9 +110,9 @@ class JarvisService:
         """Mesma exclusão/cancelamento do chat para os controles diretos de plano."""
         if action not in {"prepare", "execute", "select", "resume", "resolve", "cancel"}:
             raise ValueError("Ação de plano desconhecida")
+        token = _turn_token()
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há uma tarefa em execução")
-        token = CancellationToken(deadline=monotonic() + float(os.getenv('JARVIS_TURN_TIMEOUT', '120')))
         self._current_token = token
         try:
             token.check()

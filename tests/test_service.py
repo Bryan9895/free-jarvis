@@ -1,7 +1,9 @@
 """Serviço compartilhado e cancelamento da sessão."""
 import threading
+import os
+from time import monotonic
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
 from jarvis.approval import ApprovalPolicy
@@ -10,6 +12,41 @@ from jarvis.service import JarvisService
 
 
 class ServiceTests(unittest.TestCase):
+    def test_cancel_before_service_registers_token_never_starts_action(self):
+        from jarvis.conversation import ConversationController
+        class DelayedService(JarvisService):
+            def ask_stream(self, message, **kwargs):
+                controller.cancel()
+                return super().ask_stream(message, **kwargs)
+        service = DelayedService(Mock(), Mock(), Mock(), Mock(), Mock(), ApprovalPolicy(), report=lambda _: None)
+        controller = ConversationController(service)
+        with self.assertRaises(CancelledError):
+            controller.run('execute uma ação')
+        service.agent.ask.assert_not_called()
+        self.assertFalse(service._lock.locked())
+    def test_invalid_deadline_never_leaves_service_locked_and_can_recover(self):
+        service = self.service(Mock())
+        for value in ('invalid', 'nan', 'inf', '0', '-1', '3601'):
+            with self.subTest(value=value), patch.dict(os.environ, {'JARVIS_TURN_TIMEOUT': value}):
+                with self.assertRaises(ValueError):
+                    service.ask('pergunta')
+                with self.assertRaises(ValueError):
+                    service.plan_action('prepare', 'objetivo')
+                self.assertFalse(service._lock.locked())
+        with patch.dict(os.environ, {'JARVIS_TURN_TIMEOUT': '120'}):
+            service.agent.ask.return_value = 'recuperado'
+            self.assertEqual(service.ask('pergunta'), 'recuperado')
+
+    def test_queue_time_consumes_deadline_without_executing_stale_intent(self):
+        from jarvis.latency import TurnTrace, tracing
+        service = self.service(Mock())
+        trace = TurnTrace()
+        trace.mark('intent_enqueued', at=monotonic() - 121)
+        with patch.dict(os.environ, {'JARVIS_TURN_TIMEOUT': '120'}), tracing(trace):
+            with self.assertRaises(TimeoutError):
+                service.ask('pergunta')
+        service.agent.ask.assert_not_called()
+        self.assertFalse(service._lock.locked())
     def service(self, planner, approval=None):
         return JarvisService(Mock(), Mock(), Mock(), Mock(), planner,
                              approval or ApprovalPolicy(auto=True), report=lambda _: None)

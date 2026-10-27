@@ -4,7 +4,7 @@ from threading import Lock
 from time import monotonic
 from uuid import uuid4
 
-from .cancellation import CancelledError
+from .cancellation import CancelledError, CancellationToken
 from .speech_text import ResponseText
 from .latency import TurnTrace, tracing, mark
 
@@ -68,6 +68,7 @@ class ConversationController:
         self._lock = Lock()
         self._guard = Lock()
         self._voice = None
+        self._token = None
         self.last_trace = None
 
     def _event(self, turn, state, reason):
@@ -81,7 +82,9 @@ class ConversationController:
     def cancel(self):
         with self._guard:
             self._cancelled = True
-            turn, voice = self._turn_id, self._voice
+            turn, voice, token = self._turn_id, self._voice, self._token
+        if token is not None:
+            token.cancel()
         if turn and self.last_trace is not None:
             self.last_trace.mark('cancel_requested')
         self.service.cancel_current()
@@ -102,6 +105,7 @@ class ConversationController:
         live = None
         with self._guard:
             self._turn_id, self._cancelled, self._voice = turn, False, voice
+            token = self._token = CancellationToken()
         try:
             if message.casefold().strip(' .,!?:;') == 'parar conversa':
                 self.on_end()
@@ -125,7 +129,10 @@ class ConversationController:
                 if live is not None:
                     live.feed(delta)
             with tracing(trace):
-                if on_text is not None and callable(getattr(type(self.service), 'ask_stream', None)):
+                if getattr(type(self.service), 'supports_turn_cancellation', False) is True:
+                    answer = self.service.ask_stream(message,
+                        on_text=receive if on_text is not None else None, cancel_token=token)
+                elif on_text is not None and callable(getattr(type(self.service), 'ask_stream', None)):
                     answer = self.service.ask_stream(message, on_text=receive)
                 else:
                     answer = self.service.ask(message)
@@ -167,4 +174,5 @@ class ConversationController:
             with self._guard:
                 self._voice = None
                 self._turn_id = None
+                self._token = None
             self._lock.release()

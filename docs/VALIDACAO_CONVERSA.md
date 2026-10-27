@@ -356,3 +356,20 @@ Captura/continuação/coordenador publicados em
 estados de ativação/fala/seguimento: passou, 33 testes de voz em 0,339 s.
 Os scripts de avaliação e o relatório LATENCIA_2026-10-27.md completam a entrega
 sem ampliar concessões reais nem declarar os gates físicos como realizados.
+
+
+## Revisão final de deadline e cancelamento — 27/10/2026
+
+Base da avaliação publicada em `5fc19b3ee26fc72b70b2918e1757550162d9c6ad`.
+Encontrado e corrigido: conversão de JARVIS_TURN_TIMEOUT após adquirir o lock
+podia deixar serviço bloqueado se o valor fosse inválido. Agora a validação
+finita (1–3600 s) precede aquisição, permite recuperação e inclui a fila no prazo.
+Também foi fechado o intervalo entre a checagem do controlador e o registro do
+turno no serviço: o token de cancelamento já existe desde o controlador e é
+compartilhado com o executor/transporte, bloqueando uma intenção cancelada nesse
+intervalo. Novos testes cobrem configuração inválida, recuperação, fila vencida
+e cancelamento antes do serviço registrar o token. Não alteram gates físicos.
+
+Verificação de encerramento deste ajuste: **passou, 472 testes em 35,288 s**,
+com GUI/Chromium/HTTP local. git diff --check passou. Não houve nova inferência
+FCC, captura ambiental ou ação administrativa real nesta revisão.

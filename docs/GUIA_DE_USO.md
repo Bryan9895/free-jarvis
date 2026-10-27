@@ -197,3 +197,13 @@ O arquivo deve documentar ensaio real, não copiar os números de teste sintéti
 ONNX recebe tensor float32 [1,16000] de PCM normalizado e retorna probabilidade
 escalar. Outros formatos são recusados; falha mantém fallback explicitamente
 identificado. Sem artefato e ensaio do fone, wake word dedicada fica pendente.
+
+
+## Prazo do turno
+
+JARVIS_TURN_TIMEOUT define o prazo total entre enfileirar a intenção e concluir
+suas etapas: padrão 120 s, valores finitos entre 1 e 3600 s. Configuração inválida
+gera erro recuperável e não mantém o serviço bloqueado. O orçamento inclui
+retentativas e planejamento; fila vencida não executa intenção atrasada. Parar
+compartilha o token desde o controlador, inclusive antes do registro no serviço.
+O timeout de conexão antes dos headers continua sendo uma limitação separada.
