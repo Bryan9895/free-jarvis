@@ -13,7 +13,7 @@ TRANSIENT = frozenset({429, 500, 502, 503, 504})
 
 def may_fallback(error):
     """404 só autoriza fallback se vier de erro explicitamente atribuído ao provedor."""
-    if error.category in ("invalid_response", "deadline", "partial_stream"):
+    if error.category in ("invalid_response", "deadline", "partial_stream", 'quota_exhausted'):
         return False
     if error.status in TRANSIENT or error.status is None:
         return True
@@ -38,6 +38,8 @@ class FCCError(RuntimeError):
         if status in (401, 403):
             return "authentication"
         if status == 429:
+            if 'usage_limit_reached' in message.casefold():
+                return 'quota_exhausted'
             return "rate_limit"
         if status in (500, 502, 503, 504) or status is None and "indisponível" in message.lower():
             return "unavailable"

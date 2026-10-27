@@ -30,6 +30,10 @@ class FakeClient:
         return {"output":[{"type":"message","content":[{"type":"output_text","text":"OK"}]}]}
 
 class FCCTests(unittest.TestCase):
+    def test_exhausted_account_quota_never_retries_other_models(self):
+        error = FCCError('HTTP 429 usage_limit_reached', 429)
+        self.assertEqual(error.category, 'quota_exhausted')
+        self.assertFalse(may_fallback(error))
     def test_model_adapter_implements_provider_contract(self):
         adapter = AutoModelClient(FakeClient())
         self.assertIsInstance(adapter, ModelProvider)
