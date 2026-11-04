@@ -1,7 +1,8 @@
 """Private JSON-lines worker, launched with the provisioned Python 3.10–3.13.
 
 Uses OpenJarvis under Apache-2.0 as an installed dependency, without copying its
-implementation. Never imports its agents, tools, discovery or cloud engines.
+implementation. Never instantiates its agents/tools or uses engine discovery
+or cloud fallback. The Ollama engine class is selected directly.
 """
 import asyncio
 import importlib.metadata
@@ -120,10 +121,18 @@ def create_engine(host):
 def main():
     request = json.loads(sys.stdin.readline())
     verify_revision(request['revision'])
+    if request['operation'] == 'inspect':
+        from openjarvis.engine.ollama import OllamaEngine
+        emit({'result': {'revision': request['revision'], 'engine': OllamaEngine.engine_id,
+            'python_version': list(sys.version_info[:3]),
+            'package_version': importlib.metadata.version('openjarvis'), 'inference': 'Não testado'}})
+        return
     engine = create_engine(request['host'])
     try:
         operation = request['operation']
         if operation == 'models':
+            if not engine.health():
+                raise ValueError('Ollama local indisponível; instale/inicie o servidor antes de selecionar pesos')
             emit({'result': engine.list_models()})
         elif operation == 'check':
             check_model(engine, request['model'])

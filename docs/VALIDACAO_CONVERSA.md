@@ -1,5 +1,32 @@
 # Validação incremental da conversa
 
+## Provisionamento Local e RAM — continuação de 04/11/2026
+
+Base publicada: `6625bdf24695e10011a60c2bd9373cf35587e84d`. Trabalho de
+multiagentes preexistente foi mantido separado em worktree durante o incremento.
+
+| Ensaio | Estado | Evidência |
+| --- | --- | --- |
+| Instalação real do OpenJarvis fixado | Passou | Ambiente gerenciado em `~/.local/share/jarvis-fcc/local-runtime/versions/`; Python 3.13.15, origem VCS oficial, SHA `324c9c3ac61bff07a0d99b715a7511dcd78600c4`. Pacotes e Git reaproveitados localmente, sem rede nesta instalação. |
+| Instalação repetida | Passou | `jarvis-fcc local install-engine --offline` retornou `reused: true`, sem reinstalar ou carregar pesos. |
+| Seleção automática do Python | Passou | `Config.from_env` e Doctor encontram o ponteiro gerenciado sem export manual. FCC continua padrão. Override explícito não vazio prevalece. |
+| Diagnóstico básico | Passou | `local status --json` separa engine **OK**, CLI Ollama **Falta**, inferência e áudio **Não testado**. Não consulta servidor nem captura áudio. |
+| Ponte instalada → HTTP controlado → controlador → Toolkit | Passou | `tests/test_local_engine_http.py` executou o worker real em Python 3.13, usando Engine instalado e servidor HTTP de teste. Uma escrita foi verificada no workspace temporário, sem duplicação. Não é inferência real. O teste é ignorado quando não existe runtime provisionado. |
+| Suíte do incremento isolado | Passou | 500 testes em 26,485 s. Inclui rollback, publicação atômica, cancelamento/timeout, concorrência entre instalações, processos reais recolhidos e cobertura de RAM. |
+| Benchmark controlado com RAM | Passou | 30 jornadas com respostas e falhas injetadas previstas; relatório em `/tmp/jarvis-provision-controlled-20261104.json`, 8 amostras de RAM e zero erros de leitura. Esses tempos não são latência de modelo. |
+| Download binário Ollama | Falhou | CLI ausente; tentativa HEAD no download oficial falhou por DNS. Nenhum binário instalado. |
+| Teste ativo Local | Pendente | `local check` informa servidor indisponível; `local pull-model` informa CLI ausente. Sockets da execução normal, inclusive loopback, foram negados por `PermissionError`. |
+| Isolamento externo de rede | Pendente | `bwrap --unshare-net` foi recusado por falta de permissão de namespace. Não houve mudança de firewall ou ampliação de privilégios. |
+| Gemma/Qwen, qualidade, áudio físico | Pendente | Sem pesos/conversa reais, sem captura ambiental e sem reprodução física. Não há vencedor, p50/p95 de inferência nem aceite offline. |
+
+Comandos de preparação e limites atualizados em [PERFIL_LOCAL.md](PERFIL_LOCAL.md).
+O benchmark passa a incluir árvore de processos e PIDs adicionais por
+`--monitor-pid`, com RSS/PSS, RAM disponível e uso global. Picos são amostrados a
+cada 50 ms; RSS pode duplicar páginas compartilhadas. Daemon externo não fornecido,
+PIDs ausentes, erros e impossibilidade de ler PSS ficam explícitos. Medições
+globais incluem outros programas abertos. Nenhuma métrica contém linha de comando,
+áudio, prompt ou transcrição privada.
+
 ## Perfil Local — checkpoint de 04/11/2026
 
 Partida real: `d5eedae1312894037d9de330985296dd9720dcb3`. `git fetch` e

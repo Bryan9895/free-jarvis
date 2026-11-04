@@ -21,7 +21,11 @@ def confirm(action):
         return False
 
 def main():
-    parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
+    if sys.argv[1:2] == ['local']:
+        from .local_setup import main as local_main
+        return local_main(sys.argv[2:])
+    parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code",
+        epilog='Motor local: jarvis-fcc local {status,install-engine,pull-model,check} --help')
     parser.add_argument('--profile', choices=('local', 'fcc'), help='Local offline ou Engenharia FCC')
     parser.add_argument('--local-model', help='Modelo Ollama instalado, sem prefixo de provedor')
     parser.add_argument('--save-profile', action='store_true', help='Salvar perfil/modelo e sair, sem iniciar áudio ou inferência')

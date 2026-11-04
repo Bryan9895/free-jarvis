@@ -19,6 +19,7 @@ class Config:
     def from_env(cls):
         from .preferences import PreferenceStore
         preferences = PreferenceStore().load().effective()
+        from .local_setup import managed_python
         saved_model = preferences.conversation_model
         return cls(
             os.getenv("FCC_URL", "http://127.0.0.1:8082").rstrip("/"),
@@ -29,5 +30,5 @@ class Config:
             preferences.inference_profile,
             preferences.local_model,
             os.getenv('JARVIS_OLLAMA_HOST', 'http://127.0.0.1:11434'),
-            os.getenv('JARVIS_OPENJARVIS_PYTHON', ''),
+            os.getenv('JARVIS_OPENJARVIS_PYTHON') or managed_python(),
         )

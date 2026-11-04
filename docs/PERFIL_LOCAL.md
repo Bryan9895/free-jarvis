@@ -14,7 +14,32 @@ OpenJarvis é dependência Apache-2.0, sem código upstream copiado no adaptador
 ## Provisionamento explícito
 
 O Jarvis neste notebook usa Python 3.14; OpenJarvis fixado exige >=3.10 e <3.14.
-Prepare um ambiente separado com Python compatível:
+Com `uv` e um Python compatível já instalados, o Jarvis cria, verifica e seleciona
+um ambiente gerenciado, sem mudar o perfil FCC existente:
+
+```bash
+jarvis-fcc local install-engine
+# Python explícito e somente cache, sem downloads:
+jarvis-fcc local install-engine --python /caminho/python3.13 --offline
+jarvis-fcc local status
+jarvis-fcc local status --json
+```
+
+Sem `--python`, procura Python 3.13 já disponível pelo `uv`, em modo offline;
+não baixa um interpretador. A instalação de dependências usa rede apenas no
+comando explícito e pode ser limitada ao cache com `--offline`. A versão fixada
+é verificada em subprocesso antes da publicação. Uma segunda execução reutiliza
+o ambiente válido. Falhas, timeout, cancelamento e instalações simultâneas não
+sobrescrevem um ambiente funcional. O caminho de cada venv é definitivo desde
+a criação, preservando shebangs; somente `runtime.json` é substituído atomicamente.
+Ambientes anteriores são preservados, sem remoção automática de dependências.
+
+O ponteiro fica em `~/.local/share/jarvis-fcc/local-runtime/runtime.json`;
+`JARVIS_LOCAL_RUNTIME_DIR` permite outra raiz. CLI e GUI o consultam sem subprocesso,
+inferência ou rede no startup. Um `JARVIS_OPENJARVIS_PYTHON` não vazio tem precedência.
+O provisionamento automático está limitado ao Linux; Windows requer validação própria.
+
+A preparação manual anterior continua disponível:
 
 ```bash
 python3.13 -m venv ~/.local/share/jarvis-fcc/openjarvis-venv
@@ -32,10 +57,17 @@ Instale Ollama pelo [guia oficial](https://docs.ollama.com/linux), com servidor
 em loopback. Baixe pesos somente durante o provisionamento:
 
 ```bash
-ollama pull gemma4:e2b
+jarvis-fcc local pull-model gemma4:e2b
 # Alternativa pequena citada na configuração histórica do projeto:
-ollama pull qwen3.5:2b
+jarvis-fcc local pull-model qwen3.5:2b
+# Teste ativo curto de texto, sem ferramentas, microfone ou reprodução:
+jarvis-fcc local check
 ```
+
+`pull-model` usa o Ollama já instalado e o endpoint de loopback configurado;
+não instala binários do sistema. `status` não consulta o daemon nem abre dispositivos.
+`check` conecta e infere explicitamente, mas não comprova isolamento externo de rede
+nem áudio audível. Servidor ausente é distinguido de um modelo não instalado.
 
 Confira os modelos instalados antes de comparar. O catálogo
 [Gemma 4](https://ollama.com/library/gemma4) inclui variantes locais e remotas;
@@ -53,8 +85,8 @@ jarvis-fcc --profile fcc --text-only
 
 `--save-profile` grava preferências atomicamente e sai sem inferência ou áudio.
 Sem essa opção, `--profile` vale para a execução. `JARVIS_PROFILE` e
-`JARVIS_LOCAL_MODEL` explícitos prevalecem sobre preferências. O caminho do Python
-isolado fica no ambiente. Reinicie após mudar o perfil. Instalações antigas
+`JARVIS_LOCAL_MODEL` explícitos prevalecem sobre preferências. O Python gerenciado
+é encontrado automaticamente; o caminho manual pode ficar no ambiente. Reinicie após mudar o perfil. Instalações antigas
 continuam em FCC. A GUI informa o perfil em Configurações → Modelos. Selecionar
 modelo nessa aba ou com `/modelo ID` persiste `local_model`, separado do modelo
 FCC. Whisper continua separado do modelo de conversa.
@@ -114,7 +146,47 @@ temporário, sem persistir prompts/respostas. Reporta primeiro texto, tempo tota
 p50/p95 por cenário e erros. Para N=30 por classe, use `--scenario short_question`,
 `long_answer`, `simple_action` e `compound_action`. O caso simples pode usar
 handler determinístico; o composto deve demonstrar chamada produzida pelo modelo.
-CPU/RSS medem só o processo principal, excluindo worker e Ollama. Ainda é preciso
-medir RAM total/pico, carga fria/aquecida, qualidade pt-BR, chamadas inválidas e
+As métricas por turno de CPU/RSS medem só o processo principal; o bloco de RAM
+descrito abaixo amplia a cobertura. Ainda é preciso medir carga fria/aquecida,
+qualidade pt-BR, chamadas inválidas e
 recuperação, com STT/TTS ativos e reprodução Bluetooth. Não publique latência,
 vencedor ou aceite offline sem esses ensaios. O padrão só muda após aceite real.
+
+### RAM dos workers e do daemon
+
+`rss_kib` e `cpu_s` por turno continuam compatíveis e medem o processo principal.
+O bloco `memory` do relatório agora amostra `/proc` a cada 50 ms: soma RSS e PSS
+dos descendentes, acompanha RAM disponível/uso global do sistema e reporta erros
+ou cobertura incompleta. Não lê linhas de comando, prompts ou transcrições.
+Para incluir um daemon Ollama iniciado fora da árvore do benchmark:
+
+```bash
+JARVIS_LOCAL_MODEL=gemma4:e2b PYTHONPATH=src .venv/bin/python -m jarvis.benchmark --local --samples 30 --monitor-pid PID_DO_OLLAMA --output /tmp/jarvis-gemma4.json
+```
+
+`--monitor-pid` é repetível e somente lê métricas; não envia sinais ao daemon.
+PIDs ausentes ficam explícitos. PSS fica nulo quando não puder ser lido para toda
+a árvore selecionada. Somar RSS pode contar páginas compartilhadas mais de uma
+vez; prefira PSS. Os picos são amostrados e podem perder alocações mais curtas
+que 50 ms. O uso global de RAM inclui os outros aplicativos do notebook.
+Não compare modelos simultâneos num notebook de 8 GB: descarregue o anterior
+com `ollama stop NOME` antes de iniciar o seguinte, conforme a
+[documentação de ciclo de vida](https://docs.ollama.com/faq).
+
+### Evidência de instalação em 04/11/2026
+
+Foi possível instalar o motor fixado no ambiente gerenciado, em Python 3.13.15,
+reutilizando cache de pacotes e uma cópia Git local rasa da revisão oficial já
+obtida. A substituição de URL Git por mirror foi limitada ao processo de instalação;
+nenhuma configuração Git global foi alterada. A instalação VCS registrou origem
+oficial e SHA em `direct_url.json`. O wheel veio do commit fixado e sua versão
+dinâmica no mirror raso ficou `0.0.1.dev1+unknown.g324c9c3ac`; o aceite usa o SHA,
+não infere outra versão upstream a partir desse número. Uma instalação posterior
+por `local install-engine --offline` foi concluída, publicada e reaproveitada.
+
+Ollama não foi localizado. Downloads diretos falharam por DNS, sockets inclusive
+loopback foram negados e `bwrap --unshare-net` não pôde criar namespace nesta
+execução. Não houve tentativa de mudar firewall, conceder permissões amplas ou
+anunciar inferência/aceite offline. A suíte usa o comando de testes já autorizado
+para seu HTTP controlado; isso não representa a disponibilidade de rede da sessão
+normal do agente. A comparação real Gemma/Qwen continua pendente.

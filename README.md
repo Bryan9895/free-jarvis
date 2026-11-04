@@ -9,6 +9,10 @@ checkpoint do perfil **Local**, com Engine OpenJarvis/Ollama em processo isolado
 está disponível por seleção explícita. A comparação Gemma/Qwen e o aceite físico
 offline estão pendentes; veja [preparo e validação Local](docs/PERFIL_LOCAL.md).
 
+O provisionamento explícito agora pode ser feito com `jarvis-fcc local install-engine`.
+Use `jarvis-fcc local status` para distinguir motor instalado, Ollama disponível e
+inferência ainda não testada. O startup nunca instala esses componentes.
+
 Requer Python 3.10+ e, no perfil FCC, um servidor FCC configurado separadamente. No diretório do repositório:
 
 ```bash

@@ -210,11 +210,14 @@ def report(rows, *, real_fcc=False):
             'limits': 'Amostras pequenas por classe; p95 descritivo, sem estabilidade estatística. RSS inclui caches. Não mede fim de fala ou som físico.'}
 
 
-def run(samples=30, *, real_fcc=False, real_local=False, scenario=None):
-    result = report(list(measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario)), real_fcc=real_fcc)
+def run(samples=30, *, real_fcc=False, real_local=False, scenario=None, monitor_pids=()):
+    from .resource_sampling import MemorySampler
+    with MemorySampler(monitor_pids) as memory:
+        result = report(list(measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario)), real_fcc=real_fcc)
+    result['memory'] = memory.result
     if real_local:
         result['kind'] = 'openjarvis_local_text_journeys'
-        result['limits'] += ' CPU/RSS medem somente o processo principal, excluindo worker e daemon Ollama. Carga fria/aquecida e RAM total exigem medição adicional.'
+        result['limits'] += ' rss_kib/cpu_s por turno medem só o processo principal. memory mede a árvore de processos e PIDs explícitos; inclua o PID do daemon Ollama. Carga fria/aquecida e qualidade ainda exigem ensaio controlado.'
     result.update(expected_samples=samples, completed=result['samples'] == samples)
     return result
 
@@ -255,18 +258,23 @@ def main():
     parser.add_argument('--samples', type=int, default=30)
     parser.add_argument('--fcc', action='store_true', help='Usa o modelo configurado e somente arquivos/tarefas temporários')
     parser.add_argument('--local', action='store_true', help='Usa OpenJarvis/Ollama local, sem FCC, com o mesmo conjunto de pedidos')
+    parser.add_argument('--monitor-pid', type=int, action='append', default=[], help='Incluir PID do daemon Ollama e descendentes na amostragem de RAM; repetível')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--baseline-package', type=Path, help='Com --fcc, compara pacote antigo extraído do Git em ordem alternada')
     parser.add_argument('--scenario', choices=tuple(item[0] for item in SCENARIOS))
     args = parser.parse_args()
     if args.samples < 1:
         parser.error('samples deve ser positivo')
+    if any(pid < 1 for pid in args.monitor_pid):
+        parser.error('--monitor-pid exige PID positivo')
+    if args.baseline_package and args.monitor_pid:
+        parser.error('--monitor-pid ainda não é suportado na comparação entre versões')
     if args.local and (args.fcc or args.baseline_package):
         parser.error('--local não pode ser combinado com --fcc ou --baseline-package')
     def checkpoint(result):
         if args.output:
             args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n')
-    result = compare(args.samples, args.baseline_package, checkpoint=checkpoint) if args.baseline_package and args.fcc else run(args.samples, real_fcc=args.fcc, real_local=args.local, scenario=args.scenario)
+    result = compare(args.samples, args.baseline_package, checkpoint=checkpoint) if args.baseline_package and args.fcc else run(args.samples, real_fcc=args.fcc, real_local=args.local, scenario=args.scenario, monitor_pids=args.monitor_pid)
     if args.output:
         args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n')
     compact = ({'kind': result['kind'], **{version: {k: v for k, v in result[version].items() if k != 'turns'} for version in ('before', 'after')}}
