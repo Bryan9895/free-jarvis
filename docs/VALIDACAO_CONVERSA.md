@@ -27,6 +27,14 @@ anterior antes de carregar a próxima. Não há fallback silencioso de TTS, cham
 FCC adicionais nem repetição de ações por falha de voz. Nenhuma captura ambiental,
 reprodução física ou instalação administrativa de pacotes foi feita.
 
+Integração final na `main`: **passou, 538 testes em 53,706 s, 1 ignorado**
+(síntese real opcional). Conflitos de contexto em `GuiBackend.ACTIONS` e
+`Preferences.validate` foram resolvidos preservando comandos/campos de equipe e
+de Kokoro. O diff anterior segue com 11 arquivos rastreados, 302 inserções e
+26 remoções, além dos quatro arquivos novos de multiagentes, sem commit nesta
+entrega. Backup no stash `codex-preserve-multiagents-kokoro-20261104`.
+`git diff --check` passou; não houve nova tentativa de síntese ou reprodução real.
+
 ## Provisionamento Local e RAM — continuação de 04/11/2026
 
 Base publicada: `6625bdf24695e10011a60c2bd9373cf35587e84d`. Trabalho de
