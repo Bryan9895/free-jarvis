@@ -1,5 +1,32 @@
 # Validação incremental da conversa
 
+## Kokoro/pf_dora — integração de 04/11/2026
+
+Base publicada: `0cbf491b5ebd124b3aeeb2cd668ebb85e1554f46`. O aceite Local
+Gemma/Qwen continua pendente de Ollama/pesos e bloqueio externo de rede. Como
+essas condições não mudaram, este incremento avança a frente de voz autorizada,
+sem anunciar o aceite das etapas anteriores ou trocar o padrão Piper.
+
+| Ensaio | Estado | Evidência |
+| --- | --- | --- |
+| Contrato de KPipeline e configuração CPU/pt-BR | Passou com adaptadores controlados | Testes conferem caminhos locais de modelo/config/voz, `lang_code='p'`, CPU e geração por fonemas. API consultada nas fontes oficiais; não houve carregamento real do modelo. |
+| Texto longo e WAV integral | Passou com dados controlados | Segmentação sem slice de fonemas, todas as partes no WAV PCM16 mono de 24 kHz, frase final sem pontuação preservada. Áudio gerado por fixture não equivale à fala de pf_dora. |
+| Processo residente, Parar, timeout e recuperação | Passou com worker de teste | Subprocesso real de protocolo controlado reutilizado; cancelamento/timeout recolhem processo e conexão; nova tentativa funciona. ACK sem WAV é rejeitado. |
+| Preferências antigas, GUI e Piper | Passou | Campos novos persistem; ambiente prevalece; Piper continua padrão. Interface real oferece seleção/instalação em área com rolagem. Falha de instalação não troca a voz, retry aplica configuração, nenhum download no startup. |
+| Hashes/licença e instalação atômica | Passou com artefatos de teste | Integridade inválida/cancelamento não publicam pesos; runtime CPU usa cache/índice explícito, preserva ponteiro anterior e limpa tentativa incompleta. Hashes esperados reais foram obtidos nas páginas oficiais, não verificados contra pesos baixados nesta execução. |
+| Suíte do incremento isolado | Passou | 519 testes em 45,677 s, 1 ignorado: síntese real opcional ainda não provisionada. GUI, Chromium e HTTP controlado pelo comando de testes autorizado. `git diff --check` passou. |
+| Runtime Kokoro real | Falhou/Pendente | `kokoro install-runtime --offline` encontrou Python 3.12, mas Torch CPU não estava em cache. Venv parcial removida; nenhum runtime selecionado. |
+| Pesos reais | Falhou/Pendente | `kokoro install-voice` falhou por DNS na origem fixada. Pasta final não existe; downloads parciais limpos. |
+| Diagnóstico básico | Passou | `kokoro status` e Doctor informam Piper selecionado, runtime/pesos **Falta**, síntese/áudio **Não testado**. Não importam Torch/Kokoro nem abrem dispositivos. |
+| Síntese nativa fria/aquecida e fala física | Pendente | Sem pesos, não houve KPipeline real com modelo, áudio pt-BR, latência real, RAM STT/TTS conjunta ou reprodução Bluetooth. Teste real permanece ignorado até acionamento explícito após provisionamento. |
+
+Procedimento, fontes, versões, hashes e limites em [KOKORO_LOCAL.md](KOKORO_LOCAL.md).
+Reutilizados a fila e o player de `audio_output.py`, `VoiceIO`, proteção de captura
+durante fala e cancelamento do controlador. A troca de backend encerra a voz
+anterior antes de carregar a próxima. Não há fallback silencioso de TTS, chamadas
+FCC adicionais nem repetição de ações por falha de voz. Nenhuma captura ambiental,
+reprodução física ou instalação administrativa de pacotes foi feita.
+
 ## Provisionamento Local e RAM — continuação de 04/11/2026
 
 Base publicada: `6625bdf24695e10011a60c2bd9373cf35587e84d`. Trabalho de

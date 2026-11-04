@@ -35,6 +35,11 @@ A GUI usa Tkinter do Python do sistema (`python3-tk` no Ubuntu, se ausente). Chr
 
 ## Configuração e início
 
+Kokoro com `pf_dora` pode ser provisionado e selecionado em Configurações → Voz →
+Saída, mantendo Piper como opção e padrão das instalações existentes. O adaptador
+e os testes controlados estão implementados; síntese real e reprodução Bluetooth
+aguardam dependências/pesos e aceite físico. Consulte [Kokoro local](docs/KOKORO_LOCAL.md).
+
 ```bash
 export FCC_URL="http://127.0.0.1:8082"
 export JARVIS_WORKSPACE="$HOME/Projetos"

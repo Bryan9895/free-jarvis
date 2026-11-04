@@ -19,7 +19,7 @@ class CombinedCancel:
 
 
 def play_pipeline(voice, chunks):
-    from .tts_engine import synthesizer
+    from .tts_engine import synthesize_for
     ready, stopped = Queue(maxsize=2), Event()
     cancel = CombinedCancel(voice._speech_cancel, stopped)
     errors = []
@@ -44,7 +44,7 @@ def play_pipeline(voice, chunks):
                 path = Path(filename)
                 try:
                     mark('tts_synthesis_start')
-                    synthesizer.synthesize(voice.piper_model, chunk, path, cancel)
+                    synthesize_for(voice, chunk, path, cancel)
                     mark('tts_synthesis_end')
                     if send(path):
                         path = None  # consumidor assume a limpeza

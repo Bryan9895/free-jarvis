@@ -102,3 +102,24 @@ class PiperSynthesizer:
 
 synthesizer = PiperSynthesizer()
 atexit.register(synthesizer.close)
+
+
+_engine_lock = Lock()
+
+
+def synthesize_for(voice, text, filename, cancel):
+    """Reuse the player queue; keep only one TTS backend resident at a time."""
+    from .kokoro_engine import kokoro_synthesizer
+    while not _engine_lock.acquire(timeout=.05):
+        if cancel.is_set():
+            raise CancelledError('Síntese cancelada')
+    try:
+        if getattr(voice, 'tts_backend', 'piper') == 'kokoro':
+            synthesizer.close()
+            kokoro_synthesizer.synthesize(voice.kokoro_directory, text, filename, cancel,
+                                         python=voice.kokoro_python)
+        else:
+            kokoro_synthesizer.close()
+            synthesizer.synthesize(voice.piper_model, text, filename, cancel)
+    finally:
+        _engine_lock.release()

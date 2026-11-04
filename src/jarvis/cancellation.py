@@ -8,8 +8,8 @@ class CancelledError(RuntimeError):
 
 
 class CancellationToken:
-    def __init__(self, *, deadline=None):
-        self._event = Event()
+    def __init__(self, *, deadline=None, event=None):
+        self._event = Event() if event is None else event
         self.deadline = deadline
 
     def cancel(self):

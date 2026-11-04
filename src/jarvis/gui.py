@@ -26,8 +26,8 @@ class GuiBackend:
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
                          "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install",
-                         "voice_configure", "voice_listen_start", 'voice_warmup'})
-    LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install',
+                         "voice_configure", "voice_listen_start", 'voice_warmup', 'voice_install_kokoro'})
+    LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install', 'voice_install_kokoro',
                                 'voice_listen_start', 'voice_listen_stop', 'voice_speak',
                                 'voice_discard_pending',
                                 'voice_warmup',
@@ -405,8 +405,20 @@ class GuiBackend:
             model = install_faber(cancel=self._capture_cancel,
                 progress=lambda message: self.events.put(('voice_status', message)))
             if not self._capture_cancel.is_set():
-                self._dispatch('voice_configure', {'piper_model': str(model)})
+                self._dispatch('voice_configure', {'piper_model': str(model), 'tts_backend': 'piper'})
                 self.events.put(('voice_installed', str(model)))
+        elif command == 'voice_install_kokoro':
+            from .kokoro_assets import install_assets
+            from .kokoro_setup import install_runtime
+            from .cancellation import CancellationToken
+            token = CancellationToken(event=self._capture_cancel)
+            progress = lambda message: self.events.put(('voice_status', message))
+            runtime = install_runtime(token=token, progress=progress)
+            directory = install_assets(cancel=self._capture_cancel, progress=progress)
+            token.check()
+            self._dispatch('voice_configure', {'tts_backend': 'kokoro',
+                'kokoro_directory': str(directory), 'kokoro_python': runtime['python']})
+            self.events.put(('voice_status', 'Kokoro e pf_dora selecionados. Teste a voz para confirmar áudio.'))
         elif command == "voice_configure":
             preferences = replace(self.preferences, **value).validate()
             effective = preferences.effective()
@@ -427,6 +439,10 @@ class GuiBackend:
                 self._voice.model_name = effective.stt_model
                 self._voice.device = device
                 self._voice.piper_model = Path(effective.piper_model).expanduser() if effective.piper_model else None
+                from .kokoro_assets import assets_directory
+                self._voice.tts_backend = effective.tts_backend
+                self._voice.kokoro_directory = assets_directory(effective.kokoro_directory or None)
+                self._voice.kokoro_python = effective.kokoro_python
                 self._voice.output_device = effective.output_device
                 self._voice.silence_seconds = effective.silence_ms / 1000
                 self._voice.vad_threshold = effective.vad_threshold
@@ -856,6 +872,8 @@ class JarvisWindow:
         accepted = self.backend.submit('voice_configure', {
             'stt_model': self.voice_test_model.get(), 'audio_device': self.voice_device.get(),
             'piper_model': self.voice_piper_model.get(), 'output_device': self.voice_output.get(),
+            'tts_backend': self.voice_tts_backend.get(), 'kokoro_directory': self.voice_kokoro_directory.get(),
+            'kokoro_python': self.voice_kokoro_python.get(),
             'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get(),
             'wake_manifest': self.voice_wake.get(),
             'followup_seconds': followup, 'start_timeout_seconds': start_timeout, 'reconnect_attempts': retries})
@@ -1002,7 +1020,8 @@ class JarvisWindow:
             self.send_button.configure(state="disabled" if payload else "normal")
             for button in (self.push_to_talk_button, self.push_to_talk_quick):
                 button.configure(state="disabled" if payload else "normal")
-            for button in (self.voice_install_button, self.voice_save_button, self.voice_test_button):
+            for button in (self.voice_install_button, self.voice_kokoro_install_button,
+                           self.voice_save_button, self.voice_test_button):
                 button.configure(state='disabled' if payload else 'normal')
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))
@@ -1119,7 +1138,10 @@ class JarvisWindow:
             self.voice_output_status.set('Voz instalada. Teste a saída para confirmar áudio.')
         elif kind == 'voice_preferences':
             self.preferences = payload
-            self.voice_output_status.set('Voz selecionada; confirme áudio na aba Saída.' if payload.piper_model else
+            self.voice_tts_backend.set(payload.tts_backend)
+            self.voice_kokoro_directory.set(payload.kokoro_directory)
+            self.voice_kokoro_python.set(payload.kokoro_python)
+            self.voice_output_status.set('Voz selecionada; confirme áudio na aba Saída.' if payload.piper_model or payload.tts_backend == 'kokoro' else
                                          'Resposta em texto. Selecione e teste uma voz local na aba Saída.')
         elif kind == "voice_test_status":
             self.voice_test_status.set(payload)

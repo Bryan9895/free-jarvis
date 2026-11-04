@@ -49,6 +49,10 @@ class VoiceIO:
         self.language = language
         piper_model = os.getenv('JARVIS_PIPER_MODEL', piper_model or preferences.piper_model)
         self.piper_model = Path(piper_model).expanduser() if piper_model else None
+        self.tts_backend = preferences.tts_backend
+        from .kokoro_assets import assets_directory
+        self.kokoro_directory = assets_directory(preferences.kokoro_directory or None)
+        self.kokoro_python = preferences.kokoro_python
         self.sample_rate = sample_rate
         self.device = os.getenv('JARVIS_AUDIO_DEVICE', device if device is not None else preferences.audio_device or None)
         if isinstance(self.device, str):
@@ -216,9 +220,9 @@ class VoiceIO:
         return self.speak_stream(speech_chunks(text))
 
     def speak_stream(self, chunks):
-        if self.piper_model is None:
+        if self.tts_backend == 'piper' and self.piper_model is None:
             return 'disabled'
-        if not self.piper_model.is_file():
+        if self.tts_backend == 'piper' and not self.piper_model.is_file():
             raise VoiceError('Modelo de voz Piper não encontrado em JARVIS_PIPER_MODEL')
         if self.output_device and not shutil.which('paplay'):
             raise VoiceError('Saída selecionada requer paplay (pulseaudio-utils)')
@@ -229,14 +233,14 @@ class VoiceIO:
             return play_pipeline(self, chunks)
 
     def warmup(self):
-        """Prepara Piper residente por ação explícita, sem download ou player."""
-        if self.piper_model is None or not self.piper_model.is_file():
+        """Prepara a voz selecionada por ação explícita, sem download ou player."""
+        if self.tts_backend == 'piper' and (self.piper_model is None or not self.piper_model.is_file()):
             raise VoiceError('Selecione uma voz local instalada antes de preparar')
-        from .tts_engine import synthesizer
+        from .tts_engine import synthesize_for
         fd, filename = tempfile.mkstemp(prefix='jarvis_warmup_', suffix='.wav')
         os.close(fd)
         try:
-            synthesizer.synthesize(self.piper_model, 'Voz preparada.', Path(filename), self._speech_cancel)
+            synthesize_for(self, 'Voz preparada.', Path(filename), self._speech_cancel)
         finally:
             Path(filename).unlink(missing_ok=True)
 

@@ -16,6 +16,9 @@ class Preferences:
     local_model: str = 'gemma4:e2b'
     audio_device: str = ''
     piper_model: str = ''
+    tts_backend: str = 'piper'
+    kokoro_directory: str = ''
+    kokoro_python: str = ''
     output_device: str = ''  # nome de sink Pulse/PipeWire, nunca índice SoundDevice
     silence_ms: int = 1000
     vad_threshold: float = 0.5
@@ -36,7 +39,10 @@ class Preferences:
             local_model(self.local_model)
         except FCCError as exc:
             raise ValueError(str(exc)) from exc
-        for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest'):
+        if self.tts_backend not in ('piper', 'kokoro'):
+            raise ValueError('Voz deve usar piper ou kokoro')
+        for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest',
+                    'kokoro_directory', 'kokoro_python'):
             value = getattr(self, key)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
                 raise ValueError('Preferência inválida: ' + key)
@@ -64,6 +70,8 @@ class Preferences:
         for key, variable in {'stt_model': 'JARVIS_WHISPER_MODEL',
                               'conversation_model': 'FCC_MODEL', 'audio_device': 'JARVIS_AUDIO_DEVICE',
                               'piper_model': 'JARVIS_PIPER_MODEL', 'output_device': 'JARVIS_AUDIO_OUTPUT',
+                              'tts_backend': 'JARVIS_TTS_BACKEND', 'kokoro_directory': 'JARVIS_KOKORO_DIRECTORY',
+                              'kokoro_python': 'JARVIS_KOKORO_PYTHON',
                               'wake_manifest': 'JARVIS_WAKE_MANIFEST',
                               'voice_mode': 'JARVIS_VOICE_MODE'}.items():
             if variable in os.environ:

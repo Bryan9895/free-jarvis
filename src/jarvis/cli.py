@@ -21,11 +21,14 @@ def confirm(action):
         return False
 
 def main():
+    if sys.argv[1:2] == ['kokoro']:
+        from .kokoro_setup import main as kokoro_main
+        return kokoro_main(sys.argv[2:])
     if sys.argv[1:2] == ['local']:
         from .local_setup import main as local_main
         return local_main(sys.argv[2:])
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code",
-        epilog='Motor local: jarvis-fcc local {status,install-engine,pull-model,check} --help')
+        epilog='Motor: jarvis-fcc local --help · Voz: jarvis-fcc kokoro --help')
     parser.add_argument('--profile', choices=('local', 'fcc'), help='Local offline ou Engenharia FCC')
     parser.add_argument('--local-model', help='Modelo Ollama instalado, sem prefixo de provedor')
     parser.add_argument('--save-profile', action='store_true', help='Salvar perfil/modelo e sair, sem iniciar áudio ou inferência')
@@ -93,6 +96,7 @@ def main():
     if args.doctor:
         from pathlib import Path
         import importlib.util
+        from .kokoro_setup import status as kokoro_status
         print(json.dumps({
             "application": "jarvis-fcc",
             "module": str(Path(__file__).resolve()),
@@ -104,6 +108,7 @@ def main():
             "ollama_host": c.ollama_host,
             "openjarvis_python": c.openjarvis_python or sys.executable,
             "local_inference": "Não testado (doctor básico não executa inferência)",
+            "kokoro": kokoro_status(),
             "browser_package_installed": importlib.util.find_spec("playwright") is not None,
             "voice_package_installed": importlib.util.find_spec("faster_whisper") is not None,
             "desktop_package_installed": importlib.util.find_spec("dbus_next") is not None,

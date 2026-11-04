@@ -49,7 +49,7 @@ def build_voice_panel(window, tabs):
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
     window.voice_capture_level = ttk.Progressbar(talk, maximum=100)
     window.voice_capture_level.pack(fill='x', pady=6)
-    output = ('Voz selecionada; confirme áudio na aba Saída.' if window.preferences.piper_model else
+    output = ('Voz selecionada; confirme áudio na aba Saída.' if window.preferences.piper_model or window.preferences.tts_backend == 'kokoro' else
               'Resposta em texto. Selecione e teste uma voz local na aba Saída.')
     window.voice_output_status = tk.StringVar(value=output)
     ttk.Label(talk, textvariable=window.voice_output_status, wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=6)
@@ -94,6 +94,9 @@ def build_voice_panel(window, tabs):
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
 
     window.voice_piper_model = tk.StringVar(value=window.preferences.piper_model)
+    window.voice_tts_backend = tk.StringVar(value=window.preferences.tts_backend)
+    window.voice_kokoro_directory = tk.StringVar(value=window.preferences.kokoro_directory)
+    window.voice_kokoro_python = tk.StringVar(value=window.preferences.kokoro_python)
     window.voice_output = tk.StringVar(value=window.preferences.output_device)
     window.voice_silence = tk.StringVar(value=str(window.preferences.silence_ms))
     window.voice_vad_threshold = tk.StringVar(value=str(window.preferences.vad_threshold))
@@ -102,7 +105,22 @@ def build_voice_panel(window, tabs):
     window.voice_start_timeout = tk.StringVar(value=str(window.preferences.start_timeout_seconds))
     window.voice_retries = tk.StringVar(value=str(window.preferences.reconnect_attempts))
     window.voice_wake = tk.StringVar(value=window.preferences.wake_manifest)
-    ttk.Label(output_panel, text='Voz Piper local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
+    ttk.Label(output_panel, text='Voz local · pt-BR', font=('DejaVu Sans', 11, 'bold')).pack(anchor='w')
+    ttk.Combobox(output_panel, textvariable=window.voice_tts_backend, values=('piper', 'kokoro'),
+                 state='readonly').pack(fill='x', pady=4)
+    ttk.Label(output_panel, text='Kokoro usa a voz brasileira pf_dora. Instalação é opcional; a seleção só é aplicada ao salvar.',
+              wraplength=320, style='Muted.TLabel').pack(anchor='w')
+    ttk.Label(output_panel, text='Pasta dos pesos Kokoro (vazia = gerenciada)').pack(anchor='w')
+    ttk.Entry(output_panel, textvariable=window.voice_kokoro_directory).pack(fill='x')
+    ttk.Label(output_panel, text='Python Kokoro (vazio = runtime gerenciado)').pack(anchor='w')
+    ttk.Entry(output_panel, textvariable=window.voice_kokoro_python).pack(fill='x')
+    window.voice_kokoro_install_button = ttk.Button(output_panel,
+        text='Instalar e selecionar Kokoro + Dora',
+        command=lambda: window.backend.submit('voice_install_kokoro'))
+    window.voice_kokoro_install_button.pack(fill='x', pady=4)
+    ttk.Label(output_panel, text='Pesos: ~328 MB. Dependências CPU são um download separado, em ambiente isolado. Parar cancela. Não inicia no startup.',
+              wraplength=320, style='Muted.TLabel').pack(anchor='w')
+    ttk.Label(output_panel, text='Piper (opção existente)', font=('DejaVu Sans', 10, 'bold')).pack(anchor='w', pady=(10, 0))
     ttk.Label(output_panel, text='Selecione .onnx com .onnx.json ou instale Faber: fonte Piper, SHA256 verificado, dataset CC0.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
     row = ttk.Frame(output_panel)
@@ -146,5 +164,5 @@ def build_voice_panel(window, tabs):
     window.voice_test_button.pack(fill='x', pady=4)
     ttk.Button(output_panel, text='Preparar voz sem reproduzir', command=lambda:
         window.backend.submit('voice_warmup')).pack(fill='x', pady=4)
-    ttk.Label(output_panel, text='Ambiente explícito tem precedência. Salvar não comprova saída audível. Piper e player precisam estar instalados.',
+    ttk.Label(output_panel, text='Ambiente explícito tem precedência. Salvar não comprova saída audível. A voz selecionada e o player precisam estar instalados.',
               wraplength=320, style='Muted.TLabel').pack(anchor='w', pady=4)
