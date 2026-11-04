@@ -14,17 +14,20 @@ from .command_execution import CommandTools
 
 class Toolkit(FilesystemTools, CommandTools):
     def __init__(self, workspace: Path, approve=None, layout_db=None, registry=None,
-                 enabled_capabilities=None):
+                 enabled_capabilities=None, offline=False):
         self.workspace = workspace.expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.approve = approve or (lambda _action: False)
         self.layout_db = layout_db
         self.operation_log = deque(maxlen=100)
         self.registry = registry or DEFAULT_REGISTRY
+        self.offline = offline
         if enabled_capabilities is None:
             configured = os.getenv("JARVIS_ENABLED_CAPABILITIES")
             if configured is not None:
                 enabled_capabilities = {item.strip() for item in configured.split(",") if item.strip()}
+        if offline and enabled_capabilities is not None:
+            enabled_capabilities = set(enabled_capabilities) & self.registry.capabilities
         self.capabilities = CapabilityPolicy(self.registry, enabled_capabilities)
         self._browser = None
         from .process_manager import ProcessManager
@@ -326,6 +329,8 @@ class Toolkit(FilesystemTools, CommandTools):
             cancel_token.check()
         if entry is None:
             return finish({"error": "Ferramenta desconhecida"})
+        if self.offline and not offline_tool(self.registry, name):
+            return finish({"error": "Ferramenta indisponível no perfil Local offline"}, entry.capability)
         if not self.capabilities.permits(entry):
             return finish({"error": "Capacidade não autorizada: " + entry.capability},
                           entry.capability)
@@ -423,3 +428,14 @@ def _build_default_registry():
 
 
 DEFAULT_REGISTRY = _build_default_registry()
+
+
+def offline_tool(registry, name):
+    """Conservative first checkpoint: built-in file/task operations only.
+
+    Arbitrary processes, browser navigation and plugins need separate network
+    confinement before they can be exposed in the offline profile.
+    """
+    entry, builtin = registry.get(name), DEFAULT_REGISTRY.get(name)
+    return (entry is not None and entry == builtin and entry.capability in
+            {'filesystem.read', 'filesystem.write', 'tasks.read', 'tasks.write'})

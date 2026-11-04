@@ -1,5 +1,26 @@
 # Validação incremental da conversa
 
+## Perfil Local — checkpoint de 04/11/2026
+
+Partida real: `d5eedae1312894037d9de330985296dd9720dcb3`. `git fetch` e
+`git pull --ff-only origin main`: sem novidades. A árvore original continha
+alterações de multiagentes ainda não commitadas; foram preservadas e o incremento
+foi desenvolvido em worktree separado.
+
+| Ensaio | Estado | Evidência |
+| --- | --- | --- |
+| Referência com trabalho local existente | Passou | 491 testes em 14,239 s pelo comando autorizado. Primeira tentativa no sandbox restrito teve 17 erros por sockets/Chromium; não era regressão de código. |
+| Incremento isolado, antes da integração | Passou | 484 testes em 15,918 s, incluindo GUI, HTTP local e 12 testes novos do perfil Local. |
+| Engine OpenJarvis real fixado, HTTP controlado | Passou | `tests/check_openjarvis_contract.py`, Python 3.13, checkout `324c9c3ac61bff07a0d99b715a7511dcd78600c4`; streaming, IDs/argumentos completos, replay e HTTP 400 sem retry. Não é inferência real. |
+| Doctor básico Local e dependência ausente | Passou | JSON informa perfil/modelo/Python; nenhuma inferência. Startup recusa ambiente sem dependência fixada com orientação, sem tentar FCC. |
+| Inferência real offline e ferramenta produzida pelo modelo | Pendente | Executável Ollama não localizado nos caminhos usuais; OpenJarvis fixado ainda não instalado na venv de execução do Jarvis. Contrato controlado não substitui o aceite. |
+| Gemma 4 × Qwen, p50/p95, RAM total e qualidade | Pendente | Benchmark `--local` disponível; nenhum vencedor ou latência real publicado. |
+| Bluetooth, STT/TTS ativos, áudio físico e GNOME | Pendente | Sem captura ambiental, reprodução ou efeito GNOME neste incremento. |
+
+Preparação, comandos e limites em [PERFIL_LOCAL.md](PERFIL_LOCAL.md). O perfil
+FCC permanece padrão e compatível. Este é um incremento da primeira etapa;
+Casa/Motor/Cérebro ainda não receberam aceite real offline.
+
 Data: 2026-10-23. Aceite final **pendente**.
 
 ## Partida auditada

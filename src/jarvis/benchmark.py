@@ -86,10 +86,16 @@ def _baseline_classes(directory):
                 ('conversation', 'ConversationController'))}
 
 
-def measure(samples=30, *, real_fcc=False, baseline_package=None, scenario=None):
+def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=None, scenario=None):
     classes = _baseline_classes(baseline_package) if baseline_package else globals()
 
     provider = ControlledProvider()
+    real_backend = real_fcc or real_local
+    if real_local:
+        from dataclasses import replace
+        from .config import Config
+        from .provider_factory import create_provider
+        provider = create_provider(replace(Config.from_env(), profile='local'))
     if real_fcc:
         from .config import Config
         import os
@@ -106,13 +112,15 @@ def measure(samples=30, *, real_fcc=False, baseline_package=None, scenario=None)
         toolkit = classes['Toolkit'](root, approve=approval, layout_db=root / 'metrics.db',
             enabled_capabilities={'filesystem.read', 'filesystem.write', 'tasks.read', 'tasks.write'})
         toolkit.allowed_roots = [root]
+        if real_local:
+            toolkit.offline = True
         agent = classes['Agent'](provider, toolkit, memory, provider.active_model)
         service = classes['JarvisService'](provider, agent, toolkit, memory, classes['TaskPlanner'](provider, agent), approval, report=lambda _: None)
         events = []
         controller = classes['ConversationController'](service, emit=events.append)
         try:
             for index in range(samples):
-                scenarios = SCENARIOS[:4] if real_fcc else SCENARIOS
+                scenarios = SCENARIOS[:4] if real_backend else SCENARIOS
                 if scenario is not None:
                     scenarios = tuple(item for item in scenarios if item[0] == scenario)
                     if not scenarios:
@@ -120,7 +128,7 @@ def measure(samples=30, *, real_fcc=False, baseline_package=None, scenario=None)
                 name, message = scenarios[index % len(scenarios)]
                 expected_title = 'revisar relatório' if name == 'simple_action' else 'preparar relatório'
                 filename = 'resultado.txt'
-                if real_fcc and name in ('simple_action', 'compound_action'):
+                if real_backend and name in ('simple_action', 'compound_action'):
                     expected_title += ' ' + str(index + 1)
                     message = 'Adicione às tarefas: ' + expected_title + '.'
                     if name == 'compound_action':
@@ -131,7 +139,7 @@ def measure(samples=30, *, real_fcc=False, baseline_package=None, scenario=None)
                 if target.is_file():
                     target.unlink()
                 operation_count = len(toolkit.operation_log)
-                if not real_fcc:
+                if not real_backend:
                     provider.scenario = name
                 first = []
                 events.clear()
@@ -202,8 +210,11 @@ def report(rows, *, real_fcc=False):
             'limits': 'Amostras pequenas por classe; p95 descritivo, sem estabilidade estatística. RSS inclui caches. Não mede fim de fala ou som físico.'}
 
 
-def run(samples=30, *, real_fcc=False, scenario=None):
-    result = report(list(measure(samples, real_fcc=real_fcc, scenario=scenario)), real_fcc=real_fcc)
+def run(samples=30, *, real_fcc=False, real_local=False, scenario=None):
+    result = report(list(measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario)), real_fcc=real_fcc)
+    if real_local:
+        result['kind'] = 'openjarvis_local_text_journeys'
+        result['limits'] += ' CPU/RSS medem somente o processo principal, excluindo worker e daemon Ollama. Carga fria/aquecida e RAM total exigem medição adicional.'
     result.update(expected_samples=samples, completed=result['samples'] == samples)
     return result
 
@@ -243,16 +254,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--samples', type=int, default=30)
     parser.add_argument('--fcc', action='store_true', help='Usa o modelo configurado e somente arquivos/tarefas temporários')
+    parser.add_argument('--local', action='store_true', help='Usa OpenJarvis/Ollama local, sem FCC, com o mesmo conjunto de pedidos')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--baseline-package', type=Path, help='Com --fcc, compara pacote antigo extraído do Git em ordem alternada')
     parser.add_argument('--scenario', choices=tuple(item[0] for item in SCENARIOS))
     args = parser.parse_args()
     if args.samples < 1:
         parser.error('samples deve ser positivo')
+    if args.local and (args.fcc or args.baseline_package):
+        parser.error('--local não pode ser combinado com --fcc ou --baseline-package')
     def checkpoint(result):
         if args.output:
             args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n')
-    result = compare(args.samples, args.baseline_package, checkpoint=checkpoint) if args.baseline_package and args.fcc else run(args.samples, real_fcc=args.fcc, scenario=args.scenario)
+    result = compare(args.samples, args.baseline_package, checkpoint=checkpoint) if args.baseline_package and args.fcc else run(args.samples, real_fcc=args.fcc, real_local=args.local, scenario=args.scenario)
     if args.output:
         args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n')
     compact = ({'kind': result['kind'], **{version: {k: v for k, v in result[version].items() if k != 'turns'} for version in ('before', 'after')}}

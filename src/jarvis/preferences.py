@@ -12,6 +12,8 @@ class Preferences:
     version: int = 1
     stt_model: str = 'small'
     conversation_model: str = ''
+    inference_profile: str = 'fcc'
+    local_model: str = 'gemma4:e2b'
     audio_device: str = ''
     piper_model: str = ''
     output_device: str = ''  # nome de sink Pulse/PipeWire, nunca índice SoundDevice
@@ -26,6 +28,14 @@ class Preferences:
     def validate(self):
         if self.version != 1:
             raise ValueError('Versão de preferências não suportada')
+        if self.inference_profile not in ('fcc', 'local'):
+            raise ValueError('Perfil deve ser fcc ou local')
+        from .local_provider import local_model
+        from .fcc import FCCError
+        try:
+            local_model(self.local_model)
+        except FCCError as exc:
+            raise ValueError(str(exc)) from exc
         for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest'):
             value = getattr(self, key)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
@@ -48,6 +58,9 @@ class Preferences:
 
     def effective(self):
         values = asdict(self)
+        for key, variable in (('inference_profile', 'JARVIS_PROFILE'), ('local_model', 'JARVIS_LOCAL_MODEL')):
+            if variable in os.environ:
+                values[key] = os.environ[variable]
         for key, variable in {'stt_model': 'JARVIS_WHISPER_MODEL',
                               'conversation_model': 'FCC_MODEL', 'audio_device': 'JARVIS_AUDIO_DEVICE',
                               'piper_model': 'JARVIS_PIPER_MODEL', 'output_device': 'JARVIS_AUDIO_OUTPUT',

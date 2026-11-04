@@ -22,6 +22,9 @@ def confirm(action):
 
 def main():
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code")
+    parser.add_argument('--profile', choices=('local', 'fcc'), help='Local offline ou Engenharia FCC')
+    parser.add_argument('--local-model', help='Modelo Ollama instalado, sem prefixo de provedor')
+    parser.add_argument('--save-profile', action='store_true', help='Salvar perfil/modelo e sair, sem iniciar áudio ou inferência')
     parser.add_argument("--locate-target", metavar="ALVO", help="Localiza visualmente alvo e salva imagem anotada; nunca clica")
     parser.add_argument("--guided-click", metavar="ALVO", help="Clique visual supervisionado com cursor posicionado pelo usuário e verificação posterior")
     parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e permissões do portal")
@@ -46,6 +49,22 @@ def main():
     approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
     approval_group.add_argument("--manual-approve", action="store_true", help="Pedir confirmação no terminal para cada ação")
     args = parser.parse_args()
+    if args.save_profile:
+        from dataclasses import replace
+        from .preferences import PreferenceStore
+        store = PreferenceStore()
+        changes = {}
+        if args.profile is not None:
+            changes['inference_profile'] = args.profile
+        if args.local_model is not None:
+            changes['local_model'] = args.local_model
+        store.save(replace(store.load(), **changes).validate())
+        print('Perfil salvo. Reinicie o Jarvis para aplicar; variáveis explícitas têm precedência.')
+        return
+    if args.profile is not None:
+        os.environ['JARVIS_PROFILE'] = args.profile
+    if args.local_model is not None:
+        os.environ['JARVIS_LOCAL_MODEL'] = args.local_model
     if args.audio_devices:
         from .voice import VoiceIO, VoiceError
         try:
@@ -76,6 +95,11 @@ def main():
             "python": sys.executable,
             "workspace": str(c.workspace),
             "fcc_url": c.url,
+            "profile": c.profile,
+            "local_model": c.local_model,
+            "ollama_host": c.ollama_host,
+            "openjarvis_python": c.openjarvis_python or sys.executable,
+            "local_inference": "Não testado (doctor básico não executa inferência)",
             "browser_package_installed": importlib.util.find_spec("playwright") is not None,
             "voice_package_installed": importlib.util.find_spec("faster_whisper") is not None,
             "desktop_package_installed": importlib.util.find_spec("dbus_next") is not None,
@@ -116,7 +140,10 @@ def main():
             print(f"Erro do portal Wayland: {exc}", file=sys.stderr)
             sys.exit(1)
         return
-    client = FCCClient(c.url, c.token)
+    if c.profile == 'local' and any((args.locate_target is not None, args.guided_click is not None,
+            args.see_screen is not None, args.models_diagnostic, args.check_fcc, args.health)):
+        parser.error('Esta operação usa FCC/visão ainda não validada no perfil Local. Escolha --profile fcc explicitamente.')
+    client = FCCClient(c.url, c.token) if c.profile == 'fcc' else None
     if args.locate_target is not None:
         from .targeting import locate_target
         from .wayland import WaylandError
@@ -160,24 +187,34 @@ def main():
             print(json.dumps(client.request("GET", "/health"), ensure_ascii=False))
             return
         if args.models:
+            if c.profile == 'local':
+                from .provider_factory import create_provider
+                for model in create_provider(c, initialize=False).available_models():
+                    print(model)
+                return
             catalog = client.models()
             print("Modelo padrão:", catalog.get("default_model_id", "não informado"))
             for number, model in enumerate(catalog.get("data", []), 1):
                 print(f"{number:>2}. {model.get('id', '?')}")
             return
-        auto = AutoModelClient(client, preferred=c.model,
-                               backups=[x.strip() for x in os.getenv("FCC_FALLBACK_MODELS", "").split(",") if x.strip()],
-                               allow_cross_provider=os.getenv("FCC_ALLOW_CROSS_PROVIDER", "") == "1",
-                               on_switch=lambda model: print(f"⚠️ FCC: modelo alterado automaticamente para {model}"))
+        if c.profile == 'local':
+            from .provider_factory import create_provider
+            auto = create_provider(c, initialize=False)
+        else:
+            auto = AutoModelClient(client, preferred=c.model,
+                                   backups=[x.strip() for x in os.getenv("FCC_FALLBACK_MODELS", "").split(",") if x.strip()],
+                                   allow_cross_provider=os.getenv("FCC_ALLOW_CROSS_PROVIDER", "") == "1",
+                                   on_switch=lambda model: print(f"⚠️ FCC: modelo alterado automaticamente para {model}"))
         if args.check_fcc:
             print(json.dumps({"health": client.health(), "inference": auto.diagnostic()}, ensure_ascii=False, indent=2))
             return
         auto.initialize()
         mem = Memory(c.db)
         try:
-            registry = load_plugins(DEFAULT_REGISTRY, os.getenv("JARVIS_PLUGINS", ""))
+            from .provider_factory import profile_registry
+            registry = profile_registry(c)
             toolkit = Toolkit(c.workspace, approve=confirm, layout_db=c.db,
-                              registry=registry)
+                              registry=registry, offline=c.profile == 'local')
         except ValueError as exc:
             parser.error(str(exc))
         agent = Agent(auto, toolkit, mem, auto.active_model)
@@ -201,7 +238,7 @@ def main():
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), session_id=conversation.session_id)
             if args.push_to_talk:
                 print("MODO VOZ: Enter inicia fala até silêncio; digite sair para encerrar.")
-        print(f"JARVIS ativa | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
+        print(f"JARVIS ativa | Perfil: {c.profile} | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
         print("Autorizações: /permissoes auto | manual | revogar | status  (atual: " + approval.mode + ")")
@@ -405,6 +442,9 @@ def main():
                         print("FCC:", exc, file=sys.stderr)
                     continue
                 if msg.lower() == "/modelo auto":
+                    if c.profile == 'local':
+                        print('Perfil Local: selecione o modelo explicitamente com /modelo ID.')
+                        continue
                     auto.preferred = ""
                     auto.initialize()
                     agent.model = auto.active_model
@@ -415,6 +455,10 @@ def main():
                     try:
                         auto.select_model(selected)
                         agent.model = selected
+                        if c.profile == 'local':
+                            from dataclasses import replace
+                            store = PreferenceStore()
+                            store.save(replace(store.load(), local_model=selected))
                         print("Modelo atual:", selected)
                     except FCCError as exc:
                         print("Modelo não selecionado:", exc, file=sys.stderr)

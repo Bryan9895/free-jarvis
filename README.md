@@ -4,7 +4,12 @@ Assistente pessoal em português para Ubuntu GNOME Wayland. A CLI e a GUI usam o
 
 ## Instalação
 
-Requer Python 3.10+ e um servidor FCC configurado separadamente. No diretório do repositório:
+O perfil **Engenharia FCC** continua sendo o padrão compatível. O primeiro
+checkpoint do perfil **Local**, com Engine OpenJarvis/Ollama em processo isolado,
+está disponível por seleção explícita. A comparação Gemma/Qwen e o aceite físico
+offline estão pendentes; veja [preparo e validação Local](docs/PERFIL_LOCAL.md).
+
+Requer Python 3.10+ e, no perfil FCC, um servidor FCC configurado separadamente. No diretório do repositório:
 
 ```bash
 python3 -m venv .venv

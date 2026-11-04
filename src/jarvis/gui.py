@@ -344,7 +344,8 @@ class GuiBackend:
         elif command == "select_model":
             service.client.select_model(value)
             service.agent.model = value
-            self.preferences = replace(self.preferences, conversation_model=value)
+            key = 'local_model' if getattr(self.config, 'profile', 'fcc') == 'local' else 'conversation_model'
+            self.preferences = replace(self.preferences, **{key: value})
             self.preference_store.save(self.preferences)
             self.events.put(("model", value))
         elif command == "approval_mode":

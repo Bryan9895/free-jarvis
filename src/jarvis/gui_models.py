@@ -7,7 +7,9 @@ def build_models_panel(window, tabs):
     panel = ttk.Frame(tabs, padding=8)
     tabs.add(panel, text='Modelos')
     ttk.Label(panel, text='Modelo de conversa', font=('DejaVu Sans', 14, 'bold')).pack(anchor='w')
-    ttk.Label(panel, text='Responde aos pedidos pelo FCC. Whisper, na aba Voz, só transforma sua fala em texto.',
+    profile = getattr(getattr(window.backend, 'config', None), 'profile', 'fcc')
+    label = 'Local · OpenJarvis/Ollama' if profile == 'local' else 'Engenharia FCC'
+    ttk.Label(panel, text=f'Perfil: {label}. Whisper, na aba Voz, só transforma sua fala em texto.',
               wraplength=340, style='Muted.TLabel').pack(anchor='w', pady=8)
     ttk.Label(panel, text='Ativo:').pack(anchor='w')
     ttk.Label(panel, textvariable=window.model, wraplength=340).pack(anchor='w', pady=(0, 8))

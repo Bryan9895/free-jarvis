@@ -59,20 +59,17 @@ class JarvisService:
             report('Concessões não carregadas: ' + authorizations.error)
         approval = ApprovalPolicy(auto=auto, manual_callback=manual_callback, report=report,
                                   authorizations=authorizations)
-        raw = FCCClient(config.url, config.token)
-        client = AutoModelClient(raw, preferred=config.model,
-                                 backups=[x.strip() for x in os.getenv(
-                                     "FCC_FALLBACK_MODELS", "").split(",") if x.strip()],
-                                 allow_cross_provider=os.getenv(
-                                     "FCC_ALLOW_CROSS_PROVIDER", "") == "1")
-        client.initialize()
+        from .provider_factory import create_provider
+        client = create_provider(config)
         memory = Memory(config.db)
         toolkit = None
         store = None
         try:
-            registry = load_plugins(DEFAULT_REGISTRY, os.getenv("JARVIS_PLUGINS", ""))
+            offline = getattr(config, 'profile', 'fcc') == 'local'
+            from .provider_factory import profile_registry
+            registry = profile_registry(config)
             toolkit = Toolkit(config.workspace, approve=approval, layout_db=config.db,
-                              registry=registry)
+                              registry=registry, offline=offline)
             agent = Agent(client, toolkit, memory, client.active_model)
             store = PlanStore(config.db)
             planner = TaskPlanner(client, agent, store=store)
