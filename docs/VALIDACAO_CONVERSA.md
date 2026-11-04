@@ -27,6 +27,15 @@ PIDs ausentes, erros e impossibilidade de ler PSS ficam explícitos. Medições
 globais incluem outros programas abertos. Nenhuma métrica contém linha de comando,
 áudio, prompt ou transcrição privada.
 
+Integração final na `main` com trabalho local de multiagentes restaurado sem
+conflitos: **passou, 519 testes em 34,744 s**. O diff preexistente conserva os
+mesmos 11 arquivos rastreados, 302 inserções e 26 remoções, além dos quatro novos
+arquivos de multiagentes; permanece sem commit. `git diff --check` passou.
+`local status` na árvore integrada informou engine **OK**; reinstalação offline
+retornou `reused: true`. O perfil padrão permaneceu FCC. Sem nova inferência real
+ou validação física. Backup do trabalho anterior no stash
+`codex-preserve-multiagents-local-provision-20261104`.
+
 ## Perfil Local — checkpoint de 04/11/2026
 
 Partida real: `d5eedae1312894037d9de330985296dd9720dcb3`. `git fetch` e
