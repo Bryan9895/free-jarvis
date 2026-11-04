@@ -21,6 +21,16 @@ Preparação, comandos e limites em [PERFIL_LOCAL.md](PERFIL_LOCAL.md). O perfil
 FCC permanece padrão e compatível. Este é um incremento da primeira etapa;
 Casa/Motor/Cérebro ainda não receberam aceite real offline.
 
+Implementação no commit `26bbf16`. Integração na `main` com as alterações locais
+de multiagentes restauradas: **passou, 503 testes em 19,082 s**. Houve um conflito
+de contexto em `Preferences.validate`, resolvido preservando validação do perfil
+e validação dos modelos da equipe. O diff preexistente continua com os mesmos
+11 arquivos rastreados, 302 inserções e 26 remoções, além dos quatro arquivos
+novos de multiagentes. Esses arquivos continuam sem commit neste incremento.
+`git diff --check` passou. O teste de contrato upstream foi repetido na árvore
+integrada e passou. A cópia de segurança do trabalho anterior permanece no stash
+`codex-preserve-preexisting-multiagents-20261104`.
+
 Data: 2026-10-23. Aceite final **pendente**.
 
 ## Partida auditada
