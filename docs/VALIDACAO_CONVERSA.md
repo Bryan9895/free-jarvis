@@ -475,3 +475,53 @@ e cancelamento antes do serviço registrar o token. Não alteram gates físicos.
 Verificação de encerramento deste ajuste: **passou, 472 testes em 35,288 s**,
 com GUI/Chromium/HTTP local. git diff --check passou. Não houve nova inferência
 FCC, captura ambiental ou ação administrativa real nesta revisão.
+
+## Implementação Linux e evidência — 05/11/2026
+
+Base: `18e385a21e57c906f033f93631a942755bd52616`.
+Commits desta entrega, com árvores verificadas antes da publicação:
+
+- `620ceb4ed36997e0ee180009b8cbe6f16f83f0c0`: preparação explícita Ollama,
+  digests, Doctor JSON/humano, testes ativos delimitados, Whisper somente cache
+  e coordenação de captura entre processos.
+- `6bc11f7243c258a5000d7a144bb4c862ff6da50b`: perfis na GUI, lançador/instância
+  gráfica única, distribuição limitada de PCM e palma opcional de um pedido.
+- `b06bab68d2f9517b29323160337774ce32464236`: checkpoints Git/venv e serviços
+  de projeto com identidade persistida/revalidada no SQLite.
+- `0c72702db31d7dde9ebc8b582f582d9061bdacb6`: comparação fria/aquecida com
+  revisão de qualidade, números/negações, efeitos extras/duplicados e RAM;
+  benchmark WAV Piper/Kokoro e procedimentos de aceite.
+
+**Automação: passou.** Cópia isolada: 545 testes em 55,575 s, um ignorado.
+Integração no diretório principal, incluindo alterações locais anteriores:
+564 testes em 73,242 s, um ignorado. Inclui GUI, HTTP local, motor OpenJarvis
+instalado contra servidor controlado, início/status/retomada/stop de servidor
+HTTP real de fixture, identidade divergente sem sinal ao PID, checkpoint
+estruturado pelo agente até SQLite, bloqueio após mudança do ambiente,
+single-instance IPC e exclusão de captura entre processos. `git diff --check`
+e compilação dos módulos/scripts passaram. Isso não é inferência Ollama real
+nem aceite físico da voz. As mudanças locais de equipe permaneceram sem commit;
+os quatro arquivos locais novos foram conferidos byte a byte e há stash de backup.
+
+**Síntese real Piper: passou em sink WAV, sem reprodução.** 30 amostras,
+modelo SHA256 `858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7`.
+Primeiro WAV frio 6,590 s. Aquecido N=29: primeiro WAV p50/p95 0,221/0,319 s;
+duas frases p50/p95 0,491/0,647 s. Pico RSS/PSS da árvore
+292.992/265.033 KiB. Métricas completas em
+[piper-wav-2026-11-05.json](metrics/piper-wav-2026-11-05.json).
+Não comprova inteligibilidade, som no fone ou latência fim de fala.
+
+**Preparação real Ollama: bloqueada por DNS.** O instalador tentou a API oficial
+e retornou `Temporary failure in name resolution`; nenhum ambiente incompleto
+foi publicado. Doctor básico real: OpenJarvis/Whisper/Piper/player presentes;
+Ollama ausente. A sessão também bloqueia sockets de aplicação fora da suíte
+autorizada. Não houve alteração de rede, captura ambiental ou reprodução física.
+
+**Pendentes:** instalação/pesos e comparação Local reais; decisão sobre processo
+residente após medição; jornada FCC real com clone/dependência em cache/config/
+testes/health e retomada; corpus humano consentido 3/10/25/60 s e pausa de 800 ms;
+Jarvis isolado ≥18/20 e ≤1 falso em 30 min; Kokoro real e Parar; palmas/negativos
+no Bluetooth; foco GNOME e 30 turnos físicos offline. Defaults existentes foram
+preservados. Windows aguarda aceite Linux. O plano completo continua pendente.
+Procedimentos e limites em
+[IMPLEMENTACAO_LOCAL_2026-11-05.md](IMPLEMENTACAO_LOCAL_2026-11-05.md).
