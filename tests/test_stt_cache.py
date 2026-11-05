@@ -17,7 +17,7 @@ class ModelCacheTests(unittest.TestCase):
             with stt_cache.whisper_model('base') as second:
                 self.assertIsNot(second, first)
             self.assertEqual(factory.call_count, 2)
-            factory.assert_called_with('base', device='cpu', compute_type='int8')
+            factory.assert_called_with('base', device='cpu', compute_type='int8', local_files_only=True)
 
     def test_failed_load_releases_lock_and_does_not_keep_old_model(self):
         factory = Mock(side_effect=[RuntimeError('modelo ausente'), object()])

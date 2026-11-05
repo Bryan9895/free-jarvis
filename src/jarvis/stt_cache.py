@@ -16,6 +16,6 @@ def whisper_model(name):
             _model, _name = None, None
             gc.collect()
             from faster_whisper import WhisperModel
-            model = WhisperModel(name, device='cpu', compute_type='int8')
+            model = WhisperModel(name, device='cpu', compute_type='int8', local_files_only=True)
             _model, _name = model, name
         yield _model

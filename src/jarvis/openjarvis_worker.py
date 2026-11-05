@@ -71,7 +71,7 @@ async def generate(engine, request):
     messages = messages_from_payload(payload)
     text, calls, usage, finish = [], [], {}, None
     async for chunk in engine.stream_full(messages, model=model, tools=tools,
-            max_tokens=payload.get('max_output_tokens', 1536), num_ctx=4096, think=False):
+            max_tokens=payload.get('max_output_tokens', 1536), num_ctx=4096, num_gpu=0, think=False):
         if chunk.content:
             text.append(chunk.content)
             emit({'delta': chunk.content})
@@ -130,12 +130,35 @@ def main():
     engine = create_engine(request['host'])
     try:
         operation = request['operation']
+        emit({'ready': True})
         if operation == 'models':
             if not engine.health():
                 raise ValueError('Ollama local indisponível; instale/inicie o servidor antes de selecionar pesos')
             emit({'result': engine.list_models()})
         elif operation == 'check':
             check_model(engine, request['model'])
+            emit({'result': True})
+        elif operation == 'identity':
+            check_model(engine, request['model'])
+            response = engine._client.get('/api/tags')
+            response.raise_for_status()
+            model = request['model']
+            canonical = model if ':' in model else model + ':latest'
+            entry = next(item for item in response.json()['models']
+                         if item.get('name') == canonical or item.get('model') == canonical)
+            import re
+            if not re.fullmatch(r'(?:sha256:)?[0-9a-f]{64}', entry.get('digest', '')):
+                raise ValueError('Digest do modelo ausente ou inválido')
+            emit({'result': {'model': canonical, 'digest': entry['digest'], 'size': entry.get('size')}})
+        elif operation == 'unload':
+            check_model(engine, request['model'])
+            response = engine._client.post('/api/generate', json={'model': request['model'], 'keep_alive': 0})
+            response.raise_for_status()
+            response = engine._client.get('/api/ps')
+            response.raise_for_status()
+            canonical = request['model'] if ':' in request['model'] else request['model'] + ':latest'
+            if any(item.get('name') == canonical for item in response.json()['models']):
+                raise ValueError('Modelo ainda residente após descarga; carga fria não comprovada')
             emit({'result': True})
         elif operation == 'generate':
             asyncio.run(generate(engine, request))

@@ -20,13 +20,14 @@ def confirm(action):
     except EOFError:
         return False
 
-def main():
-    if sys.argv[1:2] == ['kokoro']:
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ['kokoro']:
         from .kokoro_setup import main as kokoro_main
-        return kokoro_main(sys.argv[2:])
-    if sys.argv[1:2] == ['local']:
+        return kokoro_main(argv[1:])
+    if argv[:1] == ['local']:
         from .local_setup import main as local_main
-        return local_main(sys.argv[2:])
+        return local_main(argv[1:])
     parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code",
         epilog='Motor: jarvis-fcc local --help · Voz: jarvis-fcc kokoro --help')
     parser.add_argument('--profile', choices=('local', 'fcc'), help='Local offline ou Engenharia FCC')
@@ -36,6 +37,11 @@ def main():
     parser.add_argument("--guided-click", metavar="ALVO", help="Clique visual supervisionado com cursor posicionado pelo usuário e verificação posterior")
     parser.add_argument("--see-screen", nargs="?", const="Descreva o conteúdo visível nesta tela.", metavar="PERGUNTA", help="Analisa captura Wayland com modelo visual explícito e permissões do portal")
     parser.add_argument("--doctor", action="store_true", help="Diagnóstico local da instalação, sem precisar do servidor FCC")
+    parser.add_argument('--doctor-format', choices=('json', 'human'), default='json')
+    parser.add_argument('--active-test', action='append', choices=('inference', 'stt', 'tts', 'microphone', 'playback'), default=[])
+    parser.add_argument('--sample', type=str, help='Amostra consentida para STT ativo')
+    parser.add_argument('--doctor-output', type=str, help='Novo WAV de saída do teste TTS')
+    parser.add_argument('--doctor-timeout', type=int, default=60)
     parser.add_argument("--models-diagnostic", action="store_true", help="Comparar catálogos Responses, padrão e admin sem inferência")
     parser.add_argument("--models", action="store_true", help="Mostrar modelos disponíveis no FCC")
     parser.add_argument("--health", action="store_true", help="Verificar conexão com FCC")
@@ -55,7 +61,9 @@ def main():
     approval_group = parser.add_mutually_exclusive_group()
     approval_group.add_argument("--auto-approve", action="store_true", help="Modo automático (padrão; mantido por compatibilidade)")
     approval_group.add_argument("--manual-approve", action="store_true", help="Pedir confirmação no terminal para cada ação")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.active_test and not args.doctor:
+        parser.error('--active-test exige --doctor')
     if args.save_profile:
         from dataclasses import replace
         from .preferences import PreferenceStore
@@ -94,25 +102,18 @@ def main():
         main_gui(c, auto=not args.manual_approve)
         return
     if args.doctor:
-        from pathlib import Path
-        import importlib.util
-        from .kokoro_setup import status as kokoro_status
-        print(json.dumps({
-            "application": "jarvis-fcc",
-            "module": str(Path(__file__).resolve()),
-            "python": sys.executable,
-            "workspace": str(c.workspace),
-            "fcc_url": c.url,
-            "profile": c.profile,
-            "local_model": c.local_model,
-            "ollama_host": c.ollama_host,
-            "openjarvis_python": c.openjarvis_python or sys.executable,
-            "local_inference": "Não testado (doctor básico não executa inferência)",
-            "kokoro": kokoro_status(),
-            "browser_package_installed": importlib.util.find_spec("playwright") is not None,
-            "voice_package_installed": importlib.util.find_spec("faster_whisper") is not None,
-            "desktop_package_installed": importlib.util.find_spec("dbus_next") is not None,
-        }, ensure_ascii=False, indent=2))
+        from .doctor import collect, active, human
+        result = collect(c)
+        for kind in dict.fromkeys(args.active_test):
+            event = active(c, kind, sample=args.sample, output=args.doctor_output,
+                           timeout=args.doctor_timeout)
+            result.setdefault('active_tests', []).append(event)
+            for check in result['checks']:
+                if check['id'] == kind:
+                    check['state'] = event['state']
+        print(human(result) if args.doctor_format == 'human' else json.dumps(result, ensure_ascii=False, indent=2))
+        if any(event['state'] == 'Falhou' for event in result.get('active_tests', [])):
+            raise SystemExit(1)
         return
     if args.windows_diagnostic:
         from .desktop_windows import desktop_windows

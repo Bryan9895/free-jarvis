@@ -53,6 +53,8 @@ class OpenJarvisProvider:
         token = cancel_token or CancellationToken()
         limit = min(deadline or monotonic() + 120, token.deadline or float('inf'))
         token.check()
+        from .latency import mark
+        mark('local_worker_start')
         # Clear cloud/proxy credentials in the isolated engine's environment.
         env = {k: v for k, v in os.environ.items() if k in
                ('PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'SYSTEMROOT')}
@@ -89,6 +91,8 @@ class OpenJarvisProvider:
                             raise TimeoutError('Prazo do motor local excedido')
                         if event.get('error'):
                             raise FCCError(event['error'])
+                        if event.get('ready'):
+                            mark('local_worker_ready')
                         if 'delta' in event and on_event is not None:
                             on_event({'type': 'response.output_text.delta', 'delta': event['delta']})
                         if 'result' in event:
