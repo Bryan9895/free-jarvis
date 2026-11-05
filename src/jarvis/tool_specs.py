@@ -4,6 +4,21 @@ Mantidos separados dos executores para facilitar plugins e auditoria.
 """
 
 TOOL_SPECS = [
+    {'type': 'function', 'name': 'project_checkpoint',
+     'description': 'Inspeciona projeto Git autorizado sem executar seu código: URL de origem sem credenciais, ref, SHA e identidade da .venv/distribuições. Esperado opcional verifica revisão e nomes de dependências instaladas. Fatos são persistidos como checkpoints pelo planejador; instalação/testes do projeto continuam exigindo execute_process autorizado.',
+     'parameters': {'type': 'object', 'properties': {
+         'path': {'type': 'string'}, 'expected_revision': {'type': 'string', 'maxLength': 64},
+         'distributions': {'type': 'array', 'maxItems': 100, 'items': {'type': 'string', 'maxLength': 128}}},
+         'additionalProperties': False}},
+    {'type': 'function', 'name': 'project_service',
+     'description': 'Gerencia serviço Linux de projeto autorizado: start/status/stop. Start exige argv sem shell e health HTTP de loopback. Persiste PID, starttime e boot ID; start repetido reutiliza a mesma configuração e não duplica efeitos incertos. Processo permanece até stop explícito. Terminal e acesso a dados exigem autorização; disponível somente no perfil FCC.',
+     'parameters': {'type': 'object', 'properties': {
+         'action': {'type': 'string', 'enum': ['start', 'status', 'stop']},
+         'name': {'type': 'string', 'minLength': 1, 'maxLength': 64}, 'cwd': {'type': 'string'},
+         'argv': {'type': 'array', 'minItems': 1, 'maxItems': 128,
+                  'items': {'type': 'string', 'minLength': 1, 'maxLength': 8192}},
+         'health': {'type': 'string', 'maxLength': 2048}},
+         'required': ['action', 'name'], 'additionalProperties': False}},
     {'type': 'function', 'name': 'execute_process',
      'description': 'Executa processo de primeiro plano ou script com argv explícito e diretório autorizado. Exige autorização de terminal e dados da conta; sem shell implícito. Saída limitada, timeout e cancelamento do grupo. Exit code zero NÃO comprova o objetivo: verifique arquivos/efeitos antes de confirmar.',
      'parameters': {'type': 'object', 'properties': {

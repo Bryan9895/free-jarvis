@@ -224,6 +224,18 @@ class TaskPlanner:
             raise ValueError("Não há plano pronto. Use /planejar antes.")
         if cancel_token is not None:
             cancel_token.check()
+        from .tools import Toolkit
+        toolkit = getattr(self.agent, 'toolkit', None)
+        if isinstance(toolkit, Toolkit):
+            from .project_checkpoint import revalidate
+            for previous in self.plan['steps']:
+                if previous['status'] == 'verified' and not revalidate(toolkit, previous.get('artifacts', [])):
+                    self.plan['status'] = 'stopped'
+                    previous['status'] = 'blocked'
+                    previous['problems'] = [{'tool': 'checkpoint', 'reason': 'Estado do projeto/serviço mudou; confira antes de retomar'}]
+                    self._save()
+                    report('Checkpoint mudou; nenhuma etapa pendente foi executada.')
+                    return self.snapshot()
         summary = "\n".join(f"{s['id']}. {s['description']}" for s in self.plan["steps"] if s["status"] == "pending")
         if not approve("EXECUTAR PLANO COM ATÉ CINCO ETAPAS?\n" + summary):
             self.plan["status"] = "cancelled"
@@ -297,6 +309,18 @@ class TaskPlanner:
                 report("Execução interrompida: ferramenta recusada ou com erro.")
                 break
             actions = metrics.get("tool_outcomes", []) if isinstance(metrics, dict) else []
+            step['artifacts'] = []
+            for action in actions:
+                if action.get('name') in ('project_checkpoint', 'project_service'):
+                    detail = action.get('outcome', {}).get('result', {})
+                    if isinstance(detail, dict) and detail.get('effect_verified'):
+                        arguments = action.get('arguments', {})
+                        if isinstance(arguments, str):
+                            try: arguments = json.loads(arguments)
+                            except ValueError: arguments = {}
+                        step['artifacts'].append({'tool': action['name'], 'result': detail,
+                            'arguments': {key: value for key, value in arguments.items() if key in ('action', 'name', 'cwd')}})
+            self._save()
             if not actions:
                 # A descrição da etapa é o objetivo, não evidência de execução.
                 # A resposta textual do modelo também não conta como prova.

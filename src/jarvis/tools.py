@@ -11,8 +11,10 @@ from .schema_validation import validate_arguments
 from .cancellation import CancelledError
 from .filesystem_tools import FilesystemTools, ToolError, MAX_FILE_BYTES
 from .command_execution import CommandTools
+from .project_services import ProjectServiceTools
+from .project_checkpoint import ProjectCheckpointTools
 
-class Toolkit(FilesystemTools, CommandTools):
+class Toolkit(FilesystemTools, CommandTools, ProjectServiceTools, ProjectCheckpointTools):
     def __init__(self, workspace: Path, approve=None, layout_db=None, registry=None,
                  enabled_capabilities=None, offline=False):
         self.workspace = workspace.expanduser().resolve()
@@ -383,8 +385,8 @@ _CAPABILITY_TOOLS = {
                          "create_python_project"},
     "tasks.read": {"task_list"},
     "tasks.write": {"task_add", "task_update"},
-    "command.read": {"run_command"},
-    "command.execute": {"execute_process"},
+    "command.read": {"run_command", "project_checkpoint"},
+    "command.execute": {"execute_process", "project_service"},
     "system.admin": {"manage_packages", "manage_service"},
     "browser.read": {"browser_inspect", "browser_tabs"},
     "browser.control": {"browser_open", "browser_navigate", "browser_click",
