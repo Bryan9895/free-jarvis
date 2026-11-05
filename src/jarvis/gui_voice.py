@@ -101,6 +101,9 @@ def build_voice_panel(window, tabs):
     window.voice_silence = tk.StringVar(value=str(window.preferences.silence_ms))
     window.voice_vad_threshold = tk.StringVar(value=str(window.preferences.vad_threshold))
     window.voice_mode = tk.StringVar(value=window.preferences.voice_mode)
+    window.voice_clap = tk.BooleanVar(value=window.preferences.clap_enabled)
+    ttk.Checkbutton(talk, text='Ativar um pedido por palma (experimental)',
+                    variable=window.voice_clap, command=window._save_voice_preferences).pack(anchor='w')
     window.voice_followup = tk.StringVar(value=str(window.preferences.followup_seconds))
     window.voice_start_timeout = tk.StringVar(value=str(window.preferences.start_timeout_seconds))
     window.voice_retries = tk.StringVar(value=str(window.preferences.reconnect_attempts))

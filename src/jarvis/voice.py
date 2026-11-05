@@ -65,6 +65,7 @@ class VoiceIO:
         self.start_timeout_seconds = preferences.start_timeout_seconds
         self.reconnect_attempts = preferences.reconnect_attempts
         self.wake_manifest = preferences.wake_manifest
+        self.clap_enabled = preferences.clap_enabled
         from uuid import uuid4
         self.session_id = session_id or uuid4().hex
         self._stt = None
@@ -320,7 +321,8 @@ class WakeWordConversation:
     def __init__(self, voice: VoiceIO, on_command, on_status=lambda _message: None,
                  *, device=None, silence_seconds=None,
                  max_command_seconds=120, on_transcript=lambda _text: None,
-                 activity_factory=None, wake_engine=None, on_event=lambda _: None):
+                 activity_factory=None, wake_engine=None, on_event=lambda _: None,
+                 on_activation=lambda _: None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
@@ -341,6 +343,10 @@ class WakeWordConversation:
         self.on_event = on_event
         self.wake_engine = wake_engine
         self._acoustically_activated = False
+        self._clap_activated = False
+        self.on_activation = on_activation
+        from .clap import ClapDetector
+        self.clap = ClapDetector()
         self.audio_metrics = {'frames': 0, 'lost_turns': 0, 'queue_peak': 0}
 
     @classmethod
@@ -407,6 +413,7 @@ class WakeWordConversation:
                 self._following_up = conversation
                 self._require_wake = woke and self.wake_engine is not None
                 self._acoustically_activated = False
+                self._clap_activated = False
                 if self.wake_engine is not None:
                     self.wake_engine.reset()
                 generation = self._generation
@@ -476,7 +483,7 @@ class WakeWordConversation:
                     self.on_status(f"Comando enviado; conversação por voz ativa por até {self.voice.followup_seconds} s após a resposta.")
                     while not self._stop.is_set() and not self._resume.wait(0.2):
                         pass
-                    conversation = True
+                    conversation = not self._clap_activated
                 else:
                     conversation = bool(woke)
                     self.on_status("Jarvis ativada. Pode falar seu pedido." if woke else
@@ -539,7 +546,9 @@ class WakeWordConversation:
                                      chunk_sink=recording.append)
             blocksize = round(self.FRAME_SAMPLES * selected.rate / 16000)
             stage = 'Captura de áudio'
-            with sd.InputStream(samplerate=selected.rate, blocksize=blocksize,
+            with coordinator.frames.subscribe() as vad_frames, coordinator.frames.subscribe() as wake_frames, \
+                    coordinator.frames.subscribe() as clap_frames, \
+                    sd.InputStream(samplerate=selected.rate, blocksize=blocksize,
                                 channels=selected.channels, dtype="int16", device=self.device,
                                 callback=receive):
                 idle_started = time.monotonic()
@@ -569,14 +578,32 @@ class WakeWordConversation:
                     chunk = normalizer.feed(chunk)
                     if not len(chunk):
                         continue
+                    coordinator.frames.publish(chunk)
+                    chunk = vad_frames.receive()
+                    wake_chunk = wake_frames.receive()
+                    clap_chunk = clap_frames.receive()
                     self.audio_metrics['rms'] = float(np.sqrt(np.mean(chunk.astype(np.float32) ** 2)))
                     if on_level is not None:
                         from .voice_diagnostics import signal_metrics
                         on_level(signal_metrics(chunk.tobytes()))
                     was_started = endpoint.started
+                    if self.clap.process(clap_chunk, enabled=(getattr(self.voice, 'clap_enabled', False)
+                            and getattr(self, '_waiting_activation', False) and not endpoint.started
+                            and not self._acoustically_activated)):
+                        self._require_wake = False
+                        self._acoustically_activated = True
+                        self._clap_activated = True
+                        wake_wait_started = last_frame
+                        endpoint.recent.clear()
+                        endpoint.recent_samples = 0
+                        trace.mark('clap_detected')
+                        self.on_activation('clap')
+                        self.on_status('Palma detectada. Pode falar um pedido.')
+                        coordinator.transition(trace, 'ouvindo', 'ativação por palma', self.on_event)
+                        continue
                     active = activity.active(chunk)
                     if getattr(self, '_require_wake', False):
-                        if self.wake_engine.process(chunk):
+                        if self.wake_engine.process(wake_chunk):
                             self._require_wake = False
                             self._acoustically_activated = True
                             wake_wait_started = last_frame

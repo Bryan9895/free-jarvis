@@ -18,6 +18,7 @@ vision = ["Pillow>=10.0"]
 [project.scripts]
 jarvis-fcc = "jarvis.cli:main"
 jarvis = "jarvis.cli:main"
+jarvis-show = "jarvis.gui_instance:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

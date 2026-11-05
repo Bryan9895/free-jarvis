@@ -26,17 +26,18 @@ class GuiBackend:
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
                          "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install",
-                         "voice_configure", "voice_listen_start", 'voice_warmup', 'voice_install_kokoro'})
+                         "voice_configure", "voice_listen_start", 'voice_warmup', 'voice_install_kokoro', 'select_profile'})
     LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install', 'voice_install_kokoro',
                                 'voice_listen_start', 'voice_listen_stop', 'voice_speak',
                                 'voice_discard_pending',
-                                'voice_warmup',
+                                'voice_warmup', 'doctor',
                                 'authorization_save', 'authorization_load'})
 
     def __init__(self, config, *, auto=True, service_factory=None):
         from uuid import uuid4
         self.session_id = uuid4().hex
         self.config = config
+        self._settings_lock = threading.RLock()
         self.auto = auto
         self.service_factory = service_factory or JarvisService.from_config
         self.commands = queue.Queue()
@@ -166,6 +167,7 @@ class GuiBackend:
         self.service.approval.authorizations = self.authorization_store
         self.events.put(("connected", {
             "model": self.service.client.active_model,
+            "profile": getattr(self.config, 'profile', 'fcc'),
             "approval": self.service.approval.mode,
             "capabilities": sorted(self.service.toolkit.capabilities.enabled),
         }))
@@ -228,7 +230,7 @@ class GuiBackend:
                         raise RuntimeError('A escuta não liberou a captura. Pare a escuta e tente novamente.')
             if command == 'retry':
                 self._reconnect()
-            elif self.service is None and command not in self.LOCAL_COMMANDS and not command.startswith('voice_test_'):
+            elif self.service is None and command not in self.LOCAL_COMMANDS and command != 'select_profile' and not command.startswith('voice_test_'):
                 self.events.put(('error', 'Conecte ao FCC antes de executar uma tarefa.'))
             else:
                 self._dispatch(command, value)
@@ -251,7 +253,13 @@ class GuiBackend:
 
     def _dispatch(self, command, value):
         service = self.service
-        if command == 'authorization_save':
+        if command == 'select_profile':
+            from .profile_switch import switch_profile
+            switch_profile(self, value)
+        elif command == 'doctor':
+            from .doctor import collect, human
+            self.events.put(('doctor', human(collect(self.config))))
+        elif command == 'authorization_save':
             self.authorization_store.save(value)
             self.events.put(('authorizations', self.authorization_store.snapshot()))
         elif command == 'authorization_load':
@@ -397,6 +405,7 @@ class GuiBackend:
                 on_status=lambda text: self.events.put(("voice_status", f"Whisper {model}: {text}")),
                 on_transcript=lambda text: self.events.put(("voice_heard", text)),
                 on_event=lambda event: self.events.put(('capture_event', event)),
+                on_activation=lambda _: self.events.put(('show', None)),
                 device=device)
             self.events.put(("voice_listening", True))
             self._voice_listener.start()
@@ -420,42 +429,44 @@ class GuiBackend:
                 'kokoro_directory': str(directory), 'kokoro_python': runtime['python']})
             self.events.put(('voice_status', 'Kokoro e pf_dora selecionados. Teste a voz para confirmar áudio.'))
         elif command == "voice_configure":
-            preferences = replace(self.preferences, **value).validate()
-            effective = preferences.effective()
-            device = effective.audio_device.split(': ', 1)[-1] or None
-            was_listening = self._voice_listener is not None
-            restart = was_listening and self._voice is not None and (
-                self._voice.model_name != effective.stt_model or self._voice.device != device
-                or self._voice.wake_manifest != effective.wake_manifest)
-            if was_listening and (effective.voice_mode != 'continuous' or restart):
-                if not self._voice_listener.stop():
-                    raise RuntimeError('A escuta ainda está encerrando; aguarde antes de trocar a entrada')
-                self._voice_listener = None
-                self.events.put(('voice_listening', False))
-            self.preference_store.save(preferences)
-            self.preferences = preferences
-            if self._voice is not None:
-                from pathlib import Path
-                self._voice.model_name = effective.stt_model
-                self._voice.device = device
-                self._voice.piper_model = Path(effective.piper_model).expanduser() if effective.piper_model else None
-                from .kokoro_assets import assets_directory
-                self._voice.tts_backend = effective.tts_backend
-                self._voice.kokoro_directory = assets_directory(effective.kokoro_directory or None)
-                self._voice.kokoro_python = effective.kokoro_python
-                self._voice.output_device = effective.output_device
-                self._voice.silence_seconds = effective.silence_ms / 1000
-                self._voice.vad_threshold = effective.vad_threshold
-                self._voice.followup_seconds = effective.followup_seconds
-                self._voice.start_timeout_seconds = effective.start_timeout_seconds
-                self._voice.reconnect_attempts = effective.reconnect_attempts
-                self._voice.wake_manifest = effective.wake_manifest
-                if self._voice_listener is not None:
-                    self._voice_listener.silence_seconds = self._voice.silence_seconds
-            self.events.put(('voice_preferences', effective))
-            if restart and effective.voice_mode == 'continuous':
-                self._dispatch('voice_listen_start', {'device': effective.audio_device, 'model': effective.stt_model})
-            self.events.put(("voice_status", "Preferências salvas e aplicadas. Ambiente explícito tem precedência. Teste a voz para confirmar a saída."))
+            with self._settings_lock:
+                preferences = replace(self.preferences, **value).validate()
+                effective = preferences.effective()
+                device = effective.audio_device.split(': ', 1)[-1] or None
+                was_listening = self._voice_listener is not None
+                restart = was_listening and self._voice is not None and (
+                    self._voice.model_name != effective.stt_model or self._voice.device != device
+                    or self._voice.wake_manifest != effective.wake_manifest)
+                if was_listening and (effective.voice_mode != 'continuous' or restart):
+                    if not self._voice_listener.stop():
+                        raise RuntimeError('A escuta ainda está encerrando; aguarde antes de trocar a entrada')
+                    self._voice_listener = None
+                    self.events.put(('voice_listening', False))
+                self.preference_store.save(preferences)
+                self.preferences = preferences
+                if self._voice is not None:
+                    from pathlib import Path
+                    self._voice.model_name = effective.stt_model
+                    self._voice.device = device
+                    self._voice.piper_model = Path(effective.piper_model).expanduser() if effective.piper_model else None
+                    from .kokoro_assets import assets_directory
+                    self._voice.tts_backend = effective.tts_backend
+                    self._voice.kokoro_directory = assets_directory(effective.kokoro_directory or None)
+                    self._voice.kokoro_python = effective.kokoro_python
+                    self._voice.output_device = effective.output_device
+                    self._voice.silence_seconds = effective.silence_ms / 1000
+                    self._voice.vad_threshold = effective.vad_threshold
+                    self._voice.followup_seconds = effective.followup_seconds
+                    self._voice.start_timeout_seconds = effective.start_timeout_seconds
+                    self._voice.reconnect_attempts = effective.reconnect_attempts
+                    self._voice.wake_manifest = effective.wake_manifest
+                    self._voice.clap_enabled = effective.clap_enabled
+                    if self._voice_listener is not None:
+                        self._voice_listener.silence_seconds = self._voice.silence_seconds
+                self.events.put(('voice_preferences', effective))
+                if restart and effective.voice_mode == 'continuous':
+                    self._dispatch('voice_listen_start', {'device': effective.audio_device, 'model': effective.stt_model})
+                self.events.put(("voice_status", "Preferências salvas e aplicadas. Ambiente explícito tem precedência. Teste a voz para confirmar a saída."))
         elif command == "voice_outputs":
             from .voice import VoiceIO
             self.events.put(("voice_outputs", VoiceIO.output_devices()))
@@ -748,6 +759,14 @@ class JarvisWindow:
         self.capabilities_frame.pack(fill="both", expand=True)
         ttk.Button(permissions, text="Aplicar capacidades", command=self._apply_capabilities).pack(fill="x")
 
+        diagnostics = ttk.Frame(tabs, padding=8)
+        tabs.add(diagnostics, text='Diagnósticos')
+        ttk.Label(diagnostics, text='Verificação local sem inferência, downloads ou captura de áudio.',
+                  wraplength=320).pack(anchor='w')
+        ttk.Button(diagnostics, text='Atualizar Doctor', command=lambda: self.backend.submit('doctor')).pack(fill='x', pady=8)
+        self.doctor_report = scrolledtext.ScrolledText(diagnostics, width=35, wrap='word', state='disabled')
+        self.doctor_report.pack(fill='both', expand=True)
+
         profiles = ttk.Frame(tabs, padding=8)
         tabs.add(profiles, text="Ambientes")
         self.profiles = tk.Listbox(profiles)
@@ -876,6 +895,7 @@ class JarvisWindow:
             'kokoro_python': self.voice_kokoro_python.get(),
             'silence_ms': silence_ms, 'vad_threshold': vad_threshold, 'voice_mode': self.voice_mode.get(),
             'wake_manifest': self.voice_wake.get(),
+            'clap_enabled': self.voice_clap.get(),
             'followup_seconds': followup, 'start_timeout_seconds': start_timeout, 'reconnect_attempts': retries})
         if accepted:
             self.voice_status.set('Salvando preferências de voz…')
@@ -964,21 +984,33 @@ class JarvisWindow:
                     setattr(self, attribute, None)
 
     def _handle(self, kind, payload):
-        if kind == "connected":
-            self.connection.set("FCC conectado · pronto para conversar")
+        if kind == 'doctor':
+            self._write(self.doctor_report, payload)
+        elif kind == 'show':
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_set()
+            self.hud.set_state('JANELA SOLICITADA', 'O compositor controla a concessão de foco')
+        elif kind == "connected":
+            self.connection.set(('Local' if payload.get('profile', 'fcc') == 'local' else 'Engenharia FCC') + ' · pronto para conversar')
             self._show_model(payload["model"])
             self.approval_mode.set(payload["approval"])
             self._set_capabilities(payload["capabilities"])
             self.backend.submit("snapshot")
             self.hud.set_state("PRONTO", "Digite ou diga Jarvis seguido do pedido")
             self._start_configured_voice()
+        elif kind == 'profile':
+            self.profile_choice.set(payload)
+            self.profile_label.set('Local · OpenJarvis/Ollama' if payload == 'local' else 'Engenharia FCC')
+            self.model_catalog = []
+            self._filter_models()
         elif kind == "reconnected":
-            self.connection.set("Catálogo FCC atualizado · inferência ainda não testada")
+            self.connection.set("Catálogo atualizado · inferência ainda não testada")
             self._show_model(payload)
             self._append_chat("Sistema", "Conexão restabelecida; catálogo atualizado.")
         elif kind == "connection_error":
-            self.connection.set("FCC indisponível")
-            self.hud.set_state("SEM CONEXÃO", "Confira o servidor FCC e use Reconectar")
+            self.connection.set("Modelo de conversa indisponível")
+            self.hud.set_state("SEM CONEXÃO", "Confira o perfil selecionado e use Reconectar")
             self._append_chat("Sistema", payload)
         elif kind == "answer":
             self._clear_partial()
@@ -1137,6 +1169,7 @@ class JarvisWindow:
             self.voice_piper_model.set(payload)
             self.voice_output_status.set('Voz instalada. Teste a saída para confirmar áudio.')
         elif kind == 'voice_preferences':
+            self.voice_clap.set(payload.clap_enabled)
             self.preferences = payload
             self.voice_tts_backend.set(payload.tts_backend)
             self.voice_kokoro_directory.set(payload.kokoro_directory)
@@ -1239,6 +1272,23 @@ class JarvisWindow:
 
 
 def main_gui(config, *, auto=True):
-    root = tk.Tk()
-    JarvisWindow(root, GuiBackend(config, auto=auto))
-    root.mainloop()
+    import sys
+    instance = None
+    if sys.platform == 'linux':
+        from .gui_instance import GuiInstance
+        instance = GuiInstance()
+        if not instance.acquire_or_show():
+            return
+    try:
+        root = tk.Tk()
+        backend = GuiBackend(config, auto=auto)
+        JarvisWindow(root, backend)
+        if instance:
+            instance.serve(lambda: backend.events.put(('show', None)))
+        try:
+            root.mainloop()
+        finally:
+            backend.close()
+    finally:
+        if instance:
+            instance.close()

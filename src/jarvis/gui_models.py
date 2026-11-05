@@ -9,7 +9,13 @@ def build_models_panel(window, tabs):
     ttk.Label(panel, text='Modelo de conversa', font=('DejaVu Sans', 14, 'bold')).pack(anchor='w')
     profile = getattr(getattr(window.backend, 'config', None), 'profile', 'fcc')
     label = 'Local · OpenJarvis/Ollama' if profile == 'local' else 'Engenharia FCC'
-    ttk.Label(panel, text=f'Perfil: {label}. Whisper, na aba Voz, só transforma sua fala em texto.',
+    window.profile_label = tk.StringVar(value=label)
+    window.profile_choice = tk.StringVar(value=profile if profile in ('local', 'fcc') else 'fcc')
+    ttk.Label(panel, textvariable=window.profile_label).pack(anchor='w')
+    ttk.Combobox(panel, textvariable=window.profile_choice, values=('local', 'fcc'), state='readonly').pack(fill='x')
+    ttk.Button(panel, text='Aplicar perfil e modelo informado', command=lambda: window.backend.submit(
+        'select_profile', {'profile': window.profile_choice.get(), 'model': window.model_choice.get()})).pack(fill='x', pady=4)
+    ttk.Label(panel, text='Local usa pesos instalados. Engenharia FCC usa o catálogo configurado. Whisper transforma sua fala em texto.',
               wraplength=340, style='Muted.TLabel').pack(anchor='w', pady=8)
     ttk.Label(panel, text='Ativo:').pack(anchor='w')
     ttk.Label(panel, textvariable=window.model, wraplength=340).pack(anchor='w', pady=(0, 8))
@@ -27,8 +33,8 @@ def build_models_panel(window, tabs):
     ttk.Button(controls, text='Atualizar catálogo', command=lambda: window.backend.submit('models')).pack(side='left')
     ttk.Button(controls, text='Usar modelo', style='Accent.TButton',
                command=lambda: window.backend.submit('select_model', window.model_choice.get())).pack(side='left', padx=4)
-    ttk.Label(panel, text='Modelo listado pode falhar no provedor. Se houver HTTP 404, escolha outro e repita o pedido. '
-              'Você já utilizou openai/gpt-5.6-luna; procure-o se estiver disponível no catálogo.',
+    ttk.Label(panel, text='O perfil só muda após inicialização bem-sucedida. Ambiente explícito prevalece. '
+              'Se um modelo falhar, confira o erro antes de repetir uma ação.',
               wraplength=340, style='Muted.TLabel').pack(anchor='w', pady=8)
     ttk.Label(panel, text='Detalhes do último erro:').pack(anchor='w')
     window.error_details = scrolledtext.ScrolledText(panel, width=30, height=6, wrap='word', state='disabled')

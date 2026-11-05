@@ -27,6 +27,7 @@ class Preferences:
     start_timeout_seconds: int = 20
     reconnect_attempts: int = 2
     wake_manifest: str = ''
+    clap_enabled: bool = False
 
     def validate(self):
         if self.version != 1:
@@ -41,6 +42,8 @@ class Preferences:
             raise ValueError(str(exc)) from exc
         if self.tts_backend not in ('piper', 'kokoro'):
             raise ValueError('Voz deve usar piper ou kokoro')
+        if type(self.clap_enabled) is not bool:
+            raise ValueError('Ativação por palma deve ser booleana')
         for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest',
                     'kokoro_directory', 'kokoro_python'):
             value = getattr(self, key)
