@@ -20,6 +20,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[desktop]"
 jarvis-fcc --doctor
+jarvis-fcc --doctor --doctor-format human
+jarvis-show                 # mostra a janela existente ou inicia uma única GUI
 ```
 
 Para o navegador ou a voz, instale apenas o extra necessário:
@@ -85,3 +87,10 @@ acompanha o projeto; o fallback por transcrição permanece identificado.
 
 Resultados, procedimentos e pendências físicas: [relatório de latência](docs/LATENCIA_2026-10-27.md)
 e [validação por checkpoint](docs/VALIDACAO_CONVERSA.md).
+
+Preparação explícita do Ollama, troca de perfil na GUI, diagnóstico, comparação
+fria/aquecida, serviços de projeto e pendências reais estão descritos no
+[checkpoint de implementação Linux](docs/IMPLEMENTACAO_LOCAL_2026-11-05.md).
+Whisper agora usa somente pesos já presentes durante a conversa; prepare-os com
+`jarvis-fcc local install-stt --model small`. A palma experimental é opcional em
+Configurações → Voz e permanece desativada por padrão.

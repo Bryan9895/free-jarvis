@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import resource
 import tempfile
+import hashlib
 from time import monotonic, process_time, sleep
 
 from .agent import Agent
@@ -26,6 +27,8 @@ SCENARIOS = (
     ('network_failure', 'O que é fotossíntese?'),
     ('voice_failure', 'O que significa CPU?'),
     ('cancel', 'O que é uma estrela?'),
+    ('negation', 'Não crie arquivos e não adicione tarefas. Responda apenas: entendido.'),
+    ('number_action', 'Adicione às tarefas: revisar 17 itens em 23 minutos.'),
 )
 
 
@@ -44,9 +47,10 @@ class ControlledProvider:
             cancel_token.cancel()
             cancel_token.check()
         completed = any(item.get('type') == 'function_call_output' for item in payload['input'])
-        if not completed and self.scenario in ('simple_action', 'compound_action'):
+        if not completed and self.scenario in ('simple_action', 'compound_action', 'number_action'):
             output = [{'type': 'function_call', 'name': 'task_add', 'call_id': 'task',
-                       'arguments': json.dumps({'title': 'preparar relatório' if self.scenario == 'compound_action' else 'revisar relatório'})}]
+                       'arguments': json.dumps({'title': 'revisar 17 itens em 23 minutos' if self.scenario == 'number_action' else
+                            'preparar relatório' if self.scenario == 'compound_action' else 'revisar relatório'})}]
             if self.scenario == 'compound_action':
                 output.append({'type': 'function_call', 'name': 'write_file', 'call_id': 'file',
                                'arguments': json.dumps({'path': 'resultado.txt', 'content': 'teste'})})
@@ -65,6 +69,16 @@ def rss_kib():
         return int(Path('/proc/self/statm').read_text().split()[1]) * os.sysconf('SC_PAGE_SIZE') // 1024
     except OSError:
         return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+
+def filesystem_state(root):
+    state = {}
+    for path in root.rglob('*'):
+        relative = str(path.relative_to(root))
+        if relative in ('metrics.db', 'metrics.db-wal', 'metrics.db-shm', 'metrics.db-journal'):
+            continue
+        state[relative] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else 'directory'
+    return state
 
 
 def _baseline_classes(directory):
@@ -86,7 +100,7 @@ def _baseline_classes(directory):
                 ('conversation', 'ConversationController'))}
 
 
-def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=None, scenario=None):
+def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=None, scenario=None, review_sink=None):
     classes = _baseline_classes(baseline_package) if baseline_package else globals()
 
     provider = ControlledProvider()
@@ -120,13 +134,14 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
         controller = classes['ConversationController'](service, emit=events.append)
         try:
             for index in range(samples):
-                scenarios = SCENARIOS[:4] if real_backend else SCENARIOS
+                scenarios = tuple(item for item in SCENARIOS if item[0] not in ('network_failure', 'voice_failure', 'cancel')) if real_backend else SCENARIOS
                 if scenario is not None:
                     scenarios = tuple(item for item in scenarios if item[0] == scenario)
                     if not scenarios:
                         raise ValueError('Cenário indisponível neste modo')
                 name, message = scenarios[index % len(scenarios)]
                 expected_title = 'revisar relatório' if name == 'simple_action' else 'preparar relatório'
+                if name == 'number_action': expected_title = 'revisar 17 itens em 23 minutos'
                 filename = 'resultado.txt'
                 if real_backend and name in ('simple_action', 'compound_action'):
                     expected_title += ' ' + str(index + 1)
@@ -134,7 +149,9 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
                     if name == 'compound_action':
                         filename = f'resultado-{index + 1}.txt'
                         message += f' E crie o arquivo {filename} com o conteúdo teste.'
-                task_ids = {item['id'] for item in toolkit.task_list()['tasks']}
+                before_tasks = {item['id']: item for item in toolkit.task_list()['tasks']}
+                task_ids = set(before_tasks)
+                before_files = filesystem_state(root)
                 target = root / filename
                 if target.is_file():
                     target.unlink()
@@ -155,12 +172,13 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
                         def speak(self, _): raise RuntimeError('Falha TTS controlada')
                     voice = FailedVoice()
                 state = 'passed'
+                answer = ''
                 error_category, error_status = None, None
                 try:
                     if baseline_package:
-                        controller.run(message, voice=voice, display=visible)
+                        answer = controller.run(message, voice=voice, display=visible)
                     else:
-                        controller.run(message, voice=voice, on_text=visible, display=visible)
+                        answer = controller.run(message, voice=voice, on_text=visible, display=visible)
                     if any(event.state == 'erro' for event in events):
                         state = 'failed'
                 except (CancelledError, classes['CancelledError']):
@@ -170,22 +188,42 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
                     error_category = getattr(exc, 'category', type(exc).__name__)
                     error_status = getattr(exc, 'status', None)
                 effect_verified = None
-                if name in ('simple_action', 'compound_action'):
-                    effect_verified = any(item['id'] not in task_ids and item['title'].strip().casefold() == expected_title
-                                          for item in toolkit.task_list()['tasks'])
+                duplicate_effect = False
+                wrong_effect = False
+                after_tasks = {item['id']: item for item in toolkit.task_list()['tasks']}
+                after_files = filesystem_state(root)
+                changed_files = {key for key in before_files.keys() | after_files.keys()
+                                 if before_files.get(key) != after_files.get(key)}
+                changed_tasks = any(after_tasks.get(key) != value for key, value in before_tasks.items())
+                if name in ('simple_action', 'compound_action', 'number_action'):
+                    new_tasks = [item for item in toolkit.task_list()['tasks'] if item['id'] not in task_ids]
+                    duplicate_effect = len(new_tasks) > 1
+                    wrong_effect = changed_tasks or any(item['title'].strip().casefold() != expected_title
+                                                       or item.get('priority') != 2 for item in new_tasks)
+                    wrong_effect |= bool(changed_files - ({filename} if name == 'compound_action' else set()))
+                    effect_verified = len(new_tasks) == 1 and not duplicate_effect and not wrong_effect
                     if name == 'compound_action':
                         effect_verified = (effect_verified and target.is_file() and
                                            target.read_text().strip() == 'teste')
                     if not effect_verified:
                         state = 'failed'
+                else:
+                    new_tasks = [item for item in toolkit.task_list()['tasks'] if item['id'] not in task_ids]
+                    wrong_effect = bool(new_tasks or changed_files or changed_tasks)
+                    if name == 'negation': effect_verified = not wrong_effect
+                    if wrong_effect: state = 'failed'
                 trace = (controller.last_trace.snapshot() if not baseline_package else
                          {'events': [{'stage': event.state, 'at': event.at} for event in events]})
+                if review_sink is not None:
+                    review_sink({'scenario': name, 'index': index, 'model': provider.active_model,
+                                 'request': message, 'answer': answer, 'state': state})
                 yield {'scenario': name, 'state': state, 'total_s': monotonic() - started,
                        'error_category': error_category, 'error_status': error_status,
                        'first_visual_s': first[0] if first else None,
                        'cpu_s': process_time() - cpu, 'rss_kib': rss_kib(),
                        'model': getattr(provider, 'active_model', ''),
                        'effect_verified': effect_verified,
+                       'wrong_effect': wrong_effect, 'duplicate_effect': duplicate_effect,
                        'model_rounds': agent.last_metrics.get('model_rounds', 0),
                        'tools_executed': len(toolkit.operation_log) - operation_count,
                        'tool_problems': len(agent.last_metrics.get('tool_problems', [])),
@@ -210,10 +248,10 @@ def report(rows, *, real_fcc=False):
             'limits': 'Amostras pequenas por classe; p95 descritivo, sem estabilidade estatística. RSS inclui caches. Não mede fim de fala ou som físico.'}
 
 
-def run(samples=30, *, real_fcc=False, real_local=False, scenario=None, monitor_pids=()):
+def run(samples=30, *, real_fcc=False, real_local=False, scenario=None, monitor_pids=(), review_sink=None):
     from .resource_sampling import MemorySampler
     with MemorySampler(monitor_pids) as memory:
-        result = report(list(measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario)), real_fcc=real_fcc)
+        result = report(list(measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario, review_sink=review_sink)), real_fcc=real_fcc)
     result['memory'] = memory.result
     if real_local:
         result['kind'] = 'openjarvis_local_text_journeys'

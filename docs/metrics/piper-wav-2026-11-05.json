@@ -1,0 +1,223 @@
+{
+  "kind": "real_piper_wav_sink",
+  "asset_sha256": {
+    "piper": "858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7"
+  },
+  "memory": {
+    "sample_count": 322,
+    "errors": 0,
+    "interval_s": 0.05,
+    "peak_tree_rss_kib": 292992,
+    "peak_tree_pss_kib": 265033,
+    "peak_process_count": 3,
+    "min_mem_available_kib": 1938684,
+    "peak_system_used_kib": 5571088,
+    "missing_root_pids": [],
+    "pss_complete": true,
+    "scope": "Current process and descendants, plus explicitly supplied daemon PIDs. External daemons excluded unless supplied.",
+    "limits": "Sampled peaks; short-lived allocations can be missed. Summed RSS can double-count shared pages; PSS is preferred when available. No physical audio measured."
+  },
+  "samples": 30,
+  "cold": {
+    "cold": true,
+    "first_wav_s": 6.589788623999993,
+    "total_s": 7.052162285000122,
+    "main_rss_kib": 29720
+  },
+  "warm_first_wav_s": {
+    "n": 29,
+    "p50": 0.2206480400000146,
+    "p95": 0.3188095219998104,
+    "worst": 0.36186828300014895
+  },
+  "warm_total_s": {
+    "n": 29,
+    "p50": 0.4913563720001548,
+    "p95": 0.6469939690000501,
+    "worst": 0.6599011719999908
+  },
+  "measurements": [
+    {
+      "cold": true,
+      "first_wav_s": 6.589788623999993,
+      "total_s": 7.052162285000122,
+      "main_rss_kib": 29720
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.3188095219998104,
+      "total_s": 0.5958968309996635,
+      "main_rss_kib": 29724
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.23072215299998788,
+      "total_s": 0.504442772999937,
+      "main_rss_kib": 29728
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.1563060239996048,
+      "total_s": 0.38265417399998114,
+      "main_rss_kib": 29728
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.16465912300009222,
+      "total_s": 0.35786687600011646,
+      "main_rss_kib": 29732
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.18229785099993023,
+      "total_s": 0.36903998399975535,
+      "main_rss_kib": 29736
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.3044387720001396,
+      "total_s": 0.5842528379998839,
+      "main_rss_kib": 29744
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.31752549400016505,
+      "total_s": 0.5008413430000473,
+      "main_rss_kib": 29744
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.19134015300005558,
+      "total_s": 0.4681990669996594,
+      "main_rss_kib": 29752
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.26302357099984874,
+      "total_s": 0.6469939690000501,
+      "main_rss_kib": 29752
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.25032381200026066,
+      "total_s": 0.5314372520001598,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.1788439339998149,
+      "total_s": 0.4965187729999343,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.26518511699987357,
+      "total_s": 0.4980480419999367,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.2078017170001658,
+      "total_s": 0.5884617540000363,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.36186828300014895,
+      "total_s": 0.6599011719999908,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.22471732600024552,
+      "total_s": 0.48307780800041655,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.2273013770000034,
+      "total_s": 0.4976819590001469,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.22907775000021502,
+      "total_s": 0.4913563720001548,
+      "main_rss_kib": 29756
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.24952311900005952,
+      "total_s": 0.49406574100021317,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.22886920799965083,
+      "total_s": 0.49931880599979195,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.2206480400000146,
+      "total_s": 0.48130391099994085,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.2502489379999133,
+      "total_s": 0.5400699140000143,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.1604277140004342,
+      "total_s": 0.33279814000025,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.15726882399985698,
+      "total_s": 0.3463118049999139,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.1616667459998098,
+      "total_s": 0.33809411699985503,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.14757123900017177,
+      "total_s": 0.32769359300027645,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.15872444600017843,
+      "total_s": 0.33029050799996185,
+      "main_rss_kib": 29760
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.14606477100005577,
+      "total_s": 0.33588900199993077,
+      "main_rss_kib": 29764
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.16695991299957313,
+      "total_s": 0.35853696799995305,
+      "main_rss_kib": 29764
+    },
+    {
+      "cold": false,
+      "first_wav_s": 0.16954699400002937,
+      "total_s": 0.3627951519997623,
+      "main_rss_kib": 29764
+    }
+  ],
+  "physical_playback": "pending",
+  "limits": "Sink lê WAV, sem áudio audível nem atraso Bluetooth. RSS principal não inclui worker de voz."
+}
