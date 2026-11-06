@@ -1,0 +1,31 @@
+{
+  "kind": "doctor_reference_and_wav_probe",
+  "active_tests": [
+    {
+      "id": "stt",
+      "state": "Falhou",
+      "reason": "reference_mismatch",
+      "verification_scope": "Referência literal e elementos críticos; não comprova entendimento ou Bluetooth",
+      "corpus_sha256": "4477ce8eb9c5cbb0d27dca9f8d30b54950bb7add6ccec8ad7da71b7e5e836625",
+      "samples": 1,
+      "model": "small",
+      "wer": 0.38461538461538464,
+      "critical_status": "failed",
+      "critical_match_rate": 0.0,
+      "failures": 0,
+      "human_coverage": "pending",
+      "physical_audio": "Não testado"
+    },
+    {
+      "id": "tts",
+      "state": "OK",
+      "frames": 56832,
+      "rate": 22050,
+      "channels": 1,
+      "backend": "piper",
+      "audible": "Não testado"
+    }
+  ],
+  "capture_performed": false,
+  "playback_performed": false
+}

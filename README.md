@@ -111,3 +111,7 @@ a baseline Piper real e as pendências de pf_dora.
 A ativação por palma agora atravessa fronteiras de blocos sem perder o começo
 do pedido e retorna à espera após um turno. Permanece opcional/experimental;
 veja [continuidade da captura e aceite de palmas](docs/ATIVACAO_PALMAS.md).
+
+O Doctor aceita corpus STT com referência consentida, diferencia texto produzido
+de referência conferida e publica WAVs completos sem sobrescrever destinos.
+Consulte [escopo dos testes ativos do Doctor](docs/DOCTOR_REFERENCIAS.md).
