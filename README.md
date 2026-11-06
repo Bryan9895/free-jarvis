@@ -98,3 +98,7 @@ Configurações → Voz e permanece desativada por padrão.
 A próxima frente de engenharia acrescenta pós-condições explícitas aos processos
 e uma jornada reproduzível de clone, dependência local, testes e retomada.
 Consulte [execução verificada de projetos](docs/ENGENHARIA_VALIDACAO.md).
+
+O avaliador de fala agora confere consentimento, WAVs, classes de duração, pausa
+e números/negações, com preflight sem modelo e relatórios sem transcrições.
+Veja [avaliação dos ouvidos e resultados reais](docs/AVALIACAO_OUVIDOS.md).

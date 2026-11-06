@@ -1,0 +1,99 @@
+{
+  "kind": "consented_stt_corpus",
+  "schema_version": 2,
+  "model": "small",
+  "vad_filter": true,
+  "audio_or_transcriptions_saved": false,
+  "defaults_changed": false,
+  "corpus_sha256": "4477ce8eb9c5cbb0d27dca9f8d30b54950bb7add6ccec8ad7da71b7e5e836625",
+  "samples": [
+    {
+      "sha256": "22af247fbe03e2c302e5d600f55d44d44b06c3401b13093041f3f30db0f46765",
+      "source_kind": "synthetic",
+      "duration_class": null,
+      "duration_s": 4.365351473922902,
+      "rate": 22050,
+      "channels": 1,
+      "internal_quiet_800ms": false
+    }
+  ],
+  "human_coverage": {
+    "state": "pending",
+    "missing_duration_classes": [
+      3,
+      10,
+      25,
+      60
+    ],
+    "pause_800ms": false,
+    "numbers": false,
+    "negations": false
+  },
+  "profiles": {
+    "5": {
+      "n": 2,
+      "wer": 0.38461538461538464,
+      "critical_samples": 2,
+      "critical_match_rate": 0.0,
+      "critical_status": "failed",
+      "failures": 0,
+      "warm_seconds": {
+        "n": 1,
+        "p50": 5.4738457319999725,
+        "p95": 5.4738457319999725,
+        "worst": 5.4738457319999725
+      },
+      "measurements": [
+        {
+          "sample_index": 0,
+          "repeat": 0,
+          "seconds": 8.051104019000377,
+          "cpu_s": 19.558700244999997,
+          "word_errors": 5,
+          "reference_words": 13,
+          "critical_reference": true,
+          "critical_match": false,
+          "numbers_match": false,
+          "negations_match": true,
+          "critical_order_match": false,
+          "negation_context_match": true,
+          "failed": false,
+          "includes_cold_load": true
+        },
+        {
+          "sample_index": 0,
+          "repeat": 1,
+          "seconds": 5.4738457319999725,
+          "cpu_s": 13.315653695000002,
+          "word_errors": 5,
+          "reference_words": 13,
+          "critical_reference": true,
+          "critical_match": false,
+          "numbers_match": false,
+          "negations_match": true,
+          "critical_order_match": false,
+          "negation_context_match": true,
+          "failed": false,
+          "includes_cold_load": false
+        }
+      ]
+    }
+  },
+  "physical_bluetooth": "Não testado",
+  "wake_word": "Não testado",
+  "limits": "Duração é do arquivo, não da fala. Quietude por RMS não comprova fala/VAD. Origem humana é declarada no manifesto. Primeira tentativa inclui carga sob demanda em CLI nova; cache do SO não é limpo. STT de arquivo não mede endpoint, Bluetooth ou primeiro áudio.",
+  "memory": {
+    "sample_count": 190,
+    "errors": 0,
+    "interval_s": 0.05,
+    "peak_tree_rss_kib": 864856,
+    "peak_tree_pss_kib": 846408,
+    "peak_process_count": 2,
+    "min_mem_available_kib": 4655404,
+    "peak_system_used_kib": 2854360,
+    "missing_root_pids": [],
+    "pss_complete": true,
+    "scope": "Current process and descendants, plus explicitly supplied daemon PIDs. External daemons excluded unless supplied.",
+    "limits": "Sampled peaks; short-lived allocations can be missed. Summed RSS can double-count shared pages; PSS is preferred when available. No physical audio measured."
+  }
+}
