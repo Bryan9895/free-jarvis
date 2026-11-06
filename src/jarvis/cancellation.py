@@ -15,6 +15,10 @@ class CancellationToken:
     def cancel(self):
         self._event.set()
 
+    def child(self):
+        """Share cancellation, while keeping per-turn deadline updates local."""
+        return CancellationToken(event=self._event, deadline=self.deadline)
+
     @property
     def cancelled(self) -> bool:
         return self._event.is_set()

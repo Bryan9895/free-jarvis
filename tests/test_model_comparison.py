@@ -37,6 +37,10 @@ class ModelComparisonTests(TestCase):
         self.assertTrue(negative['effect_verified'])
         self.assertTrue(numbers['effect_verified'])
         self.assertFalse(numbers['duplicate_effect'])
+        compound = next(row for row in result['turns'] if row['scenario'] == 'compound_action')
+        simple = next(row for row in result['turns'] if row['scenario'] == 'simple_action')
+        self.assertEqual(compound['model_tool_calls_observed'], 2)
+        self.assertEqual(simple['model_tool_calls_observed'], 0)
 
     def test_quality_review_reads_existing_report_without_model_calls(self):
         with tempfile.TemporaryDirectory() as directory:

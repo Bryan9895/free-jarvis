@@ -113,19 +113,19 @@ class OpenJarvisProvider:
                 child.wait()
             child.stdout.close()
 
-    def available_models(self):
-        models = self._exchange({'operation': 'models'})
+    def available_models(self, *, cancel_token=None):
+        models = self._exchange({'operation': 'models'}, cancel_token=cancel_token)
         self.known_models = tuple(m for m in models if _allowed_model(m))
         return list(self.known_models)
 
-    def initialize(self):
-        return self.select_model(self.preferred)
+    def initialize(self, *, cancel_token=None):
+        return self.select_model(self.preferred, cancel_token=cancel_token)
 
-    def select_model(self, name):
+    def select_model(self, name, *, cancel_token=None):
         local_model(name)
-        if name not in self.available_models():
+        if name not in self.available_models(cancel_token=cancel_token):
             raise FCCError('Modelo local ausente. Provisione explicitamente o Ollama e seus pesos')
-        self._exchange({'operation': 'check', 'model': name})
+        self._exchange({'operation': 'check', 'model': name}, cancel_token=cancel_token)
         self.active_model = name
         return name
 

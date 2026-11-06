@@ -9,7 +9,7 @@ from time import monotonic, process_time, sleep
 
 from .agent import Agent
 from .approval import ApprovalPolicy
-from .cancellation import CancelledError
+from .cancellation import CancellationToken, CancelledError
 from .conversation import ConversationController
 from .fcc import FCCClient, AutoModelClient, FCCError
 from .latency import summary
@@ -100,7 +100,10 @@ def _baseline_classes(directory):
                 ('conversation', 'ConversationController'))}
 
 
-def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=None, scenario=None, review_sink=None):
+def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=None, scenario=None, review_sink=None,
+            config=None, cancel_token=None):
+    token = cancel_token or CancellationToken()
+    token.check()
     classes = _baseline_classes(baseline_package) if baseline_package else globals()
 
     provider = ControlledProvider()
@@ -109,7 +112,8 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
         from dataclasses import replace
         from .config import Config
         from .provider_factory import create_provider
-        provider = create_provider(replace(Config.from_env(), profile='local'))
+        provider = create_provider(replace(config or Config.from_env(), profile='local'), initialize=False)
+        provider.initialize(cancel_token=token.child())
     if real_fcc:
         from .config import Config
         import os
@@ -134,6 +138,9 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
         controller = classes['ConversationController'](service, emit=events.append)
         try:
             for index in range(samples):
+                if token.cancelled:
+                    return
+                token.check()
                 scenarios = tuple(item for item in SCENARIOS if item[0] not in ('network_failure', 'voice_failure', 'cancel')) if real_backend else SCENARIOS
                 if scenario is not None:
                     scenarios = tuple(item for item in scenarios if item[0] == scenario)
@@ -178,7 +185,8 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
                     if baseline_package:
                         answer = controller.run(message, voice=voice, display=visible)
                     else:
-                        answer = controller.run(message, voice=voice, on_text=visible, display=visible)
+                        answer = controller.run(message, voice=voice, on_text=visible, display=visible,
+                                                cancel_token=token.child() if cancel_token is not None else None)
                     if any(event.state == 'erro' for event in events):
                         state = 'failed'
                 except (CancelledError, classes['CancelledError']):
@@ -214,6 +222,12 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
                     if wrong_effect: state = 'failed'
                 trace = (controller.last_trace.snapshot() if not baseline_package else
                          {'events': [{'stage': event.state, 'at': event.at} for event in events]})
+                model_tool_calls = (agent.last_metrics.get('tools_executed', 0)
+                    if not agent.last_metrics.get('local_intent') and any(
+                        event['stage'] == 'model_round_start' for event in trace['events']) else 0)
+                if real_local and name == 'compound_action' and model_tool_calls < 2:
+                    state = 'failed'
+                    error_category = 'structured_tool_call_unverified'
                 if review_sink is not None:
                     review_sink({'scenario': name, 'index': index, 'model': provider.active_model,
                                  'request': message, 'answer': answer, 'state': state})
@@ -225,10 +239,13 @@ def measure(samples=30, *, real_fcc=False, real_local=False, baseline_package=No
                        'effect_verified': effect_verified,
                        'wrong_effect': wrong_effect, 'duplicate_effect': duplicate_effect,
                        'model_rounds': agent.last_metrics.get('model_rounds', 0),
+                       'model_tool_calls_observed': model_tool_calls,
                        'tools_executed': len(toolkit.operation_log) - operation_count,
                        'tool_problems': len(agent.last_metrics.get('tool_problems', [])),
                        'trace': trace}
                 if error_status == 429:
+                    return
+                if token.cancelled:
                     return
         finally:
             service.close()
@@ -248,10 +265,16 @@ def report(rows, *, real_fcc=False):
             'limits': 'Amostras pequenas por classe; p95 descritivo, sem estabilidade estatística. RSS inclui caches. Não mede fim de fala ou som físico.'}
 
 
-def run(samples=30, *, real_fcc=False, real_local=False, scenario=None, monitor_pids=(), review_sink=None):
+def run(samples=30, *, real_fcc=False, real_local=False, scenario=None, monitor_pids=(), review_sink=None,
+        config=None, cancel_token=None, progress=lambda _: None):
     from .resource_sampling import MemorySampler
     with MemorySampler(monitor_pids) as memory:
-        result = report(list(measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario, review_sink=review_sink)), real_fcc=real_fcc)
+        rows = []
+        for row in measure(samples, real_fcc=real_fcc, real_local=real_local, scenario=scenario,
+                           review_sink=review_sink, config=config, cancel_token=cancel_token):
+            rows.append(row)
+            progress({'completed': len(rows), 'expected': samples, 'scenario': row['scenario'], 'state': row['state']})
+        result = report(rows, real_fcc=real_fcc)
     result['memory'] = memory.result
     if real_local:
         result['kind'] = 'openjarvis_local_text_journeys'

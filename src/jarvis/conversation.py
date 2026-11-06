@@ -78,6 +78,8 @@ class ConversationController:
         with self._guard:
             if self._turn_id != turn or self._cancelled:
                 raise CancelledError("Turno cancelado; resultado atrasado descartado")
+            if self._token is not None:
+                self._token.check()
 
     def cancel(self):
         with self._guard:
@@ -93,7 +95,7 @@ class ConversationController:
         if turn:
             self._event(turn, 'cancelado', 'solicitado pelo usuário')
 
-    def run(self, message, *, voice=None, display=lambda _: None, on_text=None, trace=None):
+    def run(self, message, *, voice=None, display=lambda _: None, on_text=None, trace=None, cancel_token=None):
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("Já há um turno em execução")
         trace = trace or getattr(message, 'trace', None) or TurnTrace(session_id=self.session_id)
@@ -105,8 +107,9 @@ class ConversationController:
         live = None
         with self._guard:
             self._turn_id, self._cancelled, self._voice = turn, False, voice
-            token = self._token = CancellationToken()
+            token = self._token = cancel_token or CancellationToken()
         try:
+            token.check()
             if message.casefold().strip(' .,!?:;') == 'parar conversa':
                 self.on_end()
                 self._event(turn, 'cancelado', 'conversa encerrada pelo usuário')
