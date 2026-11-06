@@ -94,3 +94,7 @@ fria/aquecida, serviços de projeto e pendências reais estão descritos no
 Whisper agora usa somente pesos já presentes durante a conversa; prepare-os com
 `jarvis-fcc local install-stt --model small`. A palma experimental é opcional em
 Configurações → Voz e permanece desativada por padrão.
+
+A próxima frente de engenharia acrescenta pós-condições explícitas aos processos
+e uma jornada reproduzível de clone, dependência local, testes e retomada.
+Consulte [execução verificada de projetos](docs/ENGENHARIA_VALIDACAO.md).
