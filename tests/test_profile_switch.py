@@ -66,3 +66,20 @@ class ProfileSwitchTests(TestCase):
             switch_profile(backend, {'profile': 'fcc', 'model': 'configured'})
         self.assertEqual(candidate.toolkit.capabilities.enabled, {'files'})
 
+    def test_new_managed_runtime_is_read_at_apply_and_cancelled_prepare_is_discarded(self):
+        from threading import Event
+        backend, old, candidate = self.backend()
+        backend._cancel_queued = Event()
+        def prepare(*args, **kwargs):
+            self.assertEqual(args[0].openjarvis_python, '/new/runtime/python')
+            backend._cancel_queued.set()
+            return candidate
+        backend.service_factory.side_effect = prepare
+        with patch.dict(os.environ, {}, clear=True), patch('jarvis.local_setup.managed_python', return_value='/new/runtime/python'), \
+                self.assertRaisesRegex(RuntimeError, 'cancelada'):
+            switch_profile(backend, {'profile': 'local'})
+        backend.preference_store.save.assert_not_called()
+        old.close.assert_not_called()
+        candidate.close.assert_called_once()
+        self.assertIs(backend.service, old)
+

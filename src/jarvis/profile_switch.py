@@ -35,9 +35,17 @@ def _switch_profile(backend, changes):
     preferences = replace(saved, inference_profile=profile, **{key: model}).validate()
     config = replace(backend.config, profile=profile,
                      **{'local_model' if profile == 'local' else 'model': model})
+    if profile == 'local':
+        from .local_setup import managed_python
+        config = replace(config, openjarvis_python=os.getenv('JARVIS_OPENJARVIS_PYTHON')
+                         or managed_python() or config.openjarvis_python)
     candidate = backend.service_factory(config, auto=backend.auto, manual_callback=backend._approve,
         report=lambda text: backend.events.put(('progress', text)))
     try:
+        cancelled = getattr(backend, '_cancel_queued', None)
+        if cancelled is not None and cancelled.is_set():
+            from .cancellation import CancelledError
+            raise CancelledError('Troca de perfil cancelada; sessão anterior preservada')
         candidate.approval.authorizations = backend.authorization_store
         if old is not None:
             candidate.approval = old.approval

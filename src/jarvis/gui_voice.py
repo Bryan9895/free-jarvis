@@ -7,6 +7,7 @@ from .gui_shell import ScrollPanel
 
 
 def build_voice_panel(window, tabs):
+    window.voice_panel_index = len(tabs.panels)
     voice = ttk.Frame(tabs, padding=8)
     tabs.add(voice, text='Voz')
     ttk.Label(voice, text='Voz', font=('DejaVu Sans', 14, 'bold')).pack(anchor='w')

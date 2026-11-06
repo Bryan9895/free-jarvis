@@ -26,11 +26,11 @@ class GuiBackend:
     ACTIONS = frozenset({"ask", "voice_ask", "tool_action", "plan_action", "retry",
                          "voice_record", "voice_speak", "voice_test_probe", "voice_test_capture",
                          "voice_test_replay", "voice_test_transcribe", "voice_test_clear", "voice_push_to_talk", "voice_install",
-                         "voice_configure", "voice_listen_start", 'voice_warmup', 'voice_install_kokoro', 'select_profile'})
+                         "voice_configure", "voice_listen_start", 'voice_warmup', 'voice_install_kokoro', 'select_profile', 'setup_run'})
     LOCAL_COMMANDS = frozenset({'voice_devices', 'voice_outputs', 'voice_configure', 'voice_install', 'voice_install_kokoro',
                                 'voice_listen_start', 'voice_listen_stop', 'voice_speak',
                                 'voice_discard_pending',
-                                'voice_warmup', 'doctor',
+                                'voice_warmup', 'doctor', 'setup_run', 'setup_refresh',
                                 'authorization_save', 'authorization_load'})
 
     def __init__(self, config, *, auto=True, service_factory=None):
@@ -57,6 +57,8 @@ class GuiBackend:
         self._capturing = threading.Event()
         self._conversation = None
         self._speaking_voice = None
+        from .local_server import OllamaSession
+        self._ollama_session = OllamaSession()
         from .preferences import PreferenceStore
         self.preference_store = PreferenceStore()
         self.preferences = self.preference_store.load()
@@ -161,6 +163,9 @@ class GuiBackend:
         return request.accepted and not self._closed.is_set()
 
     def _connect(self):
+        if getattr(self.config, 'profile', '') == 'local':
+            from .cancellation import CancellationToken
+            self._ollama_session.start(self.config.ollama_host, token=CancellationToken(event=self._closed))
         self.service = self.service_factory(
             self.config, auto=self.auto, manual_callback=self._approve,
             report=lambda message: self.events.put(("progress", message)))
@@ -213,12 +218,16 @@ class GuiBackend:
                 self._voice_listener.stop()
             if self._voice_test is not None:
                 self._voice_test.close()
+            self._ollama_session.close()
 
     def _process_command(self, command, value):
         action = command in self.ACTIONS
         try:
             if action and self._cancel_queued.is_set():
                 self.events.put(('progress', 'Pedido cancelado antes de iniciar.'))
+                if command == 'setup_run':
+                    self.events.put(('setup_result', {'state': 'Cancelado',
+                        'message': 'Operação cancelada antes de iniciar; nenhuma etapa de preparação foi executada.'}))
                 return
             if action:
                 self.events.put(('busy', True))
@@ -256,6 +265,12 @@ class GuiBackend:
         if command == 'select_profile':
             from .profile_switch import switch_profile
             switch_profile(self, value)
+        elif command == 'setup_run':
+            from .gui_setup import run_setup
+            run_setup(self, value)
+        elif command == 'setup_refresh':
+            from .gui_setup import refresh
+            refresh(self)
         elif command == 'doctor':
             from .doctor import collect, human
             self.events.put(('doctor', human(collect(self.config))))
@@ -787,6 +802,8 @@ class JarvisWindow:
 
         from .gui_models import build_models_panel
         from .gui_voice import build_voice_panel
+        from .gui_setup import build_setup_panel
+        build_setup_panel(self, tabs)
         self.models_panel_index = len(tabs.panels)
         build_models_panel(self, tabs)
         build_voice_panel(self, tabs)
@@ -984,7 +1001,16 @@ class JarvisWindow:
                     setattr(self, attribute, None)
 
     def _handle(self, kind, payload):
-        if kind == 'doctor':
+        if kind == 'setup_status':
+            self.setup_status.set(payload)
+        elif kind == 'setup_report':
+            self._write(self.setup_report, payload)
+        elif kind == 'setup_result':
+            self.setup_status.set(payload['state'] + ' · ' + payload['message'])
+            if payload['state'] != 'OK':
+                self._operation_error = True
+                self.hud.set_state('CONFIGURAÇÃO PENDENTE', payload['state'])
+        elif kind == 'doctor':
             self._write(self.doctor_report, payload)
         elif kind == 'show':
             self.root.deiconify()
@@ -1010,7 +1036,7 @@ class JarvisWindow:
             self._append_chat("Sistema", "Conexão restabelecida; catálogo atualizado.")
         elif kind == "connection_error":
             self.connection.set("Modelo de conversa indisponível")
-            self.hud.set_state("SEM CONEXÃO", "Confira o perfil selecionado e use Reconectar")
+            self.hud.set_state("SEM CONEXÃO", "Abra Configuração inicial para preparar Local ou confira Modelos")
             self._append_chat("Sistema", payload)
         elif kind == "answer":
             self._clear_partial()
@@ -1054,6 +1080,8 @@ class JarvisWindow:
                 button.configure(state="disabled" if payload else "normal")
             for button in (self.voice_install_button, self.voice_kokoro_install_button,
                            self.voice_save_button, self.voice_test_button):
+                button.configure(state='disabled' if payload else 'normal')
+            for button in self.setup_buttons:
                 button.configure(state='disabled' if payload else 'normal')
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))
