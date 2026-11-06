@@ -567,3 +567,45 @@ real nem demonstração de inferência sem internet. Nenhum áudio foi capturado
 reproduzido nesta etapa e não houve mudança de rede ou de concessões persistentes.
 Procedimentos, escopo e modo futuro `--fcc` em
 [ENGENHARIA_VALIDACAO.md](ENGENHARIA_VALIDACAO.md).
+
+## Próxima etapa: corpus e avaliação dos ouvidos — 05/11/2026
+
+Base `1853df171da881c276bc2f34f831dc4f35922aee`.
+
+- `7d019122fd60e2d012bc090545fb1ce62df9d4d5`: avaliador de corpus WAV
+  consentido, preflight sem modelo, duração/pausa/fingerprints e proteção de
+  arquivos. Comparação crítica agora considera quantidades por extenso,
+  ordinais comuns, negações, ordem conjunta e contexto próximo.
+- `166e10ca030b00db820da766cd75569b511bbf4e`: guia de corpus humano,
+  limitações e resultado sanitizado do ensaio real com fonte sintética.
+
+**Automação: passou.** 556 testes na cópia isolada em 37,050 s; 575 testes
+integrados em 44,179 s, um ignorado em cada suíte. O último ajuste de literal
+numérico também passou pelos sete testes focados antes da suíte integrada.
+`git diff --check` passou. Consentimento, arquivos truncados/alterados, hashes,
+classes de duração e pausa inconsistente bloqueiam a avaliação antes do modelo.
+Não é possível sobrescrever o áudio ou o manifesto com a saída do avaliador.
+As mudanças locais anteriores de equipe foram preservadas, incluindo os quatro
+arquivos novos byte a byte e stash de backup.
+
+**Whisper real com áudio sintético: executou, mas falhou no critério crítico.**
+Piper local gerou um arquivo dirigido de 4,365 s, mono 22.050 Hz, sem player ou
+microfone. Whisper small CPU int8, beam 5 e VAD ligado realizaram duas tentativas
+usando os pesos em cache: 8,051 s na primeira e 5,474 s na aquecida. Números e
+ordem divergiram da referência nas duas; negação e seu contexto foram preservados.
+Taxa crítica 0/2, sem erro de execução do reconhecedor. Pico PSS 846.408 KiB.
+É um único arquivo sintético, sem estimativa de taxa de acerto humana ou p95
+estável. Dados em
+[stt-synthetic-2026-11-05.json](metrics/stt-synthetic-2026-11-05.json).
+
+Nenhum WAV ou transcrição foi versionado. O relatório não contém referências,
+hipóteses, caminhos privados ou texto de exceções. Referências sem elementos
+críticos recebem taxa `null`, sem um falso 100%. WER é lexical e não substitui
+checagem de quantidades nem revisão de intenção.
+
+**Pendentes:** corpus humano consentido 3/10/25/60 s com pausa de 800 ms,
+endpoint em fala real, Bluetooth, Jarvis isolado, Kokoro e turnos físicos finais.
+A cobertura humana permanece `pending`. Kokoro ainda não tem runtime/pesos e a
+consulta DNS continua falhando. Não houve captura ambiental, reprodução ou
+mudança de defaults, beam, VAD, rede ou concessões persistentes.
+Procedimentos em [AVALIACAO_OUVIDOS.md](AVALIACAO_OUVIDOS.md).
