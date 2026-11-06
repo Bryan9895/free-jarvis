@@ -525,3 +525,45 @@ no Bluetooth; foco GNOME e 30 turnos físicos offline. Defaults existentes foram
 preservados. Windows aguarda aceite Linux. O plano completo continua pendente.
 Procedimentos e limites em
 [IMPLEMENTACAO_LOCAL_2026-11-05.md](IMPLEMENTACAO_LOCAL_2026-11-05.md).
+
+## Próxima etapa: engenharia dirigida e retomada — 05/11/2026
+
+Base `df02ce76beabbcc3c6c9b5cf9ce7a3e06c7d725a`. Entregas:
+
+- `058b7f39111df17f78a4441d9457dfae4356764f`: pós-condições opcionais em
+  `execute_process`, evidências preservadas pelo agente e revalidação antes de
+  retomar o plano. Saída zero sozinha mantém o estado não verificado. Hash de
+  arquivo/configuração alterado suspende os próximos efeitos.
+- `58acc003f821110ff687ebb4ad6b85da4dd8db14`: fixture e harness com projeto
+  Git, wheel própria fixa por hash, venv/pip sem índice, configuração preservada,
+  testes reais e serviço HTTP. Usa os executores e o planejador existentes.
+
+**Automação: passou.** 549 testes na cópia isolada em 28,261 s; 568 testes no
+diretório principal em 35,219 s; um ignorado em cada suíte. `git diff --check`
+e compilação passaram. A integração preservou as mudanças locais anteriores de
+equipe e os quatro arquivos novos byte a byte; há stash de backup.
+
+**Jornada dirigida: passou com interpretação controlada e efeitos reais.**
+`test_failed_test_then_restart_resumes_without_clone_or_install_duplicate`
+executou clone local, criou uma venv real e instalou `jarvis-fixture-dep==1.0.0`
+de wheel local com `--no-index --require-hashes`. Preservou configuração,
+interrompeu os testes por falha dirigida, reabriu Jarvis/SQLite e retomou por
+decisão explícita de retry. Somente testes e início do serviço voltaram à fila;
+o contador de instalação ficou em 1 e a configuração da venv ficou idêntica.
+O health HTTP foi observado e start repetido reutilizou PID/starttime. O processo
+da fixture foi encerrado na limpeza.
+
+`test_modified_configuration_blocks_resume_before_next_command` comprovou que
+editar config.json antes da retomada interrompe o plano antes de outro comando.
+Os testes de pós-condições também cobrem código zero sem prova, hash divergente,
+saída não zero e rejeição de condições/caminhos inválidos antes dos efeitos.
+O resultado dos testes é histórico: a retomada confere condições atuais sem
+rodar comandos antigos para produzir a mesma evidência novamente.
+
+**FCC real e offline físico: pendentes.** As consultas de preparação continuaram
+falhando para GitHub/Ollama/FCC nesta sessão. Ollama e Kokoro seguem ausentes.
+Os sockets HTTP usados pela suíte são fixtures de teste; não são conexões ao FCC
+real nem demonstração de inferência sem internet. Nenhum áudio foi capturado ou
+reproduzido nesta etapa e não houve mudança de rede ou de concessões persistentes.
+Procedimentos, escopo e modo futuro `--fcc` em
+[ENGENHARIA_VALIDACAO.md](ENGENHARIA_VALIDACAO.md).
