@@ -36,6 +36,14 @@ class OllamaSession:
         self._host = ''
         self._lock = RLock()
 
+    def monitor_pid(self, host):
+        from .project_services import owns_health_port
+        with self._lock:
+            if (self._process is not None and self._host == local_host(host)
+                    and self._process.poll() is None and owns_health_port(self._process.pid, host)):
+                return self._process.pid
+        return None
+
     def start(self, host, *, token=None):
         from .ollama_setup import binary, server_environment
         from .project_services import owns_health_port

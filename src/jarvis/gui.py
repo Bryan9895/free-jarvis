@@ -74,10 +74,11 @@ class GuiBackend:
         self._thread.start()
 
     def submit(self, command, value=None):
+        from .gui_comparison import COMMANDS
         with self._submission_lock:
             if self._closed.is_set() and command != "shutdown":
                 return False
-            if command in self.ACTIONS:
+            if command in self.ACTIONS or command in COMMANDS:
                 if self._action_pending.is_set():
                     self.events.put(("error", "Aguarde o pedido atual terminar ou cancele-o antes de enviar outro."))
                     return False
@@ -89,7 +90,7 @@ class GuiBackend:
                 from .latency import TurnTrace
                 value = value if isinstance(value, TracedText) else TracedText(value, TurnTrace(session_id=self.session_id))
                 value.trace.mark('intent_enqueued')
-            destination = self.local_commands if command in self.LOCAL_COMMANDS or command.startswith('voice_test_') else self.commands
+            destination = self.local_commands if command in self.LOCAL_COMMANDS or command in COMMANDS or command.startswith('voice_test_') else self.commands
             destination.put((command, value))
             return True
 
@@ -225,13 +226,16 @@ class GuiBackend:
                 self._ollama_session.close()
 
     def _process_command(self, command, value):
-        action = command in self.ACTIONS
+        from .gui_comparison import COMMANDS
+        action = command in self.ACTIONS or command in COMMANDS
         try:
             if action and self._cancel_queued.is_set():
                 self.events.put(('progress', 'Pedido cancelado antes de iniciar.'))
                 if command == 'setup_run':
                     self.events.put(('setup_result', {'state': 'Cancelado',
                         'message': 'Operação cancelada antes de iniciar; nenhuma etapa de preparação foi executada.'}))
+                elif command in COMMANDS:
+                    self.events.put(('comparison_status', 'Operação cancelada antes de iniciar. Nenhum modelo aplicado.'))
                 return
             if action:
                 self.events.put(('busy', True))
@@ -243,7 +247,7 @@ class GuiBackend:
                         raise RuntimeError('A escuta não liberou a captura. Pare a escuta e tente novamente.')
             if command == 'retry':
                 self._reconnect()
-            elif self.service is None and command not in self.LOCAL_COMMANDS and command != 'select_profile' and not command.startswith('voice_test_'):
+            elif self.service is None and command not in self.LOCAL_COMMANDS and command not in COMMANDS and command != 'select_profile' and not command.startswith('voice_test_'):
                 self.events.put(('error', 'Conecte ao FCC antes de executar uma tarefa.'))
             else:
                 self._dispatch(command, value)
@@ -265,8 +269,12 @@ class GuiBackend:
                 self.events.put(('busy', False))
 
     def _dispatch(self, command, value):
+        from .gui_comparison import COMMANDS
         service = self.service
-        if command == 'select_profile':
+        if command in COMMANDS:
+            from .gui_comparison import dispatch
+            dispatch(self, command, value)
+        elif command == 'select_profile':
             from .profile_switch import switch_profile
             switch_profile(self, value)
         elif command == 'setup_run':
@@ -808,6 +816,8 @@ class JarvisWindow:
         from .gui_voice import build_voice_panel
         from .gui_setup import build_setup_panel
         build_setup_panel(self, tabs)
+        from .gui_comparison import build_comparison_panel
+        build_comparison_panel(self, tabs)
         self.models_panel_index = len(tabs.panels)
         build_models_panel(self, tabs)
         build_voice_panel(self, tabs)
@@ -1005,7 +1015,10 @@ class JarvisWindow:
                     setattr(self, attribute, None)
 
     def _handle(self, kind, payload):
-        if kind == 'setup_status':
+        if kind.startswith('comparison_'):
+            from .gui_comparison import handle
+            handle(self, kind, payload)
+        elif kind == 'setup_status':
             self.setup_status.set(payload)
         elif kind == 'setup_report':
             self._write(self.setup_report, payload)
@@ -1086,6 +1099,8 @@ class JarvisWindow:
                            self.voice_save_button, self.voice_test_button):
                 button.configure(state='disabled' if payload else 'normal')
             for button in self.setup_buttons:
+                button.configure(state='disabled' if payload else 'normal')
+            for button in self.comparison_buttons:
                 button.configure(state='disabled' if payload else 'normal')
         elif kind == "metrics":
             self._write(self.metrics, json.dumps(payload, ensure_ascii=False, indent=2))

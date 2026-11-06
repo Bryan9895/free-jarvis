@@ -148,6 +148,7 @@ def build_setup_panel(window, tabs):
     ttk.Entry(content, textvariable=window.setup_model).pack(fill='x')
     button('Baixar modelo informado', lambda: run('model'))
     button('Testar inferência textual Local', lambda: run('check'))
+    button('Comparar modelos preparados', lambda: tabs.select(window.comparison_panel_index))
     section('3. Usar o perfil Local',
             'Aplicar prepara uma nova sessão antes de substituir a atual. '
             'Variáveis de ambiente explícitas prevalecem. O teste textual não comprova operação offline.')
