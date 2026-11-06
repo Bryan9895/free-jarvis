@@ -719,3 +719,40 @@ Jarvis isolado, provisionamento e ensaios reais Ollama/Kokoro e jornada offline.
 Nenhuma preferência de modelo/voz, autorização ou configuração de rede mudou.
 Evidência: [Doctor](DOCTOR_REFERENCIAS.md) e
 [relatório sanitizado](metrics/doctor-functional-2026-11-06.json).
+
+## Próxima etapa: replay do fim de fala — 06/11/2026
+
+Base `9f3be6ba1af48dea694259c99e244b51c73be285`.
+
+- `6edf78fbef1404b70a6ef5ec195c1d9262246b1d`: avaliador de WAV consentido
+  pelo normalizador, Silero e endpoint usados na captura; observa atividade após
+  a primeira decisão sem gerar intenção executável. EOF não finaliza o turno;
+  silêncio sintético adicional é explícito e identificado.
+- `a7850c5d35d60c86c5afa5ae3260b5e705d2899b`: procedimento, limites e
+  evidência real sanitizada em `AVALIACAO_ENDPOINT.md`.
+
+**Automação: passou.** Dez testes específicos em 0,552 s; suíte integrada de
+605 testes em 68,472 s, com um ignorado. Compilação e `git diff --check` passaram.
+Os casos cobrem fala controlada de 3/10/25/60 s e pausa interna de 800 ms,
+atividade tardia, silêncio, EOF, teto pendente, resample/flush estéreo 44,1 kHz,
+consentimento, mudança de corpus e publicação exclusiva do relatório completo.
+Não são gravações de fala humana nem validação acústica. As 11 alterações
+locais de equipe e os quatro arquivos novos foram preservados; hashes dos
+arquivos novos conferidos e stash de backup mantido.
+
+**Ensaio de arquivo sintético com VAD real: realizado.** O WAV Piper anterior
+sem padding não alcançou endpoint. Com 1.500 ms de silêncio sintético, decidiu
+em 5,325 s de áudio, dentro do padding. Duas cópias separadas por 800 ms
+acrescentados mantiveram ambos os trechos até a decisão em 10,571 s. Com
+1.400 ms acrescentados entre as cópias, houve decisão em 5,359 s e 53 blocos
+ativos posteriores: o avaliador registrou possível corte. Esses intervalos se
+somam aos silêncios já presentes no WAV; não são pausas humanas medidas.
+Não houve Whisper, microfone, player, ferramentas, rede ou ajuste de defaults.
+
+**Aceite físico: pendente.** Replay não exercita captura, filas/overflow,
+ativação, controlador ou retomada de segmentos; ausência de atividade tardia
+não prova intenção completa. Permanecem corpus humano consentido, Bluetooth,
+Jarvis isolado, Ollama/Kokoro reais e jornada física offline. A divergência STT
+do checkpoint anterior também continua registrada, sem ser convertida em aprovação.
+Evidências: [procedimento](AVALIACAO_ENDPOINT.md) e
+[métricas sanitizadas](metrics/endpoint-replay-2026-11-06.json).
