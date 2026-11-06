@@ -756,3 +756,51 @@ Jarvis isolado, Ollama/Kokoro reais e jornada física offline. A divergência ST
 do checkpoint anterior também continua registrada, sem ser convertida em aprovação.
 Evidências: [procedimento](AVALIACAO_ENDPOINT.md) e
 [métricas sanitizadas](metrics/endpoint-replay-2026-11-06.json).
+
+## Plano de finalização: configuração inicial pela GUI — 06/11/2026
+
+Base `2c7e93026dd0dd08a770902c08d67286871a61b6`.
+
+- `cfa923d4e095ed6273bbb647f66848c023fc44fd`: helpers compartilhados de
+  preparação/teste Local e sessão Ollama pertencente à GUI, com prontidão por
+  porta do PID e limpeza do grupo; servidores externos são preservados.
+- `be66fae2f7c7943d13dbbdab95c280e980d0b0df`: Configuração inicial com etapas
+  explícitas, progresso, Parar, recuperação e atalho para Voz; aplicação de perfil
+  usa o runtime gerenciado atualizado e descarta preparação cancelada.
+- `f833a73f84e5e6bf3671d766a06650fa64260ef2`: procedimento e ensaio real
+  sanitizado, com pré-requisitos e limites de provisionamento explícitos.
+- `1a5fea4e8b0614b891bcec4573050a3d3327e34a`: fechamento aguarda limpeza
+  do worker local antes de encerrar o processo, inclusive servidor próprio.
+
+**Automação: passou.** A suíte integrada final executou 623 testes em 159,107 s,
+com um ignorado. Inclui Tk real, falha/retry, Parar acessível durante operação,
+rolagem/foco em 1040×640 com escala 1,8, navegação para Voz, FCC bloqueado,
+recusa de ação concorrente e cancelamento antes/durante a preparação. Também
+cobre preflight/inferência canceláveis, rejeição de chamadas de ferramenta no
+check, pins preservados no cancelamento e troca de perfil com runtime atualizado.
+A revisão anterior passou 599 testes isolados e 623 integrados; após o ajuste
+final de fechamento, os sete casos do backend passaram e toda a suíte integrada
+foi repetida sobre a versão final. Compilação e `git diff --check` passaram.
+
+A prontidão/limpeza usa processo HTTP controlado com socket real e porta do
+próprio PID. Isso não é Ollama real nem inferência. Reutilização de daemon externo
+não envia sinais a ele. O startup Local salvo não chama instaladores/downloads.
+O worker local permanece vivo até concluir a limpeza ao fechar a janela.
+
+**Adaptadores reais: motor passou, instalação Ollama falhou.** O fluxo reutilizou
+OpenJarvis instalado e verificou seu runtime. A consulta oficial do instalador
+Ollama falhou com URLError, apresentou orientação sanitizada e preservou FCC.
+Não houve inferência, microfone, player ou troca de preferências nesse ensaio.
+Relatório: [gui-setup-2026-11-06.json](metrics/gui-setup-2026-11-06.json).
+
+As 11 alterações locais de equipes foram preservadas; quatro arquivos novos
+conferidos byte a byte e stashes de backup mantidos. Um conflito de aplicação do
+stash na GUI foi resolvido preservando os dois recursos. Esses rascunhos não
+integram os commits publicados.
+
+**Restante do plano: pendente.** Ollama/pesos e comparação de modelos reais,
+ferramenta Local com internet bloqueada, corpus humano consentido, detector
+Jarvis isolado aceito, Kokoro real, engenharia com FCC real e 30 turnos físicos.
+Esta entrega conclui a interface da primeira frente com pré-requisitos instalados;
+não comprova o aceite físico nem instala Python/uv do sistema automaticamente.
+Procedimento em [CONFIGURACAO_INICIAL.md](CONFIGURACAO_INICIAL.md).

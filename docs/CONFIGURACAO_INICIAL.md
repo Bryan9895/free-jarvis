@@ -102,3 +102,7 @@ comparação e ferramenta Local com internet bloqueada, fala humana consentida,
 detector Jarvis isolado, Kokoro real, jornada FCC real e 30 turnos físicos offline.
 Este checkpoint não muda o perfil ou a voz padrão nem publica alterações locais
 de equipes/multiagentes do usuário.
+
+A consulta de prontidão usa `GET /api/version`, conforme o [contrato oficial
+Ollama](https://github.com/ollama/ollama/blob/main/docs/openapi.yaml), conferido
+neste checkpoint. O fechamento normal aguarda a limpeza na thread local.
