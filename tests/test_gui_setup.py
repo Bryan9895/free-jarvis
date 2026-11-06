@@ -138,6 +138,7 @@ class SetupBackendTests(TestCase):
             backend = self.backend(Path(directory), lambda *a, **k: FakeService())
             backend.config = replace(backend.config, profile='local')
             backend._ollama_session = Mock()
+            self.assertFalse(backend._local_thread.daemon)
             with patch('jarvis.local_setup.install_engine', side_effect=AssertionError('No startup install')), \
                     patch('jarvis.ollama_setup.install', side_effect=AssertionError('No startup download')):
                 backend.start()

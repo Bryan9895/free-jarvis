@@ -65,7 +65,9 @@ class GuiBackend:
         from .authorizations import AuthorizationStore
         self.authorization_store = AuthorizationStore()
         self._thread = threading.Thread(target=self._run, daemon=True, name="jarvis-gui-worker")
-        self._local_thread = threading.Thread(target=self._run_local, daemon=True, name="jarvis-audio-worker")
+        # Closing the window cancels and wakes this worker. Keep it alive until
+        # installers and the owned server have reaped their process groups.
+        self._local_thread = threading.Thread(target=self._run_local, daemon=False, name="jarvis-audio-worker")
 
     def start(self):
         self._local_thread.start()
@@ -214,11 +216,13 @@ class GuiBackend:
                     break
                 self._process_command(command, value)
         finally:
-            if self._voice_listener is not None:
-                self._voice_listener.stop()
-            if self._voice_test is not None:
-                self._voice_test.close()
-            self._ollama_session.close()
+            try:
+                if self._voice_listener is not None:
+                    self._voice_listener.stop()
+                if self._voice_test is not None:
+                    self._voice_test.close()
+            finally:
+                self._ollama_session.close()
 
     def _process_command(self, command, value):
         action = command in self.ACTIONS
