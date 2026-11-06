@@ -107,3 +107,7 @@ O adaptador Kokoro agora cobre cancelamento na espera e no envio ao worker,
 recolhe o grupo de processos e publica somente WAV completo. O
 [guia Kokoro](docs/KOKORO_LOCAL.md) inclui o ensaio de cancelamento sem player,
 a baseline Piper real e as pendências de pf_dora.
+
+A ativação por palma agora atravessa fronteiras de blocos sem perder o começo
+do pedido e retorna à espera após um turno. Permanece opcional/experimental;
+veja [continuidade da captura e aceite de palmas](docs/ATIVACAO_PALMAS.md).
