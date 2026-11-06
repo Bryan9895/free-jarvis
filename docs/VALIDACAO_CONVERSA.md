@@ -804,3 +804,55 @@ Jarvis isolado aceito, Kokoro real, engenharia com FCC real e 30 turnos físicos
 Esta entrega conclui a interface da primeira frente com pré-requisitos instalados;
 não comprova o aceite físico nem instala Python/uv do sistema automaticamente.
 Procedimento em [CONFIGURACAO_INICIAL.md](CONFIGURACAO_INICIAL.md).
+
+## Plano de finalização: comparar e revisar modelos na GUI — 06/11/2026
+
+Base `76e52f49e6dcaac5c13d726bf514a5906ee8ac20`.
+
+- `c1aa6c290559b7635bae19b6592485fef2d8ba56`: comparação cancelável com
+  configuração explícita, PID/digest conferidos, descarga entre candidatos e
+  revisão privada vinculada por SHA256. Tokens filhos preservam o deadline global.
+  A ação composta exige chamadas estruturadas observadas no caminho do modelo;
+  handlers locais não são contados como inferência de ferramenta.
+- `864ee7cd1e491c2c8ff95926431fba6b626d2a75`: Comparar modelos na GUI, progresso,
+  Parar, leitura de respostas em janela separada, contagens humanas explícitas e
+  cópia do elegível para Configuração inicial sem salvar/aplicar preferências.
+- `dd62181383f3112ef60871aeb353bcbbb26f5553`: procedimento, privacidade,
+  critérios de escolha e preflight real sem daemon.
+
+**Automação: passou.** 617 testes isolados em 158,959 s; após os ajustes finais
+no leitor de respostas e contador de ferramentas, os nove testes de avaliação e
+os três do comparador passaram novamente. A suíte integrada final executou 636
+testes em 187,330 s, com um ignorado. Compilação e `git diff --check` passaram.
+
+Fixtures cobrem sequência de três turnos frios e trinta aquecidos por cenário,
+dois candidatos, configuração sem mutação de ambiente, cancelamento durante
+inferência, descarga com token independente, deadline de turno sem encurtar o
+orçamento pai, integridade dos arquivos, contagens incompletas, erros críticos,
+OOM, RAM/tempos inválidos e pesos alterados antes da cópia. O teste do contador
+distingue duas chamadas estruturadas da ação composta e zero chamadas produzidas
+pelo modelo na ação simples determinística. Isso não é inferência Ollama real.
+
+Tk real cobre formulário sem notas pré-preenchidas, contagens explícitas,
+Parar/foco/rolagem em escala maior, respostas privadas fora do chat e cópia que
+somente preenche a configuração. O backend mantém a comparação disponível com
+FCC em inicialização bloqueada e recusa ações simultâneas. Os relatórios parciais
+ficam sem vencedor; abrir/revisar um ensaio não repete inferências.
+
+**Ensaio real: bloqueado antes da inferência.** O instalador Ollama voltou a
+falhar na consulta oficial com URLError. Sem daemon/PID, a interface recusou a
+comparação, preservou FCC e não selecionou modelo. Não houve microfone, player
+ou medição de latência de modelo real. Evidência:
+[preflight sanitizado](metrics/model-comparison-preflight-2026-11-06.json).
+
+As 11 alterações locais de equipes e quatro arquivos novos foram preservados;
+hashes conferidos e stash mantido. O conflito na assinatura do controlador foi
+resolvido preservando cancelamento e o callback de equipes. Esses rascunhos não
+foram publicados.
+
+**Aceite do cérebro Local: pendente.** Faltam daemon/pesos reais, os 396 turnos,
+revisão humana, escolha por p95/PSS e ferramenta Local com internet bloqueada
+inclusive para o daemon. Áudio humano/Bluetooth, Jarvis isolado, Kokoro, engenharia
+FCC real e jornada final continuam separados. A infraestrutura desta etapa está
+entregue, sem anúncio de modelo vencedor ou funcionamento offline comprovado.
+Procedimento: [COMPARACAO_MODELOS_GUI.md](COMPARACAO_MODELOS_GUI.md).
