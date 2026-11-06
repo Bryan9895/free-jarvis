@@ -480,7 +480,8 @@ class WakeWordConversation:
                             pass
                         conversation = False
                         continue
-                    self.on_status(f"Comando enviado; conversação por voz ativa por até {self.voice.followup_seconds} s após a resposta.")
+                    self.on_status('Pedido enviado; após a resposta, aguarde outra ativação.' if self._clap_activated else
+                        f"Comando enviado; conversação por voz ativa por até {self.voice.followup_seconds} s após a resposta.")
                     while not self._stop.is_set() and not self._resume.wait(0.2):
                         pass
                     conversation = not self._clap_activated
@@ -545,6 +546,8 @@ class WakeWordConversation:
                                      preroll_seconds=0 if pending is not None else .8,
                                      chunk_sink=recording.append)
             blocksize = round(self.FRAME_SAMPLES * selected.rate / 16000)
+            from .clap import ClapGate
+            clap_gate = ClapGate(self.clap)
             stage = 'Captura de áudio'
             with coordinator.frames.subscribe() as vad_frames, coordinator.frames.subscribe() as wake_frames, \
                     coordinator.frames.subscribe() as clap_frames, \
@@ -587,20 +590,27 @@ class WakeWordConversation:
                         from .voice_diagnostics import signal_metrics
                         on_level(signal_metrics(chunk.tobytes()))
                     was_started = endpoint.started
-                    if self.clap.process(clap_chunk, enabled=(getattr(self.voice, 'clap_enabled', False)
+                    decision = clap_gate.feed(clap_chunk, enabled=(getattr(self.voice, 'clap_enabled', False)
                             and getattr(self, '_waiting_activation', False) and not endpoint.started
-                            and not self._acoustically_activated)):
+                            and not self._acoustically_activated), defer=self.wake_engine is None,
+                            at=captured_at, now=captured_at)
+                    if decision.activated:
                         self._require_wake = False
                         self._acoustically_activated = True
                         self._clap_activated = True
                         wake_wait_started = last_frame
                         endpoint.recent.clear()
                         endpoint.recent_samples = 0
+                        if decision.pcm is not None and len(decision.pcm):
+                            endpoint.feed(decision.pcm, False)
                         trace.mark('clap_detected')
                         self.on_activation('clap')
                         self.on_status('Palma detectada. Pode falar um pedido.')
                         coordinator.transition(trace, 'ouvindo', 'ativação por palma', self.on_event)
                         continue
+                    if decision.pcm is None:
+                        continue
+                    chunk, captured_at = decision.pcm, decision.at
                     active = activity.active(chunk)
                     if getattr(self, '_require_wake', False):
                         if self.wake_engine.process(wake_chunk):
@@ -635,6 +645,13 @@ class WakeWordConversation:
                         return None
                 if lost.is_set():
                     raise VoiceError("Perda de quadros/overflow; pedido descartado, repita a fala")
+                if self._stop.is_set() or capture_generation != self._generation or not self._resume.is_set():
+                    return None
+                delayed = clap_gate.flush()
+                if delayed.pcm is not None:
+                    active = activity.active(delayed.pcm)
+                    endpoint.feed(delayed.pcm, active)
+                    if active: last_speech_at = delayed.at
                 tail = normalizer.flush()
                 if len(tail) and endpoint.started:
                     if endpoint.samples + len(tail) >= endpoint.limit:
@@ -663,7 +680,8 @@ class WakeWordConversation:
             self._capture_idle.set()
             if not retained and not successful:
                 recording.close()
-        if self._stop.is_set():
+        if not successful or self._stop.is_set() or capture_generation != self._generation or not self._resume.is_set():
+            recording.close()
             return None
         if not len(recording):
             recording.close()
