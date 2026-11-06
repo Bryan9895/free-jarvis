@@ -311,7 +311,12 @@ class TaskPlanner:
             actions = metrics.get("tool_outcomes", []) if isinstance(metrics, dict) else []
             step['artifacts'] = []
             for action in actions:
-                if action.get('name') in ('project_checkpoint', 'project_service'):
+                if action.get('name') == 'write_file' and action.get('expected_sha256'):
+                    detail = action.get('outcome', {}).get('result', {})
+                    if detail.get('status') == 'written':
+                        step['artifacts'].append({'tool': 'file', 'result': {
+                            'path': detail['path'], 'sha256': action['expected_sha256']}})
+                if action.get('name') in ('project_checkpoint', 'project_service', 'execute_process'):
                     detail = action.get('outcome', {}).get('result', {})
                     if isinstance(detail, dict) and detail.get('effect_verified'):
                         arguments = action.get('arguments', {})

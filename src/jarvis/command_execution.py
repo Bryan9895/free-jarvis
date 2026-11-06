@@ -73,13 +73,16 @@ def limited_process(argv, cwd, *, token=None, timeout=60, revoked=lambda: False)
 
 
 class CommandTools:
-    def execute_process(self, argv, cwd='.', timeout=60):
+    def execute_process(self, argv, cwd='.', timeout=60, postconditions=None):
         if (not isinstance(argv, list) or not argv or len(argv) > 128 or
                 not all(isinstance(value, str) and value and '\x00' not in value for value in argv)):
             raise ToolError('argv deve ser uma lista de argumentos válidos')
         if type(timeout) not in (int, float) or not 1 <= timeout <= 300:
             raise ToolError('Timeout deve estar entre 1 e 300 segundos')
         directory = self.path(cwd)
+        if postconditions is not None:
+            from .process_postconditions import validate
+            validate(self, postconditions)
         authorize = getattr(self.approve, 'authorize', None)
         if authorize is None or not authorize('terminal', 'EXECUTAR PROCESSO: ' + repr(argv)[:2000]):
             return {'status': 'rejected'}
@@ -90,8 +93,17 @@ class CommandTools:
             return {'status': 'rejected'}
         command = argv
         self._check_execution()
-        return limited_process(command, directory, token=self._execution_token, timeout=timeout,
-                               revoked=lambda: getattr(self.approve, 'mode', None) == 'revoked')
+        result = limited_process(command, directory, token=self._execution_token, timeout=timeout,
+                                 revoked=lambda: getattr(self.approve, 'mode', None) == 'revoked')
+        if postconditions is not None and result['exit_code'] == 0:
+            self._check_execution()
+            from .process_postconditions import observe
+            passed, evidence = observe(self, postconditions, stdout=result['stdout'])
+            passed &= not result['output_truncated']
+            result.update(status='verified' if passed else 'failed', effect_verified=passed,
+                          postconditions=postconditions, evidence=evidence,
+                          verification_scope='Somente as pós-condições explícitas; efeitos adicionais não são atestados')
+        return result
 
     def _check_execution(self):
         if self._execution_token is not None:

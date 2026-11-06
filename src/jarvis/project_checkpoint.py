@@ -78,7 +78,20 @@ def revalidate(toolkit, artifacts):
 def _revalidate(toolkit, artifacts):
     """Check observations again before pending effects; never reinstall/relaunch here."""
     for artifact in artifacts:
-        if artifact['tool'] == 'project_checkpoint':
+        if artifact['tool'] == 'file':
+            from .process_postconditions import observe
+            if not observe(toolkit, {'files': [artifact['result']]})[0]:
+                return False
+        elif artifact['tool'] == 'execute_process':
+            from .process_postconditions import observe
+            checks = dict(artifact['result'].get('postconditions', {}))
+            checks.pop('stdout_sha256', None)
+            if not checks or not observe(toolkit, checks)[0]:
+                return False
+            previous = artifact['result'].get('evidence', {}).get('project')
+            if previous and checks.get('distributions') and toolkit.project_checkpoint(checks['project']).get('environment') != previous.get('environment'):
+                return False
+        elif artifact['tool'] == 'project_checkpoint':
             before = artifact['result']
             now = toolkit.project_checkpoint(before['path'])
             if now.get('revision') != before.get('revision') or now.get('environment') != before.get('environment'):

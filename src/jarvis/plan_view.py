@@ -12,7 +12,7 @@ _LABELS = {
     "interrupted": "Interrompido ao encerrar a JARVIS",
     "pending": "Pendente",
     "reported_unverified": "Processada; resultado não verificado",
-    "verified": "Verificada no sistema de arquivos",
+    "verified": "Verificada por evidência",
     "blocked": "Bloqueada",
     "failed": "Falhou",
     "skipped_unverified": "Ignorada manualmente (resultado desconhecido)",
@@ -64,7 +64,7 @@ def format_plan(plan, *, show_results=True):
         "  " + "─" * 55,
         "  /executar-plano • /cancelar-plano • /historico-planos",
         "  /selecionar-plano ID • /resolver-etapa skip|retry • /retomar-plano",
-        "  ✓ confirmado no sistema de arquivos • ◇ executado, mas não verificado.",
+        "  ✓ resultado verificado • ◇ executado, mas não verificado.",
         "╚" + "═" * 62,
     ])
     return "\n".join(lines)

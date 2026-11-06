@@ -20,10 +20,17 @@ TOOL_SPECS = [
          'health': {'type': 'string', 'maxLength': 2048}},
          'required': ['action', 'name'], 'additionalProperties': False}},
     {'type': 'function', 'name': 'execute_process',
-     'description': 'Executa processo de primeiro plano ou script com argv explícito e diretório autorizado. Exige autorização de terminal e dados da conta; sem shell implícito. Saída limitada, timeout e cancelamento do grupo. Exit code zero NÃO comprova o objetivo: verifique arquivos/efeitos antes de confirmar.',
+     'description': 'Executa processo de primeiro plano ou script com argv explícito e diretório autorizado. Exige autorização de terminal e dados da conta; sem shell implícito. Saída limitada, timeout e cancelamento do grupo. Exit code zero NÃO comprova o objetivo. postconditions opcionais verificam revisão/distribuições de projeto, hashes de arquivos ou hash exato de stdout, após saída zero. Somente essas condições são atestadas; não comprovam efeitos adicionais. Use hashes observados, nunca inventados.',
      'parameters': {'type': 'object', 'properties': {
          'argv': {'type': 'array', 'minItems': 1, 'maxItems': 128, 'items': {'type': 'string', 'minLength': 1, 'maxLength': 8192}},
-         'cwd': {'type': 'string'}, 'timeout': {'type': 'integer', 'minimum': 1, 'maximum': 300}},
+         'cwd': {'type': 'string'}, 'timeout': {'type': 'integer', 'minimum': 1, 'maximum': 300},
+         'postconditions': {'type': 'object', 'properties': {
+             'project': {'type': 'string'}, 'revision': {'type': 'string', 'maxLength': 64},
+             'distributions': {'type': 'array', 'minItems': 1, 'maxItems': 100, 'items': {'type': 'string', 'maxLength': 128}},
+             'files': {'type': 'array', 'minItems': 1, 'maxItems': 30, 'items': {'type': 'object', 'properties': {
+                 'path': {'type': 'string'}, 'sha256': {'type': 'string', 'minLength': 64, 'maxLength': 64}},
+                 'required': ['path', 'sha256'], 'additionalProperties': False}},
+             'stdout_sha256': {'type': 'string', 'minLength': 64, 'maxLength': 64}}, 'additionalProperties': False}},
          'required': ['argv'], 'additionalProperties': False}},
     {'type': 'function', 'name': 'manage_packages',
      'description': 'Instala/remove pacotes Ubuntu por apt-get com autorização administrativa e autenticação nativa pkexec. Verifica estado dpkg depois; nunca repetir automaticamente após falha incerta.',

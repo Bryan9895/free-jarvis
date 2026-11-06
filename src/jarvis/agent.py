@@ -472,10 +472,10 @@ class Agent:
                             record = {"name": call["name"],
                                       "outcome": {"result": safe,
                                                   "error": outcome.get("error") if isinstance(outcome, dict) else None}}
-                            if call['name'] in ('project_checkpoint', 'project_service') and isinstance(detail, dict):
+                            if call['name'] in ('project_checkpoint', 'project_service', 'execute_process') and isinstance(detail, dict):
                                 safe.update({key: detail[key] for key in
                                     ('effect_verified', 'revision', 'ref', 'source_url', 'environment',
-                                     'identity', 'running', 'health_ok', 'stopped', 'name') if key in detail})
+                                     'identity', 'running', 'health_ok', 'stopped', 'name', 'postconditions', 'evidence') if key in detail})
                                 record['arguments'] = {key: args[key] for key in ('action', 'name', 'cwd') if key in args}
                             if call["name"] == "write_file" and isinstance(args.get("content"), str):
                                 record["expected_sha256"] = hashlib.sha256(
