@@ -609,3 +609,43 @@ A cobertura humana permanece `pending`. Kokoro ainda não tem runtime/pesos e a
 consulta DNS continua falhando. Não houve captura ambiental, reprodução ou
 mudança de defaults, beam, VAD, rede ou concessões persistentes.
 Procedimentos em [AVALIACAO_OUVIDOS.md](AVALIACAO_OUVIDOS.md).
+
+## Próxima etapa: cancelamento e WAV do Kokoro — 05/11/2026
+
+Base `aa1cc55c2626b382495507c1ab6265339bccb975`.
+
+- `1bf734d08a786c7f58f5865d3c61dd475cfa173b`: deadline na espera/envio/leitura,
+  stdin não bloqueante, sessão própria e limpeza do grupo de processos. WAV é
+  conferido integralmente e publicado atomicamente; falha preserva o destino.
+- `27038d8ab58ee098d8990fe97edda29793147496`: ensaio explícito de cancelamento
+  com sink WAV, identificação de artefatos e relatórios reais Piper/Kokoro pendente.
+
+**Automação: passou.** 561 testes isolados em 42,914 s; 580 integrados em
+51,272 s, um ignorado em cada suíte. Os cinco casos novos exercitam pipe pequeno
+com worker que não lê stdin, cancelamento na espera sem encerrar outro worker,
+descendente que ignora TERM, WAV truncado e entrada inválida antes de spawn.
+Subprocessos são reais; o protocolo e os dados de voz nesses casos são controlados.
+Não comprovam síntese de pf_dora. `git diff --check` e compilação passaram.
+As alterações locais de equipe foram preservadas, incluindo os quatro arquivos
+novos byte a byte e stash de backup.
+
+**Baseline real Piper: passou sem player.** Sinal após 150 ms; retorno após o
+sinal em 17,224 ms no frio e 20,085 ms no aquecido, com worker observado/parado e
+preparo posterior bem-sucedido. Modelo SHA256
+`858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7`.
+Zero chamadas ao sink depois do cancelamento; nenhuma chamada ao sink nesses
+dois casos. Limpeza dos temporários Kokoro é verificada separadamente em testes
+controlados, não inferida da ausência de WAV observado. Uma amostra por fase
+não estima percentis ou latência de botão/cauda sonora Bluetooth.
+
+**Kokoro real: bloqueado.** Nova preparação com `install-runtime --offline`
+falhou em PyTorch CPU ausente do cache. O ensaio explícito Kokoro registrou
+`FileNotFoundError`/`completed=false` antes de carregar a voz por falta de pesos.
+Nenhuma instalação parcial ou preferência foi selecionada. Relatórios:
+[Piper](metrics/piper-cancel-2026-11-05.json) e
+[Kokoro pendente](metrics/kokoro-cancel-2026-11-05.json).
+
+Continuam pendentes runtime/pesos, síntese e cancelamento reais pf_dora, áudio
+Bluetooth e Parar na GUI, corpus humano e ensaio offline final. Não houve
+captura ambiental, reprodução física, alteração de rede ou concessões novas.
+Procedimento reproduzível em [KOKORO_LOCAL.md](KOKORO_LOCAL.md).
