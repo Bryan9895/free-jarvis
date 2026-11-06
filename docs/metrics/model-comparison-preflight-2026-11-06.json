@@ -1,0 +1,12 @@
+{
+  "kind": "local_model_comparison_preflight",
+  "ollama_installation": {
+    "state": "failed",
+    "error_category": "URLError"
+  },
+  "comparison_status": "Operação não concluída (ValueError). Confira servidor/PID, dois modelos instalados, pasta fora de Git e revisão completa dos arquivos exatos. Nenhum modelo foi aplicado.",
+  "profile": "fcc",
+  "inference_performed": false,
+  "model_selected": null,
+  "physical_audio": "Não testado"
+}

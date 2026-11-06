@@ -121,3 +121,6 @@ corte: [avaliação do endpoint](docs/AVALIACAO_ENDPOINT.md).
 
 Para preparar o motor, servidor e modelos pela GUI, use Configurações →
 Configuração inicial. Veja o [fluxo guiado e suas pendências](docs/CONFIGURACAO_INICIAL.md).
+
+A GUI também compara dois modelos preparados e permite revisar qualidade antes
+de indicar uma seleção: [comparação Local pela interface](docs/COMPARACAO_MODELOS_GUI.md).
