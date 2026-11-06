@@ -105,3 +105,66 @@ Após provisionar, ainda é necessário medir carga fria/aquecida, primeira fras
 memória com STT e conversa ativos, recuperação e cancelamento real, além de ouvir
 a saída Bluetooth sem internet. Não houve captura ambiental ou reprodução física
 neste incremento. Não se declara a etapa Voz aceita nem barge-in disponível.
+
+## Cancelamento completo e publicação de WAV — 05/11/2026
+
+O prazo do adaptador agora começa antes de esperar o lock, enviar a solicitação
+e ler a resposta. A escrita no pipe é não bloqueante: cancelamento e timeout
+continuam sendo verificados mesmo quando o worker não lê stdin. Uma chamada
+cancelada enquanto espera o lock não encerra o worker de outra chamada.
+
+Cada worker inicia uma sessão de processo própria. No Linux, a limpeza sinaliza
+o grupo com TERM/KILL e aguarda o processo principal, incluindo descendentes que
+mantêm pipes abertos ou ignoram TERM. Não se usa o grupo de processo da GUI.
+Os testes usam subprocessos reais de protocolo controlado, sem Torch ou pesos
+fictícios apresentados como síntese Kokoro real.
+
+O worker recebe um caminho temporário gerenciado no diretório do destino. O WAV
+só substitui o destino depois de validação completa: PCM16 mono, 24 kHz, entre
+uma amostra e 120 s, até 6 MiB e quantidade de dados compatível com o cabeçalho.
+O cancelamento é conferido durante a validação e antes da publicação atômica.
+Falha, timeout, cancelamento ou WAV truncado removem o temporário e preservam o
+arquivo anterior. Texto vazio ou maior que 64 KiB é recusado, sem corte silencioso;
+a resposta visual continua disponível. O orçamento é configurável até 300 s.
+
+O botão Parar continua pelo evento existente de `VoiceIO`; não foi criado outro
+executor, player ou fluxo de conversa. Nenhum default ou concessão foi alterado.
+
+### Ensaio reproduzível sem tocar no fone
+
+```bash
+PYTHONPATH=src python tools/validate_tts_cancel.py --backend kokoro \
+  --delay 0.15 --output /tmp/kokoro-cancel.json
+```
+
+O ensaio usa a fila normal com um sink que somente confere WAVs. Mede cancelamento
+a frio e aquecido, observa a identidade do worker e verifica preparo de voz após
+cancelar. Não captura microfone, reproduz som ou registra texto privado. Código
+de saída 1 e `completed=false` indicam que a sequência não passou ou não pôde ser
+executada. O relatório não pode substituir os artefatos de voz selecionados.
+
+Baseline explícita com Piper instalado:
+
+```bash
+PYTHONPATH=src python tools/validate_tts_cancel.py --backend piper \
+  --model /caminho/pt_BR-faber-medium.onnx --output /tmp/piper-cancel.json
+```
+
+**Piper real, sem player: passou.** Sinal emitido após 150 ms; retorno depois do
+sinal em 17,224 ms no caso frio e 20,085 ms no aquecido. Worker observado/parado,
+zero chamadas ao sink depois do cancelamento e preparo posterior bem-sucedido.
+Uma tentativa de cada tipo não estima p50/p95. Não foi medida latência do botão
+na GUI, cauda sonora no fone ou interrupção acústica. O conjunto de WAVs observado
+pelo sink estava vazio; a limpeza dos temporários do adaptador Kokoro é coberta
+separadamente pelos testes controlados, não inferida desse conjunto vazio.
+
+**Kokoro real: bloqueado.** Nova tentativa de `install-runtime --offline` falhou
+em PyTorch CPU ausente do cache. O ensaio explícito não chegou a carregar voz:
+artefatos ausentes, `FileNotFoundError`, `completed=false`. Não houve download,
+substituição de preferências ou seleção de instalação parcial.
+
+Relatórios sanitizados:
+[Piper](metrics/piper-cancel-2026-11-05.json) e
+[Kokoro pendente](metrics/kokoro-cancel-2026-11-05.json).
+Ainda faltam instalar dependências/pesos oficiais com rede disponível e executar
+a mesma sequência com pf_dora, além do ensaio físico Bluetooth/Parar na GUI.

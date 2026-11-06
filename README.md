@@ -102,3 +102,8 @@ Consulte [execução verificada de projetos](docs/ENGENHARIA_VALIDACAO.md).
 O avaliador de fala agora confere consentimento, WAVs, classes de duração, pausa
 e números/negações, com preflight sem modelo e relatórios sem transcrições.
 Veja [avaliação dos ouvidos e resultados reais](docs/AVALIACAO_OUVIDOS.md).
+
+O adaptador Kokoro agora cobre cancelamento na espera e no envio ao worker,
+recolhe o grupo de processos e publica somente WAV completo. O
+[guia Kokoro](docs/KOKORO_LOCAL.md) inclui o ensaio de cancelamento sem player,
+a baseline Piper real e as pendências de pf_dora.

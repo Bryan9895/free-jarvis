@@ -1,0 +1,8 @@
+{
+  "kind": "kokoro_wav_sink_cancellation",
+  "defaults_changed": false,
+  "physical_playback": "Não testado",
+  "limits": "Interrupção de síntese/fila sem player físico. Somente WAVs observados no sink têm limpeza conferida aqui. Não mede Stop na GUI ou Bluetooth.",
+  "error_type": "FileNotFoundError",
+  "completed": false
+}

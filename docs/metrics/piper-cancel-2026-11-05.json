@@ -1,0 +1,37 @@
+{
+  "kind": "piper_wav_sink_cancellation",
+  "defaults_changed": false,
+  "physical_playback": "Não testado",
+  "limits": "Interrupção de síntese/fila sem player físico. Somente WAVs observados no sink têm limpeza conferida aqui. Não mede Stop na GUI ou Bluetooth.",
+  "asset_sha256": {
+    "piper": "858555e3a064209c57088fe6bd70c4c3dc54d03eaa00c45d5ecaf43a33f95aa7"
+  },
+  "cold": {
+    "state": "cancelled",
+    "cancel_delay_s": 0.15,
+    "total_s": 0.16868627400072,
+    "cancel_to_return_s": 0.017223712000486557,
+    "worker_observed": true,
+    "worker_stopped": true,
+    "wav_sink_calls": 0,
+    "wav_calls_after_cancel": 0,
+    "observed_wavs_removed": true,
+    "physical_playback": "Não testado",
+    "passed": true
+  },
+  "warm": {
+    "state": "cancelled",
+    "cancel_delay_s": 0.15,
+    "total_s": 0.1706271620005282,
+    "cancel_to_return_s": 0.02008472099987557,
+    "worker_observed": true,
+    "worker_stopped": true,
+    "wav_sink_calls": 0,
+    "wav_calls_after_cancel": 0,
+    "observed_wavs_removed": true,
+    "physical_playback": "Não testado",
+    "passed": true
+  },
+  "recovery_warmup": "passed",
+  "completed": true
+}
