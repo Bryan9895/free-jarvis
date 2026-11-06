@@ -649,3 +649,39 @@ Continuam pendentes runtime/pesos, síntese e cancelamento reais pf_dora, áudio
 Bluetooth e Parar na GUI, corpus humano e ensaio offline final. Não houve
 captura ambiental, reprodução física, alteração de rede ou concessões novas.
 Procedimento reproduzível em [KOKORO_LOCAL.md](KOKORO_LOCAL.md).
+
+## Próxima etapa: palma entre blocos e turno único — 05/11/2026
+
+Base `ef1f1064e0d14da865a4a0757ba4b85fc56b3934`.
+
+- `7c09de50342f92a73bf540fd613e91de6a06a89c`: janela limitada atravessando
+  blocos, reserva anterior ao VAD no fallback, cauda pós-palma preservada e
+  descarte após pausa/cancelamento. Estado de resposta corresponde ao turno único.
+- `5d7cfa235a49808788f41a0f13a8cda02c474b27`: comportamento, custo de espera
+  e limites físicos documentados em `ATIVACAO_PALMAS.md`.
+
+**Automação: passou.** 567 testes isolados em 48,190 s; 586 integrados em
+55,446 s; um ignorado em cada suíte. O ajuste final do timestamp também passou
+pelos oito testes focados antes da integração. `git diff --check` e compilação
+passaram. As alterações locais de equipe foram preservadas, incluindo os quatro
+arquivos novos byte a byte e stash de backup.
+
+O teste de alinhamento posicionou um impulso sintético em cada uma das 1.280
+posições do bloco, inclusive dividido, obtendo uma ativação em cada caso. Isso
+não corresponde a 1.280 palmas humanas nem à taxa acústica de acerto. A jornada
+controlada do listener verificou pedido sem prefixo Jarvis após a palma, primeiro
+trecho de fala preservado, impulso removido, no máximo um stream aberto, exclusão
+do WAV temporário e retorno à espera de outra ativação após o turno.
+
+Outros casos verificam limpeza de histórico ao desabilitar, liberação da reserva
+sem perder amostras/timestamp, conservação do início da fala fallback sem palma
+e descarte após pausa na saída do stream. PCM, transcrição e dispositivo são
+controlados; não há ensaio de precisão STT ou reprodução nessa jornada.
+
+Palma continua opcional, experimental e desativada por padrão. A reserva de um
+bloco, normalmente 80 ms, existe somente enquanto o fallback espera ativação;
+o custo físico precisa ser medido. Não houve captura ambiental, reprodução,
+novas permissões ou mudança do modelo/voz padrão. Ensaios Bluetooth com palmas,
+teclado, batidas, ruído, fala, áudio próprio e repetições permanecem pendentes,
+assim como Kokoro real, Jarvis isolado e turnos físicos offline.
+Detalhes em [ATIVACAO_PALMAS.md](ATIVACAO_PALMAS.md).
