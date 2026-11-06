@@ -16,15 +16,16 @@ from .cancellation import CancelledError
 
 
 class KokoroSynthesizer:
-    def __init__(self):
+    def __init__(self, *, own_session=True):
         self._lock = Lock()
         self._process = None
         self._key = None
+        self.own_session = own_session
 
     def _close(self):
         if self._process is not None:
             process, self._process = self._process, None
-            if os.name == 'posix':
+            if os.name == 'posix' and self.own_session:
                 try: os.killpg(process.pid, signal.SIGTERM)
                 except ProcessLookupError: pass
             elif process.poll() is None:
@@ -32,7 +33,7 @@ class KokoroSynthesizer:
             try:
                 process.wait(timeout=.5)
             except subprocess.TimeoutExpired:
-                if os.name == 'posix':
+                if os.name == 'posix' and self.own_session:
                     try: os.killpg(process.pid, signal.SIGKILL)
                     except ProcessLookupError: pass
                 else:
@@ -40,7 +41,7 @@ class KokoroSynthesizer:
                 process.wait()
             finally:
                 # A child can outlive an already-exited worker and keep its pipes open.
-                if os.name == 'posix':
+                if os.name == 'posix' and self.own_session:
                     try: os.killpg(process.pid, signal.SIGKILL)
                     except ProcessLookupError: pass
             for stream in (process.stdin, process.stdout):
@@ -97,7 +98,7 @@ class KokoroSynthesizer:
                                CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS='2', MKL_NUM_THREADS='2')
                     self._process = subprocess.Popen([str(python), '-I', str(Path(__file__).with_name('kokoro_worker.py'))],
                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env,
-                        start_new_session=True)
+                        start_new_session=self.own_session)
                     self._key = key
                 process = self._process
                 request = (json.dumps({'directory': directory, 'text': text,

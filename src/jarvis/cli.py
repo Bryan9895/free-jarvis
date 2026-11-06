@@ -40,6 +40,7 @@ def main(argv=None):
     parser.add_argument('--doctor-format', choices=('json', 'human'), default='json')
     parser.add_argument('--active-test', action='append', choices=('inference', 'stt', 'tts', 'microphone', 'playback'), default=[])
     parser.add_argument('--sample', type=str, help='Amostra consentida para STT ativo')
+    parser.add_argument('--doctor-corpus', type=str, help='Corpus WAV externo consentido com referências para STT ativo')
     parser.add_argument('--doctor-output', type=str, help='Novo WAV de saída do teste TTS')
     parser.add_argument('--doctor-timeout', type=int, default=60)
     parser.add_argument("--models-diagnostic", action="store_true", help="Comparar catálogos Responses, padrão e admin sem inferência")
@@ -64,6 +65,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.active_test and not args.doctor:
         parser.error('--active-test exige --doctor')
+    if args.doctor_corpus and (not args.doctor or 'stt' not in args.active_test or args.sample):
+        parser.error('--doctor-corpus exige --doctor --active-test stt e não aceita --sample junto')
+    if args.doctor_output and (not args.doctor or 'tts' not in args.active_test):
+        parser.error('--doctor-output exige --doctor --active-test tts')
     if args.save_profile:
         from dataclasses import replace
         from .preferences import PreferenceStore
@@ -102,15 +107,14 @@ def main(argv=None):
         main_gui(c, auto=not args.manual_approve)
         return
     if args.doctor:
-        from .doctor import collect, active, human
+        from .doctor import collect, active, human, merge_active
         result = collect(c)
         for kind in dict.fromkeys(args.active_test):
-            event = active(c, kind, sample=args.sample, output=args.doctor_output,
+            event = active(c, kind, sample=args.sample if kind == 'stt' else None,
+                           corpus=args.doctor_corpus if kind == 'stt' else None,
+                           output=args.doctor_output if kind == 'tts' else None,
                            timeout=args.doctor_timeout)
-            result.setdefault('active_tests', []).append(event)
-            for check in result['checks']:
-                if check['id'] == kind:
-                    check['state'] = event['state']
+            merge_active(result, event)
         print(human(result) if args.doctor_format == 'human' else json.dumps(result, ensure_ascii=False, indent=2))
         if any(event['state'] == 'Falhou' for event in result.get('active_tests', [])):
             raise SystemExit(1)
