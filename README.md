@@ -115,3 +115,6 @@ veja [continuidade da captura e aceite de palmas](docs/ATIVACAO_PALMAS.md).
 O Doctor aceita corpus STT com referência consentida, diferencia texto produzido
 de referência conferida e publica WAVs completos sem sobrescrever destinos.
 Consulte [escopo dos testes ativos do Doctor](docs/DOCTOR_REFERENCIAS.md).
+
+Replay do fim de fala em WAV consentido, com VAD local e detecção de possível
+corte: [avaliação do endpoint](docs/AVALIACAO_ENDPOINT.md).

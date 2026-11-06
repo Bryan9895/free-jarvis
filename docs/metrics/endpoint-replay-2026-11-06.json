@@ -1,0 +1,255 @@
+{
+  "kind": "endpoint_replay_directed_synthetic_cases",
+  "capture_performed": false,
+  "playback_performed": false,
+  "cases": {
+    "original": {
+      "kind": "consented_endpoint_replay",
+      "schema_version": 1,
+      "state": "failed",
+      "corpus_sha256": "4477ce8eb9c5cbb0d27dca9f8d30b54950bb7add6ccec8ad7da71b7e5e836625",
+      "samples": [
+        {
+          "sha256": "22af247fbe03e2c302e5d600f55d44d44b06c3401b13093041f3f30db0f46765",
+          "source_kind": "synthetic",
+          "duration_class": null,
+          "duration_s": 4.365351473922902,
+          "rate": 22050,
+          "channels": 1,
+          "internal_quiet_800ms": false
+        }
+      ],
+      "human_coverage": {
+        "state": "pending",
+        "missing_duration_classes": [
+          3,
+          10,
+          25,
+          60
+        ],
+        "pause_800ms": false,
+        "numbers": false,
+        "negations": false
+      },
+      "measurements": [
+        {
+          "sample_index": 0,
+          "state": "failed",
+          "reason": "endpoint_not_reached",
+          "source_normalized_samples": 69846,
+          "retained_samples": 69846,
+          "retained_is_executable": false,
+          "first_source_activity_s": 0.0,
+          "last_source_activity_s": 4.319,
+          "endpoint_audio_s": null,
+          "endpoint_in_padding": false,
+          "source_activity_blocks_after_endpoint": 0,
+          "segment_pending": false,
+          "wall_s": 0.11401318699790863
+        }
+      ],
+      "settings": {
+        "silence_ms": 1000,
+        "max_seconds": 120,
+        "vad_threshold": 0.5,
+        "tail_silence_ms": 0,
+        "frame_ms": 80,
+        "normalized_rate": 16000
+      },
+      "activity_detector": "silero",
+      "audio_or_transcriptions_saved": false,
+      "defaults_changed": false,
+      "physical_bluetooth": "Não testado",
+      "stt_accuracy": "Não testado",
+      "wake_word": "Não testado",
+      "tool_execution": "Não testado",
+      "limits": "Replay sem relógio de captura: tempo de áudio difere de tempo de processamento. Atividade VAD após o endpoint sinaliza possível corte, não prova fala/intenção. Ausência de atividade tardia não comprova completude. EOF não finaliza um turno. Padding de silêncio, quando solicitado, é sintético. Não exercita dispositivo, filas, overflow, ativação ou retomada de segmentos. Último bloco/flush do arquivo pode diferir do stream contínuo."
+    },
+    "padded": {
+      "kind": "consented_endpoint_replay",
+      "schema_version": 1,
+      "state": "passed",
+      "corpus_sha256": "4477ce8eb9c5cbb0d27dca9f8d30b54950bb7add6ccec8ad7da71b7e5e836625",
+      "samples": [
+        {
+          "sha256": "22af247fbe03e2c302e5d600f55d44d44b06c3401b13093041f3f30db0f46765",
+          "source_kind": "synthetic",
+          "duration_class": null,
+          "duration_s": 4.365351473922902,
+          "rate": 22050,
+          "channels": 1,
+          "internal_quiet_800ms": false
+        }
+      ],
+      "human_coverage": {
+        "state": "pending",
+        "missing_duration_classes": [
+          3,
+          10,
+          25,
+          60
+        ],
+        "pause_800ms": false,
+        "numbers": false,
+        "negations": false
+      },
+      "measurements": [
+        {
+          "sample_index": 0,
+          "state": "passed",
+          "reason": "",
+          "source_normalized_samples": 69846,
+          "retained_samples": 85206,
+          "retained_is_executable": false,
+          "first_source_activity_s": 0.0,
+          "last_source_activity_s": 4.319,
+          "endpoint_audio_s": 5.325375,
+          "endpoint_in_padding": true,
+          "source_activity_blocks_after_endpoint": 0,
+          "segment_pending": false,
+          "wall_s": 0.14440519599884283
+        }
+      ],
+      "settings": {
+        "silence_ms": 1000,
+        "max_seconds": 120,
+        "vad_threshold": 0.5,
+        "tail_silence_ms": 1500,
+        "frame_ms": 80,
+        "normalized_rate": 16000
+      },
+      "activity_detector": "silero",
+      "audio_or_transcriptions_saved": false,
+      "defaults_changed": false,
+      "physical_bluetooth": "Não testado",
+      "stt_accuracy": "Não testado",
+      "wake_word": "Não testado",
+      "tool_execution": "Não testado",
+      "limits": "Replay sem relógio de captura: tempo de áudio difere de tempo de processamento. Atividade VAD após o endpoint sinaliza possível corte, não prova fala/intenção. Ausência de atividade tardia não comprova completude. EOF não finaliza um turno. Padding de silêncio, quando solicitado, é sintético. Não exercita dispositivo, filas, overflow, ativação ou retomada de segmentos. Último bloco/flush do arquivo pode diferir do stream contínuo."
+    },
+    "short_gap": {
+      "kind": "consented_endpoint_replay",
+      "schema_version": 1,
+      "state": "passed",
+      "corpus_sha256": "fca87851421c34c4ad4aef0f649f936e0517ae49eedf04bf955551c4daa42c65",
+      "samples": [
+        {
+          "sha256": "53b8e582574e8df13b59b03be64f0ecbd96e03e0ac3ddc728c39acc8148e7ec6",
+          "source_kind": "synthetic",
+          "duration_class": null,
+          "duration_s": 9.530702947845805,
+          "rate": 22050,
+          "channels": 1,
+          "internal_quiet_800ms": false
+        }
+      ],
+      "human_coverage": {
+        "state": "pending",
+        "missing_duration_classes": [
+          3,
+          10,
+          25,
+          60
+        ],
+        "pause_800ms": false,
+        "numbers": false,
+        "negations": false
+      },
+      "measurements": [
+        {
+          "sample_index": 0,
+          "state": "passed",
+          "reason": "",
+          "source_normalized_samples": 152492,
+          "retained_samples": 169132,
+          "retained_is_executable": false,
+          "first_source_activity_s": 0.0,
+          "last_source_activity_s": 9.519,
+          "endpoint_audio_s": 10.57075,
+          "endpoint_in_padding": true,
+          "source_activity_blocks_after_endpoint": 0,
+          "segment_pending": false,
+          "wall_s": 0.28056558199750725
+        }
+      ],
+      "settings": {
+        "silence_ms": 1000,
+        "max_seconds": 120,
+        "vad_threshold": 0.5,
+        "tail_silence_ms": 1500,
+        "frame_ms": 80,
+        "normalized_rate": 16000
+      },
+      "activity_detector": "silero",
+      "audio_or_transcriptions_saved": false,
+      "defaults_changed": false,
+      "physical_bluetooth": "Não testado",
+      "stt_accuracy": "Não testado",
+      "wake_word": "Não testado",
+      "tool_execution": "Não testado",
+      "limits": "Replay sem relógio de captura: tempo de áudio difere de tempo de processamento. Atividade VAD após o endpoint sinaliza possível corte, não prova fala/intenção. Ausência de atividade tardia não comprova completude. EOF não finaliza um turno. Padding de silêncio, quando solicitado, é sintético. Não exercita dispositivo, filas, overflow, ativação ou retomada de segmentos. Último bloco/flush do arquivo pode diferir do stream contínuo."
+    },
+    "long_gap": {
+      "kind": "consented_endpoint_replay",
+      "schema_version": 1,
+      "state": "failed",
+      "corpus_sha256": "fca87851421c34c4ad4aef0f649f936e0517ae49eedf04bf955551c4daa42c65",
+      "samples": [
+        {
+          "sha256": "2f1c6cb06bf13a0ad4b98af5600f1ddc9bce1958ca2c637860752c50943f9ce1",
+          "source_kind": "synthetic",
+          "duration_class": null,
+          "duration_s": 10.130702947845805,
+          "rate": 22050,
+          "channels": 1,
+          "internal_quiet_800ms": false
+        }
+      ],
+      "human_coverage": {
+        "state": "pending",
+        "missing_duration_classes": [
+          3,
+          10,
+          25,
+          60
+        ],
+        "pause_800ms": false,
+        "numbers": false,
+        "negations": false
+      },
+      "measurements": [
+        {
+          "sample_index": 0,
+          "state": "failed",
+          "reason": "activity_after_endpoint",
+          "source_normalized_samples": 162092,
+          "retained_samples": 85744,
+          "retained_is_executable": false,
+          "first_source_activity_s": 0.0,
+          "last_source_activity_s": 10.079,
+          "endpoint_audio_s": 5.359,
+          "endpoint_in_padding": false,
+          "source_activity_blocks_after_endpoint": 53,
+          "segment_pending": false,
+          "wall_s": 0.2885146039989195
+        }
+      ],
+      "settings": {
+        "silence_ms": 1000,
+        "max_seconds": 120,
+        "vad_threshold": 0.5,
+        "tail_silence_ms": 1500,
+        "frame_ms": 80,
+        "normalized_rate": 16000
+      },
+      "activity_detector": "silero",
+      "audio_or_transcriptions_saved": false,
+      "defaults_changed": false,
+      "physical_bluetooth": "Não testado",
+      "stt_accuracy": "Não testado",
+      "wake_word": "Não testado",
+      "tool_execution": "Não testado",
+      "limits": "Replay sem relógio de captura: tempo de áudio difere de tempo de processamento. Atividade VAD após o endpoint sinaliza possível corte, não prova fala/intenção. Ausência de atividade tardia não comprova completude. EOF não finaliza um turno. Padding de silêncio, quando solicitado, é sintético. Não exercita dispositivo, filas, overflow, ativação ou retomada de segmentos. Último bloco/flush do arquivo pode diferir do stream contínuo."
+    }
+  }
+}
