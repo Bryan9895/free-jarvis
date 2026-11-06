@@ -1,0 +1,19 @@
+{
+  "kind": "gui_setup_real_adapters",
+  "results": [
+    {
+      "operation": "engine",
+      "state": "OK",
+      "message": "Motor Local verificado. O perfil atual foi preservado."
+    },
+    {
+      "operation": "ollama",
+      "state": "Falhou",
+      "message": "Instalar Ollama falhou (URLError). Confira acesso à rede, espaço em disco e Python 3.14+ para o instalador Linux. O perfil anterior foi preservado."
+    }
+  ],
+  "profile": "fcc",
+  "capture_performed": false,
+  "playback_performed": false,
+  "inference_performed": false
+}

@@ -118,3 +118,6 @@ Consulte [escopo dos testes ativos do Doctor](docs/DOCTOR_REFERENCIAS.md).
 
 Replay do fim de fala em WAV consentido, com VAD local e detecção de possível
 corte: [avaliação do endpoint](docs/AVALIACAO_ENDPOINT.md).
+
+Para preparar o motor, servidor e modelos pela GUI, use Configurações →
+Configuração inicial. Veja o [fluxo guiado e suas pendências](docs/CONFIGURACAO_INICIAL.md).
