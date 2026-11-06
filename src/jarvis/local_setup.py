@@ -219,6 +219,74 @@ def status(*, root=None, python=''):
             'physical_audio': {'state': 'Não testado'}}
 
 
+def install_stt(model='small', *, token=None, progress=print):
+    if model not in ('tiny', 'base', 'small'):
+        raise ValueError('Escolha Whisper tiny, base ou small')
+    progress('Preparando pesos Whisper ' + model + ' para uso posterior offline…')
+    script = 'from faster_whisper.utils import download_model; import sys; download_model(sys.argv[1])'
+    _run([sys.executable, '-c', script, model], stage='Preparar Whisper',
+         token=token or CancellationToken())
+    return {'state': 'OK', 'model': model, 'inference': 'Não testado'}
+
+
+def pull_model(config, model, *, token=None, progress=print):
+    token = token or CancellationToken()
+    model, host = local_model(model), local_host(config.ollama_host)
+    from .ollama_setup import binary, root_path
+    ollama = binary()
+    if not ollama:
+        raise RuntimeError('Ollama ausente; instale-o antes de baixar pesos')
+    progress('Baixando pesos de ' + model + '; aguarde ou use Parar…')
+    _run([ollama, 'pull', model], stage='Baixar modelo', token=token, timeout=3600,
+         env={**_environment(), 'OLLAMA_HOST': host})
+    provider = OpenJarvisProvider(model=model, host=host, python=config.openjarvis_python)
+    try:
+        identity = provider._exchange({'operation': 'identity', 'model': model}, cancel_token=token)
+    finally:
+        provider.close()
+    root = root_path()
+    root.mkdir(parents=True, exist_ok=True)
+    with _installation_lock(root, token):
+        pointer = root / 'model-pins.json'
+        pins = json.loads(pointer.read_text()) if pointer.exists() else {}
+        pins[identity['model']] = identity
+        fd, name = tempfile.mkstemp(prefix='.model-pins-', dir=root)
+        try:
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(pins, stream, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            token.check()
+            os.replace(name, pointer)
+        finally:
+            Path(name).unlink(missing_ok=True)
+    return {'state': 'OK', 'model': model, 'download': 'completed',
+            'identity': identity, 'inference': 'Não testado'}
+
+
+def check(config, *, token=None):
+    token = token or CancellationToken()
+    provider = OpenJarvisProvider(model=config.local_model, host=local_host(config.ollama_host),
+                                 python=config.openjarvis_python)
+    try:
+        # Select/check through the cancellable exchange rather than initialize(),
+        # whose legacy API does not accept a cancellation token.
+        models = provider._exchange({'operation': 'models'}, cancel_token=token)
+        if config.local_model not in models:
+            raise ValueError('Modelo local ausente; baixe os pesos antes de testar')
+        provider._exchange({'operation': 'check', 'model': config.local_model}, cancel_token=token)
+        response = provider.stream_responses({'input': 'Responda apenas: teste local concluído.',
+            'max_output_tokens': 64}, cancel_token=token)
+        from .agent import _output_text
+        if not _output_text(response) or any(i.get('type') == 'function_call' for i in response.get('output', [])):
+            raise ValueError('Teste não retornou uma resposta textual completa')
+        token.check()
+        return {'state': 'OK', 'model': provider.active_model, 'inference': 'verified',
+                'external_network_block': 'Não testado', 'physical_audio': 'Não testado'}
+    finally:
+        provider.close()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='jarvis-fcc local', description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -250,9 +318,7 @@ def main(argv=None):
             from .ollama_setup import install as install_ollama
             result = install_ollama(token=token, progress=lambda text: print(text, file=sys.stderr, flush=True))
         elif args.command == 'install-stt':
-            script = 'from faster_whisper.utils import download_model; import sys; download_model(sys.argv[1])'
-            _run([sys.executable, '-c', script, args.model], stage='Preparar Whisper', token=token)
-            result = {'state': 'OK', 'model': args.model, 'inference': 'Não testado'}
+            result = install_stt(args.model, token=token, progress=lambda text: print(text, file=sys.stderr, flush=True))
         else:
             from .config import Config
             config = Config.from_env()
@@ -262,43 +328,10 @@ def main(argv=None):
                 serve(host, token=token)
                 return
             if args.command == 'pull-model':
-                model = local_model(args.model)
-                from .ollama_setup import binary
-                ollama = binary()
-                if not ollama:
-                    raise RuntimeError('Ollama ausente; instale pelo guia oficial antes de baixar pesos')
-                env = {**_environment(), 'OLLAMA_HOST': host}
-                _run([ollama, 'pull', model], stage='Baixar modelo', token=token, timeout=3600, env=env)
-                provider = OpenJarvisProvider(model=model, host=host, python=config.openjarvis_python)
-                identity = provider._exchange({'operation': 'identity', 'model': model}, cancel_token=token)
-                from .ollama_setup import root_path
-                root = root_path()
-                root.mkdir(parents=True, exist_ok=True)
-                with _installation_lock(root, token):
-                    pointer = root / 'model-pins.json'
-                    pins = json.loads(pointer.read_text()) if pointer.exists() else {}
-                    pins[identity['model']] = identity
-                    fd, name = tempfile.mkstemp(prefix='.model-pins-', dir=root)
-                    try:
-                        with os.fdopen(fd, 'w') as stream:
-                            json.dump(pins, stream, indent=2)
-                            stream.flush()
-                            os.fsync(stream.fileno())
-                        os.replace(name, pointer)
-                    finally:
-                        Path(name).unlink(missing_ok=True)
-                result = {'state': 'OK', 'model': model, 'download': 'completed',
-                          'identity': identity, 'inference': 'Não testado'}
+                result = pull_model(config, args.model, token=token,
+                                    progress=lambda text: print(text, file=sys.stderr, flush=True))
             else:
-                provider = OpenJarvisProvider(model=config.local_model, host=host, python=config.openjarvis_python)
-                provider.initialize()
-                response = provider.stream_responses({'input': 'Responda apenas: teste local concluído.',
-                    'max_output_tokens': 64}, cancel_token=token)
-                from .agent import _output_text
-                if not _output_text(response) or any(i.get('type') == 'function_call' for i in response.get('output', [])):
-                    raise ValueError('Teste não retornou uma resposta textual completa')
-                result = {'state': 'OK', 'model': provider.active_model, 'inference': 'verified',
-                          'external_network_block': 'Não testado', 'physical_audio': 'Não testado'}
+                result = check(config, token=token)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except KeyboardInterrupt:
         token.cancel()

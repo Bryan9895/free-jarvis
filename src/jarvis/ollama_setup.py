@@ -117,19 +117,23 @@ def install(*, token=None, progress=print):
                 shutil.rmtree(destination, ignore_errors=True)
 
 
-def serve(host, *, token=None):
+def server_environment(host):
     from .local_provider import local_host
     from .local_setup import _environment
-    executable = binary()
-    if not executable:
-        raise ValueError('Execute jarvis-fcc local install-ollama primeiro')
     root = root_path()
     home, models = root / 'home', root / 'models'
     home.mkdir(parents=True, exist_ok=True)
     models.mkdir(parents=True, exist_ok=True)
-    env = {**_environment(), 'HOME': str(home), 'OLLAMA_HOST': local_host(host),
+    return {**_environment(), 'HOME': str(home), 'OLLAMA_HOST': local_host(host),
            'OLLAMA_MODELS': str(models), 'OLLAMA_NO_CLOUD': '1', 'OLLAMA_MAX_LOADED_MODELS': '1',
            'OLLAMA_NUM_PARALLEL': '1', 'CUDA_VISIBLE_DEVICES': '-1'}
+
+
+def serve(host, *, token=None):
+    executable = binary()
+    if not executable:
+        raise ValueError('Execute jarvis-fcc local install-ollama primeiro')
+    env = server_environment(host)
     print('Iniciando Ollama em primeiro plano; use Ctrl+C para encerrar.', flush=True)
     _run([executable, 'serve'], stage='Servidor Ollama', token=token or CancellationToken(),
          timeout=86400, env=env)
