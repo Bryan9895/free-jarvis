@@ -685,3 +685,37 @@ novas permissões ou mudança do modelo/voz padrão. Ensaios Bluetooth com palma
 teclado, batidas, ruído, fala, áudio próprio e repetições permanecem pendentes,
 assim como Kokoro real, Jarvis isolado e turnos físicos offline.
 Detalhes em [ATIVACAO_PALMAS.md](ATIVACAO_PALMAS.md).
+
+## Próxima etapa: Doctor com referência e limpeza — 06/11/2026
+
+Base `934170b6498c623e1aa4038f88e40a29e07b1a99`.
+
+- `07b707849a2e978dd4e9c77a1cb86191cc51bdb7`: comparação STT com corpus
+  consentido, estados separados de configuração/síntese e limpeza dos processos
+  e temporários; publicação exclusiva de WAV completo pelo processo pai.
+- `9ab103b51a1593d8e3f326f4f56d272d4b52eee4`: procedimento e métricas reais
+  sanitizadas em `DOCTOR_REFERENCIAS.md`.
+
+**Automação: passou.** 576 testes isolados em 58,690 s e 595 integrados em
+65,595 s, com um ignorado em cada suíte. Após o ajuste final dos metadados do
+WAV, os 13 testes específicos passaram novamente e a suíte integrada cobriu
+a versão final. Compilação e `git diff --check` passaram. As 11 alterações
+locais de equipe foram preservadas; quatro arquivos novos conferidos byte a
+byte e stash de backup mantido.
+
+O ensaio controlado com subprocessos reais confirmou que o timeout encerra o
+Doctor e seu worker Kokoro herdado, sem carregar modelo ou executar áudio.
+Outros casos verificam remoção de temporários, recusa de saída parcial e
+preservação de destino criado concorrentemente.
+
+**Áudio sintético dirigido: referência STT falhou.** Whisper small produziu
+texto, mas registrou WER 0,3846 e critério crítico reprovado, sem erro de
+execução. Isso não mede fala humana ou entendimento semântico. O teste Piper
+passou para geração e publicação de WAV completo: 56.832 frames, mono,
+22.050 Hz; áudio audível não testado. Sem captura de microfone ou reprodução.
+
+**Aceite físico: pendente.** Faltam corpus humano consentido, Bluetooth,
+Jarvis isolado, provisionamento e ensaios reais Ollama/Kokoro e jornada offline.
+Nenhuma preferência de modelo/voz, autorização ou configuração de rede mudou.
+Evidência: [Doctor](DOCTOR_REFERENCIAS.md) e
+[relatório sanitizado](metrics/doctor-functional-2026-11-06.json).
