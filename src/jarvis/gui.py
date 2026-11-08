@@ -12,7 +12,7 @@ from queue import Empty, Queue
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from dataclasses import replace as dataclass_replace
 
 from .config import Config
@@ -497,8 +497,9 @@ class AdamWindow:
         self.events.put(("phase", "parado"))
 
     def settings(self):
-        """Preferências editáveis e persistentes, sem guardar credenciais."""
+        """Configurações nativas, em abas e sem guardar chaves privadas."""
         from .preferences import PreferenceStore
+        from .voice_presets import VOICE_PRESETS, VOICE_PRESETS_BY_ID
         if self.dialog is not None and self.dialog.winfo_exists():
             self.dialog.lift()
             return
@@ -509,37 +510,92 @@ class AdamWindow:
         self.dialog = dialog
         dialog.configure(bg="#101015")
         dialog.title("ADAM · Configurações")
-        dialog.resizable(False, False)
-        dialog.geometry("560x560")
+        dialog.geometry("605x640")
+        dialog.minsize(540, 570)
         dialog.transient(self.root)
-        f = tk.Frame(dialog, bg="#101015", padx=25, pady=17)
-        f.pack(fill="both", expand=True)
+        base = tk.Frame(dialog, bg="#101015", padx=20, pady=16)
+        base.pack(fill="both", expand=True)
+        tabs = ttk.Notebook(base)
+        tabs.pack(fill="both", expand=True, pady=(0, 12))
+        intelligence = tk.Frame(tabs, bg="#101015", padx=16, pady=18)
+        voice_tab = tk.Frame(tabs, bg="#101015", padx=16, pady=18)
+        persona_tab = tk.Frame(tabs, bg="#101015", padx=16, pady=18)
+        tabs.add(intelligence, text="Inteligência")
+        tabs.add(voice_tab, text="Voz")
+        tabs.add(persona_tab, text="Personalidade")
 
-        def field(label, value):
-            tk.Label(f, text=label, fg="#d6d6e1", bg="#101015",
-                     font=("DejaVu Sans", 10)).pack(anchor="w")
-            entry = tk.Entry(f, bg="#23232a", fg="#fff", insertbackground="#fff",
+        def label(parent, value, *, color="#dddde7"):
+            return tk.Label(parent, text=value, bg="#101015", fg=color,
+                            font=("DejaVu Sans", 10), wraplength=510,
+                            justify="left")
+
+        def field(parent, name, value):
+            label(parent, name).pack(anchor="w", pady=(4, 2))
+            entry = tk.Entry(parent, bg="#23232a", fg="#fff", insertbackground="#fff",
                              relief="flat", font=("DejaVu Sans", 11))
             entry.insert(0, str(value))
-            entry.pack(fill="x", ipady=4, pady=(3, 9))
+            entry.pack(fill="x", ipady=5, pady=(0, 10))
             return entry
 
-        tk.Label(f, text="Perfil de inteligência", bg="#101015", fg="#fff",
-                 font=("DejaVu Sans", 14, "bold")).pack(anchor="w", pady=(0, 6))
+        label(intelligence, "Modelo principal").pack(anchor="w")
         profile = tk.StringVar(value=current.inference_profile)
-        tk.OptionMenu(f, profile, "fcc", "local").pack(anchor="w")
-        model = field("Modelo FCC (ID; vazio = automático)", current.conversation_model)
-        local_model = field("Modelo local Ollama (somente perfil local)", current.local_model)
-        tk.Label(f, text="Voz ElevenLabs · chave somente em ELEVENLABS_API_KEY",
-                 fg="#c8c8d2", bg="#101015", font=("DejaVu Sans", 10, "bold")).pack(anchor="w")
-        voice_id = field("ID da voz", current.elevenlabs_voice_id)
-        tts_model = field("Modelo de TTS", current.elevenlabs_model_id)
-        speed = field("Velocidade (0.7 a 1.2)", current.elevenlabs_speed)
-        persona = field("Arquivo de personalidade (opcional)", current.persona_file)
-        tk.Label(f, text="Microfone: segure ESPAÇO e solte para enviar. Escuta contínua desativada.",
-                 bg="#101015", fg="#c8c8d2", wraplength=510).pack(anchor="w")
-        tk.Label(f, text="Perfil/modelo local exigem reiniciar o ADAM. A chave nunca é salva.",
-                 bg="#101015", fg="#9696a5", wraplength=510).pack(anchor="w", pady=(9, 5))
+        tk.OptionMenu(intelligence, profile, "fcc", "local").pack(anchor="w")
+        model = field(intelligence, "Modelo FCC (vazio = automático)", current.conversation_model)
+        local_model = field(intelligence, "Modelo Ollama (perfil local)", current.local_model)
+        label(intelligence,
+              "FCC continua padrão. Alterações de perfil exigem reiniciar o ADAM.",
+              color="#a1a1ac").pack(anchor="w", pady=(8, 0))
+
+        label(voice_tab, "Voz sintética ElevenLabs — sem imitação exata de ator",
+              color="#e2d5c8").pack(anchor="w", pady=(0, 8))
+        voice_label = tk.StringVar(value=VOICE_PRESETS_BY_ID.get(
+            current.elevenlabs_voice_id, "ID personalizado"))
+        presets = ["ID personalizado"] + list(VOICE_PRESETS)
+        tk.OptionMenu(voice_tab, voice_label, *presets).pack(anchor="w")
+        voice_id = field(voice_tab, "ID da voz (requer acesso no ElevenLabs)",
+                         current.elevenlabs_voice_id)
+        def select_voice(*_):
+            selected = VOICE_PRESETS.get(voice_label.get())
+            if selected:
+                voice_id.delete(0, "end")
+                voice_id.insert(0, selected)
+        voice_label.trace_add("write", select_voice)
+
+        tts_model = field(voice_tab, "Modelo TTS (Flash = rápido; multilingual_v2 = qualidade)",
+                          current.elevenlabs_model_id)
+        speed = field(voice_tab, "Velocidade (0.7 até 1.2)", current.elevenlabs_speed)
+
+        volume = tk.DoubleVar(value=round(current.speech_volume * 100))
+        label(voice_tab, "Volume somente do ADAM (%)", color="#f0dec3").pack(anchor="w")
+        tk.Scale(voice_tab, from_=0, to=100, orient="horizontal",
+                 variable=volume, bg="#101015", fg="#eeeeee", relief="flat",
+                 troughcolor="#393944", highlightthickness=0).pack(fill="x")
+
+        stability = tk.DoubleVar(value=current.elevenlabs_stability)
+        label(voice_tab, "Estabilidade (menor = mais expressiva)").pack(anchor="w")
+        tk.Scale(voice_tab, from_=0, to=1, resolution=.05, orient="horizontal",
+                 variable=stability, bg="#101015", fg="#eee",
+                 highlightthickness=0).pack(fill="x")
+        similarity = tk.DoubleVar(value=current.elevenlabs_similarity)
+        label(voice_tab, "Semelhança com a voz sintética selecionada").pack(anchor="w")
+        tk.Scale(voice_tab, from_=0, to=1, resolution=.05, orient="horizontal",
+                 variable=similarity, bg="#101015", fg="#eee",
+                 highlightthickness=0).pack(fill="x")
+        label(voice_tab, "Chave: ELEVENLABS_API_KEY no ambiente. "
+              "Algumas vozes precisam ser adicionadas à sua biblioteca.",
+              color="#a1a1ac").pack(anchor="w", pady=(8, 0))
+
+        label(persona_tab, "Como o ADAM deve falar", color="#f0dec3").pack(anchor="w")
+        style = tk.StringVar(value=current.personality_style)
+        tk.OptionMenu(persona_tab, style, "cinematic", "natural", "technical").pack(anchor="w")
+        label(persona_tab, "cinematic: discreto e espirituoso · natural: informal "
+              "sem bordões · technical: objetivo.",
+              color="#a1a1ac").pack(anchor="w", pady=(8, 14))
+        persona = field(persona_tab, "Arquivo de personalidade (.md, opcional)",
+                        current.persona_file)
+        label(persona_tab, "Modelo editável: docs/ADAM_PERSONA_EXEMPLO.md. "
+              "Falas curtas, naturais e sem saudações repetidas.",
+              color="#a1a1ac").pack(anchor="w", pady=(8, 0))
 
         def save():
             if self.turn_lock.locked() or self.capturing.is_set():
@@ -548,11 +604,16 @@ class AdamWindow:
             try:
                 new = dataclass_replace(
                     pref, inference_profile=profile.get(),
-                    conversation_model=model.get().strip(), local_model=local_model.get().strip(),
+                    conversation_model=model.get().strip(),
+                    local_model=local_model.get().strip(),
                     elevenlabs_voice_id=voice_id.get().strip(),
                     elevenlabs_model_id=tts_model.get().strip(),
                     elevenlabs_speed=float(speed.get().strip()),
-                    persona_file=persona.get().strip(), voice_mode="manual",
+                    elevenlabs_stability=float(stability.get()),
+                    elevenlabs_similarity=float(similarity.get()),
+                    speech_volume=float(volume.get()) / 100,
+                    personality_style=style.get(),
+                    persona_file=persona.get().strip(),
                 ).validate()
                 store.save(new)
             except (ValueError, OSError) as exc:
@@ -561,14 +622,18 @@ class AdamWindow:
             self.voice.elevenlabs_voice_id = new.elevenlabs_voice_id
             self.voice.elevenlabs_model_id = new.elevenlabs_model_id
             self.voice.elevenlabs_speed = new.elevenlabs_speed
-            self.voice.silence_seconds = new.silence_ms / 1000
+            self.voice.elevenlabs_stability = new.elevenlabs_stability
+            self.voice.elevenlabs_similarity = new.elevenlabs_similarity
+            self.voice.speech_volume = new.speech_volume
             if new.inference_profile == self.config.profile and new.conversation_model:
                 self.jobs.put(("model", new.conversation_model))
-            self.warning.set("Preferências salvas. Reinicie para trocar perfil, modelo local ou variáveis de ambiente.")
+            self.warning.set("Volume, voz e personalidade atualizados. "
+                             "Trocar perfil de IA exige reiniciar.")
             dialog.destroy()
 
-        tk.Button(f, text="Salvar", command=save, bg="#454552", fg="#fff",
-                  relief="flat", padx=16, pady=8).pack(anchor="e", pady=(4, 0))
+        tk.Button(base, text="Salvar configurações", command=save,
+                  bg="#454552", fg="#fff", relief="flat",
+                  padx=17, pady=9).pack(anchor="e")
 
     def close(self):
         self.closed.set()
