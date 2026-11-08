@@ -151,3 +151,19 @@ A chave ElevenLabs deve ser criada **na sua conta** em Developers → API Keys,
 com permissão Text to Speech e limite de créditos recomendado. O script
 solicita a chave sem ecoar sua digitação e a entrega apenas ao processo ADAM;
 não grava credenciais em disco. Sem chave, a voz falada não será produzida.
+
+### Voz e personalidade cinematográfica (Tkinter)
+
+Na engrenagem, a aba **Voz** oferece predefinições Adam/Adryan/Lucas/Cássio,
+velocidade, estabilidade e **volume de 0 a 100%**. O volume atua apenas no
+WAV reproduzido pelo ADAM, não no microfone nem no volume global do Ubuntu.
+Os IDs das três vozes adicionais foram consultados no projeto público
+`matheustillimt-tech/jarvis`; a biblioteca ElevenLabs da sua conta precisa
+dar acesso a cada ID escolhido. Não há cópia da voz de um ator do filme.
+
+A aba **Personalidade** oferece os estilos `cinematic`, `natural` e
+`technical`, mais arquivo de instruções pessoais, seguindo o padrão do
+projeto de referência. Copie `docs/ADAM_PERSONA_EXEMPLO.md` para personalizar.
+A configuração é persistida em `~/.config/jarvis-fcc/preferences.json`, sem
+armazenar a chave privada. Para substituir volume temporariamente, use
+`ADAM_VOICE_VOLUME=0.4 adam --gui`.
