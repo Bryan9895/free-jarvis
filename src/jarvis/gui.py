@@ -271,6 +271,12 @@ class AdamWindow:
     def _on_command(self, message):
         return self._enqueue(message)
 
+    def _on_text_delta(self, delta):
+        # Carimbar na thread do FCC, não quando o Tk processar a fila.
+        if delta.strip() and self._first_text_at is None:
+            self._first_text_at = time.monotonic()
+        self.events.put(("delta", delta))
+
     def _on_mic_level(self, metrics):
         self.events.put(("mic_level", metrics.get("rms", 0.)))
 
@@ -399,7 +405,7 @@ class AdamWindow:
                 )
                 self.controller.run(
                     value, voice=self.voice if self.voice_enabled else None,
-                    on_text=lambda delta: self.events.put(("delta", delta)),
+                    on_text=self._on_text_delta,
                     display=lambda answer: self.events.put(("answer", answer)),
                 )
             except Exception as exc:
@@ -433,8 +439,6 @@ class AdamWindow:
                 self.result.set("")
                 self._state("pensando")
             elif kind == "delta":
-                if self._first_text_at is None and value.strip():
-                    self._first_text_at = time.monotonic()
                 self.result.set((self.result.get() + value)[-1600:])
             elif kind == "answer":
                 self.result.set(value[-1600:])
