@@ -307,14 +307,15 @@ class VoiceIO:
         finally:
             recording.unlink(missing_ok=True)
 
-    def record_turn(self, *, cancel=None, finish=None, on_level=None, continue_pending=False):
+    def record_turn(self, *, cancel=None, finish=None, on_level=None, on_status=None, continue_pending=False):
         """Botão usa o mesmo endpoint do contínuo, sem janela fixa de pedido."""
         try:
             import numpy as np
             import sounddevice as sd
         except ImportError as exc:
             raise VoiceError("Instale: pip install -e '.[voice]'") from exc
-        listener = WakeWordConversation(self, lambda _: None, silence_seconds=self.silence_seconds)
+        listener = WakeWordConversation(self, lambda _: None, silence_seconds=self.silence_seconds,
+                                        on_status=on_status or (lambda _: None))
         self._continue_pending = continue_pending
         if cancel is not None:
             listener._stop = cancel
@@ -397,13 +398,34 @@ class WakeWordConversation:
         return self._thread is None or not self._thread.is_alive()
 
     def pause(self, timeout=0):
+        # A captura pode estar preparando o VAD, e _capture_idle pode ser
+        # marcado ligeiramente antes de exclusive_capture liberar o lock.
+        # Nunca entregar o microfone manual antes de ambas as barreiras.
+        started = time.monotonic()
         with self._capture_guard:
             self._generation += 1
             self._resume.clear()
-        return self._capture_idle.wait(timeout)
+        if not self._capture_idle.wait(timeout):
+            return False
+        remaining = max(0., timeout - (time.monotonic() - started))
+        if not _capture_owner.acquire(timeout=remaining):
+            return False
+        _capture_owner.release()
+        return True
 
     def resume(self):
         self._resume.set()
+
+    def resume_or_restart(self):
+        # Stop interrompe a thread de wake definitivamente; resume() sozinho
+        # não a recupera. Só reiniciar após verificar que a thread parou.
+        if self._stop.is_set():
+            if self._thread is not None and self._thread.is_alive():
+                return False
+            self.start()
+        else:
+            self.resume()
+        return True
 
     def _run(self):
         try:

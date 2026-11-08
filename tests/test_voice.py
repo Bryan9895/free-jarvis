@@ -105,6 +105,29 @@ class VoiceTests(unittest.TestCase):
         finally:
             recording.unlink()
 
+    def test_pause_waits_until_global_capture_lock_is_released(self):
+        import threading
+        lock = threading.Lock()
+        lock.acquire()
+        listener = WakeWordConversation(VoiceIO(), lambda _: None)
+        with patch("jarvis.voice._capture_owner", lock):
+            self.assertFalse(listener.pause(timeout=.01))
+            lock.release()
+            self.assertTrue(listener.pause(timeout=.2))
+
+    def test_resume_or_restart_after_stop_and_live_thread(self):
+        import threading
+        listener = WakeWordConversation(VoiceIO(), lambda _: None)
+        listener._stop.set()
+        with patch.object(listener, "start") as start:
+            listener._thread = Mock()
+            listener._thread.is_alive.return_value = True
+            self.assertFalse(listener.resume_or_restart())
+            start.assert_not_called()
+            listener._thread.is_alive.return_value = False
+            self.assertTrue(listener.resume_or_restart())
+            start.assert_called_once()
+
     def test_paused_listener_does_not_open_microphone(self):
         import numpy as np
         backend = Mock()

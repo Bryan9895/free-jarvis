@@ -182,10 +182,10 @@ class AdamWindow:
         button = dict(bg="#141419", fg="#ececf3", activebackground="#292931",
                       activeforeground="#ffffff", bd=0, relief="flat", font=("DejaVu Sans", 10),
                       cursor="hand2", padx=14, pady=8)
-        self.mic_button = tk.Button(actions, text="Segure para falar", **button)
+        # Clique para iniciar; o fim de fala também é automático via VAD.
+        # Segundo clique conclui a gravação. Espaço continua push-to-talk.
+        self.mic_button = tk.Button(actions, text="Falar", command=self._click_to_talk, **button)
         self.mic_button.pack(side="left", padx=5)
-        self.mic_button.bind("<ButtonPress-1>", self._press)
-        self.mic_button.bind("<ButtonRelease-1>", self._release)
         self.listen_button = tk.Button(actions, text="Desativar escuta", command=self.toggle_listen, **button)
         self.listen_button.pack(side="left", padx=5)
         if not self.voice_enabled:
@@ -195,7 +195,7 @@ class AdamWindow:
         tk.Button(actions, text="⚙", command=self.settings, **button).pack(side="left", padx=5)
 
         tk.Label(bottom,
-                 text="Diga “Adam” · segure ESPAÇO para falar · T digitar · H detalhes · ESC cancelar",
+                 text="Diga “Adam” · clique Falar para gravar · ESPAÇO segurar · T digitar · H detalhes · ESC cancelar",
                  bg="#000000", fg="#4e4e5a", font=("DejaVu Sans", 9)).pack(pady=(14, 0))
 
         root.bind("<KeyPress-space>", self._press)
@@ -301,10 +301,22 @@ class AdamWindow:
         self._state("parado")
 
     def toggle_listen(self):
+        if self.capturing.is_set():
+            self.warning.set("Conclua a gravação antes de alterar a escuta contínua.")
+            return
         if self.listener is None:
             self.start_listen()
         else:
             self.stop_listen()
+
+    def _click_to_talk(self):
+        if self.capturing.is_set():
+            self.capture_finish.set()
+            self.mic_button.configure(text="Finalizando…")
+            return
+        self._press()
+        if self.capturing.is_set():
+            self.mic_button.configure(text="Encerrar fala")
 
     def _press(self, event=None):
         if event is not None and getattr(event, "keysym", "") == "space":
@@ -322,7 +334,7 @@ class AdamWindow:
         self.capture_finish.clear()
         self.capturing.set()
         threading.Thread(target=self._record, daemon=True, name="adam-record").start()
-        self._state("ouvindo")
+        self._state("preparando_microfone", "liberando microfone…")
         return "break"
 
     def _release(self, _event=None):
@@ -335,11 +347,25 @@ class AdamWindow:
         listener = self.listener
         try:
             if listener is not None and not listener.pause(timeout=2.):
-                raise RuntimeError("A escuta ainda ocupa o microfone.")
+                # VAD inicial ainda pode estar carregando na thread contínua.
+                # Stop é cooperativo; só prosseguir com a captura quando a
+                # thread parou E o lock global de áudio foi liberado.
+                self.events.put(("phase", "liberando_microfone"))
+                if not listener.stop(timeout=10.):
+                    raise RuntimeError("O microfone não foi liberado pela escuta contínua. "
+                                       "Desative a escuta e tente novamente.")
+                from .voice import _capture_owner
+                if not _capture_owner.acquire(timeout=2.):
+                    raise RuntimeError("Outra captura ainda utiliza o microfone.")
+                _capture_owner.release()
+            if self.capture_cancel.is_set() or self.closed.is_set():
+                return
+            self.events.put(("phase", "ouvindo"))
             recording = self.voice.record_turn(
                 cancel=self.capture_cancel,
                 finish=self.capture_finish,
                 on_level=self._on_mic_level,
+                on_status=lambda status: self.events.put(("manual_status", status)),
             )
             self.events.put(("phase", "transcrevendo"))
             message = self.voice.transcribe(recording)
@@ -356,10 +382,12 @@ class AdamWindow:
             if recording is not None:
                 recording.unlink(missing_ok=True)
             self.capturing.clear()
-            if listener is not None and not self.turn_lock.locked():
-                listener.resume()
+            self.events.put(("manual_done", None))
+            if (listener is not None and self.listener is listener
+                    and not self.turn_lock.locked() and not self.closed.is_set()):
+                listener.resume_or_restart()
             if not self.turn_lock.locked():
-                self.events.put(("phase", "parado"))
+                self.events.put(("phase", "aguardando_ativacao" if self.listener else "parado"))
 
     def _ask_approval(self, message):
         """Solicita permissão na thread Tk. Nunca mostra messagebox no worker."""
@@ -415,8 +443,8 @@ class AdamWindow:
                 if kind == "ask":
                     if self.turn_lock.locked():
                         self.turn_lock.release()
-                    if self.listener is not None:
-                        self.listener.resume()
+                    if self.listener is not None and not self.capturing.is_set():
+                        self.listener.resume_or_restart()
                 if kind == "ask" and self._turn_started_at is not None:
                     took = round((time.monotonic() - self._turn_started_at) * 1000)
                     if self._first_text_at is not None:
@@ -445,6 +473,8 @@ class AdamWindow:
             elif kind == "phase":
                 if value == "executando":
                     self._state("pensando")
+                elif value == "liberando_microfone":
+                    self._state("preparando_microfone", "aguardando liberação do microfone…")
                 elif value in ("falando", "ouvindo", "transcrevendo", "parado",
                                "aguardando_ativacao", "aguardando_seguimento"):
                     self._state(value)
@@ -452,6 +482,11 @@ class AdamWindow:
                 self.orb.set_level(min(1., float(value) * 14))
             elif kind == "output_level":
                 self.orb.set_level(value)
+            elif kind == "manual_status":
+                self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
+                            value[:85])
+            elif kind == "manual_done":
+                self.mic_button.configure(text="Falar")
             elif kind == "listen_status":
                 if "indisponível" in value or "Falha" in value or "Descartado" in value:
                     self._state("parado", value[:86])
