@@ -13,6 +13,7 @@ import threading
 import time
 import tkinter as tk
 from tkinter import messagebox
+from dataclasses import replace as dataclass_replace
 
 from .config import Config
 
@@ -32,6 +33,7 @@ class ParticleSphere(tk.Canvas):
         self.angular_speed = 0.01
         self.particles = []
         self.items = []
+        self.item_colors = [None] * self.count
         self.palette = [
             "#101014", "#16161c", "#1f1f25", "#292932",
             "#363640", "#444450", "#575763", "#6c6c79",
@@ -90,7 +92,9 @@ class ParticleSphere(tk.Canvas):
             point = self.items[index]
             self.coords(point, px - size, py - size, px + size, py + size)
             color = self.palette[min(len(self.palette) - 1, int(depth ** 1.7 * (len(self.palette) - 1)))]
-            self.itemconfigure(point, fill=color)
+            if color != self.item_colors[index]:
+                self.itemconfigure(point, fill=color)
+                self.item_colors[index] = color
         self.after(self.delay, self._frame)
 
 
@@ -102,6 +106,9 @@ class AdamWindow:
         self.root, self.config, self.auto = root, config, auto
         self.events = Queue()
         self.jobs = Queue()
+        self.voice_enabled = os.getenv("JARVIS_GUI_VOICE", "1") != "0"
+        self._turn_started_at = None
+        self._first_text_at = None
         self.voice = VoiceIO()
         # Modelo acústico treinado para Jarvis não é compatível com Adam.
         # Usar fallback por transcrição até existir artefato Adam validado.
@@ -117,7 +124,7 @@ class AdamWindow:
         self.capture_finish = threading.Event()
         self.capturing = threading.Event()
         self.closed = threading.Event()
-        self.details = False
+        self.details = not self.voice_enabled
         self._last_mic = 0.
         self.active = "parado"
         self.dialog = None
@@ -132,6 +139,9 @@ class AdamWindow:
         tk.Label(top, text="A D A M", bg="#000000", fg="#eeeeee",
                  font=("DejaVu Sans", 15, "bold")).pack(side="left")
         self.status = tk.StringVar(value="iniciando · FCC")
+        self.warning = tk.StringVar(value="")
+        if self.voice_enabled and not os.getenv("ELEVENLABS_API_KEY", "").strip():
+            self.warning.set("Sem ELEVENLABS_API_KEY: o texto funciona, mas a voz ficará muda.")
         tk.Label(top, textvariable=self.status, bg="#000000", fg="#888891",
                  font=("DejaVu Sans", 10)).pack(side="right")
 
@@ -149,8 +159,9 @@ class AdamWindow:
                                      font=("DejaVu Sans", 15), wraplength=830, justify="center")
         self.caption_label.pack(fill="x", pady=(0, 4))
         self.answer_label.pack(fill="x", pady=(0, 12))
-        self.caption_label.pack_forget()
-        self.answer_label.pack_forget()
+        if not self.details:
+            self.caption_label.pack_forget()
+            self.answer_label.pack_forget()
         self.text_frame = tk.Frame(bottom, bg="#000000")
         self.entry = tk.Entry(self.text_frame, bg="#15151a", fg="#f4f4fa",
                               insertbackground="#ffffff", relief="flat",
@@ -159,6 +170,8 @@ class AdamWindow:
         self.entry.bind("<Return>", self._submit_entry)
         self.entry.bind("<Escape>", lambda _: self._toggle_text(False))
 
+        tk.Label(bottom, textvariable=self.warning, bg="#000000", fg="#f0ad71",
+                 font=("DejaVu Sans", 9), wraplength=850).pack(pady=(2, 5))
         actions = tk.Frame(bottom, bg="#000000")
         actions.pack(pady=(8, 0))
         button = dict(bg="#141419", fg="#ececf3", activebackground="#292931",
@@ -170,6 +183,9 @@ class AdamWindow:
         self.mic_button.bind("<ButtonRelease-1>", self._release)
         self.listen_button = tk.Button(actions, text="Desativar escuta", command=self.toggle_listen, **button)
         self.listen_button.pack(side="left", padx=5)
+        if not self.voice_enabled:
+            self.mic_button.configure(state="disabled")
+            self.listen_button.configure(state="disabled")
         tk.Button(actions, text="Parar", command=self.stop, **button).pack(side="left", padx=5)
         tk.Button(actions, text="⚙", command=self.settings, **button).pack(side="left", padx=5)
 
@@ -185,7 +201,7 @@ class AdamWindow:
         self.worker = threading.Thread(target=self._work, daemon=True, name="adam-core")
         self.worker.start()
         self.root.after(70, self._poll)
-        if PreferenceStore().load().effective().voice_mode == "continuous":
+        if self.voice_enabled and PreferenceStore().load().effective().voice_mode == "continuous":
             self.root.after(150, self.start_listen)
         else:
             self.listen_button.configure(text="Ativar escuta")
@@ -229,6 +245,8 @@ class AdamWindow:
         if not self.turn_lock.acquire(blocking=False):
             self.events.put(("error", "ADAM já está atendendo a um pedido. Use Parar para interromper."))
             return False
+        self._turn_started_at = time.monotonic()
+        self._first_text_at = None
         self.events.put(("request", str(message)))
         self.jobs.put(("ask", str(message)))
         return True
@@ -240,7 +258,7 @@ class AdamWindow:
         self.events.put(("mic_level", metrics.get("rms", 0.)))
 
     def start_listen(self):
-        if self.listener is not None or self.closed.is_set():
+        if not self.voice_enabled or self.listener is not None or self.closed.is_set():
             return
         from .voice import WakeWordConversation
         self.listener = WakeWordConversation(
@@ -271,8 +289,12 @@ class AdamWindow:
                 return
             if getattr(event, "type", None) == "2" and self.capturing.is_set():
                 return "break"
-        if self.capturing.is_set() or self.turn_lock.locked():
+        if not self.voice_enabled or self.capturing.is_set():
             return "break"
+        if self.turn_lock.locked():
+            # Barge-in manual: cancela a resposta antes de reabrir o microfone.
+            # Não é detector acústico de interrupção; requer segurar o botão.
+            self.stop()
         self.capture_cancel.clear()
         self.capture_finish.clear()
         self.capturing.set()
@@ -299,6 +321,10 @@ class AdamWindow:
             self.events.put(("phase", "transcrevendo"))
             message = self.voice.transcribe(recording)
             if not self.capture_cancel.is_set() and not self.closed.is_set():
+                deadline = time.monotonic() + 4.
+                while self.turn_lock.locked() and time.monotonic() < deadline:
+                    if self.capture_cancel.wait(.05):
+                        return
                 self._enqueue(message)
         except Exception as exc:
             if not self.capture_cancel.is_set():
@@ -311,6 +337,16 @@ class AdamWindow:
                 listener.resume()
             if not self.turn_lock.locked():
                 self.events.put(("phase", "parado"))
+
+    def _ask_approval(self, message):
+        """Solicita permissão na thread Tk. Nunca mostra messagebox no worker."""
+        done = threading.Event()
+        answer = [False]
+        self.events.put(("approval", (str(message), done, answer)))
+        while not done.wait(.1):
+            if self.closed.is_set():
+                return False
+        return answer[0]
 
     def _work(self):
         while True:
@@ -327,6 +363,7 @@ class AdamWindow:
                     from .service import JarvisService
                     self.service = JarvisService.from_config(
                         self.config, auto=self.auto,
+                        manual_callback=self._ask_approval if not self.auto else None,
                         report=lambda message: self.events.put(("progress", str(message))),
                     )
                 if kind == "model":
@@ -339,10 +376,13 @@ class AdamWindow:
                 from .conversation import ConversationController
                 self.controller = ConversationController(
                     self.service,
-                    emit=lambda event: self.events.put(("phase", event.state)),
+                    emit=lambda event: self.events.put(
+                        ("error", event.reason) if event.state == "erro"
+                        else ("phase", event.state)),
                 )
                 self.controller.run(
-                    value, voice=self.voice, on_text=lambda delta: self.events.put(("delta", delta)),
+                    value, voice=self.voice if self.voice_enabled else None,
+                    on_text=lambda delta: self.events.put(("delta", delta)),
                     display=lambda answer: self.events.put(("answer", answer)),
                 )
             except Exception as exc:
@@ -354,7 +394,14 @@ class AdamWindow:
                         self.turn_lock.release()
                     if self.listener is not None:
                         self.listener.resume()
-                self.events.put(("phase", "parado"))
+                if kind == "ask" and self._turn_started_at is not None:
+                    took = round((time.monotonic() - self._turn_started_at) * 1000)
+                    if self._first_text_at is not None:
+                        first = round((self._first_text_at - self._turn_started_at) * 1000)
+                        self.events.put(("metrics", f"Latência medida: primeiro texto {first} ms · turno {took} ms"))
+                    else:
+                        self.events.put(("metrics", f"Tempo do turno: {took} ms (sem delta textual)"))
+                self.events.put(("phase", "aguardando_ativacao" if self.listener else "parado"))
 
     def _poll(self):
         if self.closed.is_set():
@@ -369,13 +416,16 @@ class AdamWindow:
                 self.result.set("")
                 self._state("pensando")
             elif kind == "delta":
+                if self._first_text_at is None and value.strip():
+                    self._first_text_at = time.monotonic()
                 self.result.set((self.result.get() + value)[-1600:])
             elif kind == "answer":
                 self.result.set(value[-1600:])
             elif kind == "phase":
                 if value == "executando":
                     self._state("pensando")
-                elif value in ("falando", "ouvindo", "transcrevendo", "parado"):
+                elif value in ("falando", "ouvindo", "transcrevendo", "parado",
+                               "aguardando_ativacao", "aguardando_seguimento"):
                     self._state(value)
             elif kind == "mic_level":
                 self.orb.set_level(min(1., float(value) * 14))
@@ -387,12 +437,22 @@ class AdamWindow:
                 elif "Aguardando Adam" in value:
                     self._state("aguardando_ativacao")
             elif kind == "error":
+                self.warning.set(value[:350])
                 self._state("parado", "erro: " + value[:80])
+            elif kind == "approval":
+                reason, ready, result = value
+                try:
+                    result[0] = bool(messagebox.askyesno(
+                        "ADAM · Autorizar ação?", reason[:800], parent=self.root))
+                finally:
+                    ready.set()
             elif kind == "progress":
                 if self.details:
                     self.status.set(value[:85])
             elif kind == "model":
                 self.status.set("modelo: " + value)
+            elif kind == "metrics":
+                self.warning.set(value)
         self.root.after(45, self._poll)
 
     def stop(self):
@@ -406,34 +466,85 @@ class AdamWindow:
         self.events.put(("phase", "parado"))
 
     def settings(self):
+        """Preferências editáveis e persistentes, sem guardar credenciais."""
+        from .preferences import PreferenceStore
         if self.dialog is not None and self.dialog.winfo_exists():
             self.dialog.lift()
             return
+        store = PreferenceStore()
+        pref = store.load()
+        current = pref.effective()
         dialog = tk.Toplevel(self.root)
         self.dialog = dialog
         dialog.configure(bg="#101015")
         dialog.title("ADAM · Configurações")
         dialog.resizable(False, False)
-        dialog.geometry("490x280")
-        f = tk.Frame(dialog, bg="#101015", padx=25, pady=20)
+        dialog.geometry("560x660")
+        dialog.transient(self.root)
+        f = tk.Frame(dialog, bg="#101015", padx=25, pady=17)
         f.pack(fill="both", expand=True)
-        tk.Label(f, text="Modelo de conversa (FCC)", bg="#101015", fg="#eeeeee",
-                 font=("DejaVu Sans", 12, "bold")).pack(anchor="w")
-        model = tk.Entry(f, bg="#24242d", fg="#fff", relief="flat", insertbackground="#fff", width=50)
-        model.insert(0, self.config.model)
-        model.pack(fill="x", ipady=9, pady=(8, 14))
-        tk.Label(f, text="Voz: ElevenLabs · ID e chave pelas variáveis de ambiente.\n"
-                         "Ollama local permanece como opção separada, não exigida pelo FCC.",
-                 bg="#101015", fg="#9999a4", justify="left", wraplength=440).pack(anchor="w")
+
+        def field(label, value):
+            tk.Label(f, text=label, fg="#d6d6e1", bg="#101015",
+                     font=("DejaVu Sans", 10)).pack(anchor="w")
+            entry = tk.Entry(f, bg="#23232a", fg="#fff", insertbackground="#fff",
+                             relief="flat", font=("DejaVu Sans", 11))
+            entry.insert(0, str(value))
+            entry.pack(fill="x", ipady=4, pady=(3, 9))
+            return entry
+
+        tk.Label(f, text="Perfil de inteligência", bg="#101015", fg="#fff",
+                 font=("DejaVu Sans", 14, "bold")).pack(anchor="w", pady=(0, 6))
+        profile = tk.StringVar(value=current.inference_profile)
+        tk.OptionMenu(f, profile, "fcc", "local").pack(anchor="w")
+        model = field("Modelo FCC (ID; vazio = automático)", current.conversation_model)
+        local_model = field("Modelo local Ollama (somente perfil local)", current.local_model)
+        tk.Label(f, text="Voz ElevenLabs · chave somente em ELEVENLABS_API_KEY",
+                 fg="#c8c8d2", bg="#101015", font=("DejaVu Sans", 10, "bold")).pack(anchor="w")
+        voice_id = field("ID da voz", current.elevenlabs_voice_id)
+        tts_model = field("Modelo de TTS", current.elevenlabs_model_id)
+        speed = field("Velocidade (0.7 a 1.2)", current.elevenlabs_speed)
+        persona = field("Arquivo de personalidade (opcional)", current.persona_file)
+        silence = field("Fim de fala após silêncio (ms: 600 a 1800)", current.silence_ms)
+        voice_mode = tk.StringVar(value=current.voice_mode)
+        tk.Label(f, text="Modo de escuta", fg="#d6d6e1", bg="#101015").pack(anchor="w")
+        tk.OptionMenu(f, voice_mode, "continuous", "manual", "muted").pack(anchor="w")
+        tk.Label(f, text="Perfil/modelo local exigem reiniciar o ADAM. A chave nunca é salva.",
+                 bg="#101015", fg="#9696a5", wraplength=510).pack(anchor="w", pady=(9, 5))
+
         def save():
-            model_id = model.get().strip()
-            if not model_id or self.turn_lock.locked():
-                messagebox.showwarning("ADAM", "Informe um modelo ou finalize o pedido.", parent=dialog)
+            if self.turn_lock.locked() or self.capturing.is_set():
+                messagebox.showwarning("ADAM", "Finalize ou cancele o pedido atual.", parent=dialog)
                 return
-            self.jobs.put(("model", model_id))
+            try:
+                new = dataclass_replace(
+                    pref, inference_profile=profile.get(),
+                    conversation_model=model.get().strip(), local_model=local_model.get().strip(),
+                    elevenlabs_voice_id=voice_id.get().strip(),
+                    elevenlabs_model_id=tts_model.get().strip(),
+                    elevenlabs_speed=float(speed.get().strip()),
+                    persona_file=persona.get().strip(), silence_ms=int(silence.get().strip()),
+                    voice_mode=voice_mode.get(),
+                ).validate()
+                store.save(new)
+            except (ValueError, OSError) as exc:
+                messagebox.showerror("ADAM · Configuração", str(exc)[:350], parent=dialog)
+                return
+            self.voice.elevenlabs_voice_id = new.elevenlabs_voice_id
+            self.voice.elevenlabs_model_id = new.elevenlabs_model_id
+            self.voice.elevenlabs_speed = new.elevenlabs_speed
+            self.voice.silence_seconds = new.silence_ms / 1000
+            if self.voice_enabled and new.voice_mode == "continuous":
+                self.start_listen()
+            elif self.listener is not None:
+                self.stop_listen()
+            if new.inference_profile == self.config.profile and new.conversation_model:
+                self.jobs.put(("model", new.conversation_model))
+            self.warning.set("Preferências salvas. Reinicie para trocar perfil, modelo local ou variáveis de ambiente.")
             dialog.destroy()
-        tk.Button(f, text="Aplicar modelo", command=save, bg="#353543", fg="#fff",
-                  relief="flat", padx=12, pady=8).pack(anchor="e", pady=(12, 0))
+
+        tk.Button(f, text="Salvar", command=save, bg="#454552", fg="#fff",
+                  relief="flat", padx=16, pady=8).pack(anchor="e", pady=(4, 0))
 
     def close(self):
         self.closed.set()
@@ -446,7 +557,11 @@ class AdamWindow:
 
 def main_gui(config=None, *, auto=True):
     config = config or Config.from_env()
-    root = tk.Tk()
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        raise SystemExit("ADAM precisa de sessão gráfica Tkinter (DISPLAY/Wayland). "
+                         "Use 'adam --text-only' no terminal sem desktop.") from exc
     AdamWindow(root, config, auto=auto)
     root.mainloop()
 
