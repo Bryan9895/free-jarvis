@@ -17,6 +17,10 @@ class Preferences:
     audio_device: str = ''
     piper_model: str = ''
     tts_backend: str = 'elevenlabs'
+    elevenlabs_voice_id: str = 'pNInz6obpgDQGcFmaJgB'
+    elevenlabs_model_id: str = 'eleven_flash_v2_5'
+    elevenlabs_speed: float = 1.0
+    persona_file: str = ''
     kokoro_directory: str = ''
     kokoro_python: str = ''
     output_device: str = ''  # nome de sink Pulse/PipeWire, nunca índice SoundDevice
@@ -42,10 +46,20 @@ class Preferences:
             raise ValueError(str(exc)) from exc
         if self.tts_backend not in ('elevenlabs', 'piper', 'kokoro'):
             raise ValueError('Voz deve usar elevenlabs')
+        if (not isinstance(self.elevenlabs_voice_id, str) or
+                not self.elevenlabs_voice_id.isalnum() or len(self.elevenlabs_voice_id) > 80):
+            raise ValueError('ID da voz ElevenLabs inválido')
+        if (not isinstance(self.elevenlabs_model_id, str) or
+                not self.elevenlabs_model_id or
+                not self.elevenlabs_model_id.replace('_', '').replace('-', '').isalnum() or
+                len(self.elevenlabs_model_id) > 100):
+            raise ValueError('Modelo ElevenLabs inválido')
+        if type(self.elevenlabs_speed) not in (float, int) or not math.isfinite(self.elevenlabs_speed) or not .7 <= self.elevenlabs_speed <= 1.2:
+            raise ValueError('Velocidade ElevenLabs deve ser entre 0.7 e 1.2')
         if type(self.clap_enabled) is not bool:
             raise ValueError('Ativação por palma deve ser booleana')
         for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest',
-                    'kokoro_directory', 'kokoro_python'):
+                    'kokoro_directory', 'kokoro_python', 'persona_file'):
             value = getattr(self, key)
             if not isinstance(value, str) or len(value) > 4096 or '\x00' in value:
                 raise ValueError('Preferência inválida: ' + key)
@@ -76,9 +90,14 @@ class Preferences:
                               'tts_backend': 'JARVIS_TTS_BACKEND', 'kokoro_directory': 'JARVIS_KOKORO_DIRECTORY',
                               'kokoro_python': 'JARVIS_KOKORO_PYTHON',
                               'wake_manifest': 'JARVIS_WAKE_MANIFEST',
-                              'voice_mode': 'JARVIS_VOICE_MODE'}.items():
+                              'voice_mode': 'JARVIS_VOICE_MODE',
+                              'elevenlabs_voice_id': 'ELEVENLABS_VOICE_ID',
+                              'elevenlabs_model_id': 'ELEVENLABS_MODEL_ID',
+                              'persona_file': 'ADAM_PERSONA_FILE'}.items():
             if variable in os.environ:
                 values[key] = os.environ[variable]
+        if 'ELEVENLABS_SPEED' in os.environ:
+            values['elevenlabs_speed'] = float(os.environ['ELEVENLABS_SPEED'])
         if 'JARVIS_SILENCE_MS' in os.environ:
             values['silence_ms'] = int(os.environ['JARVIS_SILENCE_MS'])
         if 'JARVIS_VAD_THRESHOLD' in os.environ:

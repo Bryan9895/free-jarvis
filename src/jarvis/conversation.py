@@ -37,7 +37,7 @@ class TerminalText:
 
     def delta(self, text):
         if not self.text:
-            print('JARVIS > ', end='', flush=True)
+            print('ADAM > ', end='', flush=True)
         self.text += text
         print(text, end='', flush=True)
 
@@ -45,7 +45,7 @@ class TerminalText:
         if self.text == text:
             print('\n')
         else:
-            print(('\n' if self.text else '') + 'JARVIS > ' + text + '\n')
+            print(('\n' if self.text else '') + 'ADAM > ' + text + '\n')
 
 
 @dataclass(frozen=True)
@@ -151,7 +151,7 @@ class ConversationController:
                         status = live.finish(response.display_text) if live is not None else voice.speak(response.spoken_text)
                     self._check(turn)
                     if status == 'disabled':
-                        self._event(turn, 'erro', 'tts: voz local não configurada')
+                        self._event(turn, 'erro', 'tts: ElevenLabs não configurado; defina ELEVENLABS_API_KEY')
                         return response
                 except CancelledError:
                     raise

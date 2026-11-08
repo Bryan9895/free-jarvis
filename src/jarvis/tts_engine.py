@@ -113,6 +113,8 @@ def synthesize_for(voice, text, filename, cancel):
     if backend == "elevenlabs":
         from .elevenlabs_tts import synthesize
         return synthesize(text, filename, cancel,
+                          voice_id=getattr(voice, "elevenlabs_voice_id", None),
+                          model_id=getattr(voice, "elevenlabs_model_id", None),
                           speed=getattr(voice, "elevenlabs_speed", 1.0))
     from .kokoro_engine import kokoro_synthesizer
     while not _engine_lock.acquire(timeout=.05):
