@@ -250,6 +250,9 @@ def main(argv=None):
             voice = VoiceIO(model=os.getenv("JARVIS_WHISPER_MODEL"),
                             language=os.getenv("JARVIS_LANGUAGE", "pt"),
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), session_id=conversation.session_id)
+            # Aplicativo ADAM utiliza ElevenLabs, inclusive em modo terminal;
+            # preferências Piper/Kokoro legadas não são ativadas automaticamente.
+            voice.tts_backend = 'elevenlabs'
             if args.push_to_talk:
                 print("MODO VOZ: Enter inicia fala até silêncio; digite sair para encerrar.")
         print(f"ADAM ativo | Perfil: {c.profile} | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
