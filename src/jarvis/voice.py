@@ -328,7 +328,7 @@ class WakeWordConversation:
 
     FRAME_SAMPLES = 1280  # Blocos de 80 ms para detecção de atividade de voz.
     WAKE_PATTERN = re.compile(
-        r"^\s*(?:(?:hey|ei)\s+)?(?:adam|adã|adão|d?jarv(?:is|es|ez)|dav(?:i|ie)s|de\s+avis|a\s+visa)\b[\s,.:;!?-]*",
+        r"^\s*(?:(?:hey|ei)\s+)?(?:adam|adã|adão)\b[\s,.:;!?-]*",
         re.IGNORECASE,
     )
 
@@ -487,7 +487,7 @@ class WakeWordConversation:
                     stop_text = self.WAKE_PATTERN.sub("", transcript, count=1)
                     if stop_text.casefold().strip(" .,!?:;") in self.STOP_PHRASES:
                         conversation = False
-                        self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
+                        self.on_status("Conversa pausada. Diga Adam para iniciar outra.")
                         continue
                     self._resume.clear()
                     from .latency import TracedText
@@ -507,7 +507,7 @@ class WakeWordConversation:
                 else:
                     conversation = bool(woke)
                     self.on_status("Adam ativado. Pode falar seu pedido." if woke else
-                                   "Não reconheci a fala. Aguardando Jarvis…")
+                                   "Não reconheci a fala. Aguardando Adam…")
             self.on_status("Escuta contínua parada.")
         except Exception as exc:
             self.on_status(f"Escuta contínua indisponível: {exc}")
