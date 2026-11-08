@@ -366,6 +366,8 @@ class VoiceIO:
         """
         if cancel.is_set():
             raise VoiceError("Gravação cancelada")
+        if on_status is not None:
+            on_status("Inicializando entrada de áudio…")
         try:
             import sounddevice as sd
         except ImportError as exc:
@@ -373,6 +375,13 @@ class VoiceIO:
 
         from .audio_devices import input_format
         from .audio_activity import PCMNormalizer
+        if cancel.is_set():
+            raise VoiceError("Gravação cancelada na preparação")
+        if finish.is_set():
+            raise VoiceError("Espaço liberado antes de o microfone ficar pronto. "
+                             "Segure até aparecer Ouvindo e tente novamente.")
+        if on_status is not None:
+            on_status("Consultando microfone padrão…")
         selected = input_format(sd, self.device, self.sample_rate)
         normalizer = PCMNormalizer(selected.rate, 16000)
         frames = queue.Queue(maxsize=64)
@@ -397,17 +406,28 @@ class VoiceIO:
                     wav.setsampwidth(2)
                     wav.setframerate(16000)
                     blocksize = max(1, round(1280 * selected.rate / 16000))
+                    if cancel.is_set() or finish.is_set():
+                        raise VoiceError("Espaço solto antes de começar a gravação")
+                    if on_status is not None:
+                        on_status("Abrindo microfone " + selected.name[:65] + "…")
                     with sd.InputStream(samplerate=selected.rate, channels=selected.channels,
                                         dtype="int16", device=self.device, blocksize=blocksize,
                                         callback=receive):
                         started = time.monotonic()
+                        release_since = None
                         if on_status is not None:
                             on_status("Ouvindo — segure Espaço e fale; solte para enviar")
                         while not cancel.is_set():
                             if lost.is_set():
                                 raise VoiceError("Quadros perdidos no microfone; pedido descartado")
-                            if finish.is_set() and frames.empty():
-                                break
+                            if finish.is_set():
+                                if release_since is None:
+                                    release_since = time.monotonic()
+                                    if on_status is not None:
+                                        on_status("Finalizando captura do microfone…")
+                                # Nunca drenar uma fila que pode receber frames para sempre.
+                                if frames.empty() or time.monotonic() - release_since >= .25:
+                                    break
                             if time.monotonic() - started > 600:
                                 raise VoiceError("Limite de segurança de 10 minutos; pedido descartado")
                             try:
@@ -428,6 +448,8 @@ class VoiceIO:
                             raise VoiceError("Quadros perdidos no microfone; pedido descartado")
                         if cancel.is_set():
                             raise VoiceError("Gravação cancelada")
+                    if on_status is not None:
+                        on_status("Microfone fechado; preparando transcrição…")
                     tail = normalizer.flush()
                     if len(tail):
                         wav.writeframesraw(tail.tobytes())
