@@ -42,6 +42,32 @@ class PreferenceTests(unittest.TestCase):
         self.assertEqual(effective.elevenlabs_speed, 0.9)
         self.assertEqual(effective.persona_file, '/tmp/personalidade.txt')
 
+    def test_voice_volume_persona_modes_and_override(self):
+        from dataclasses import replace
+        old = Preferences()
+        self.assertEqual(old.speech_volume, .65)
+        self.assertEqual(old.personality_style, 'cinematic')
+        for val in (-.1, 1.1, float('nan'), '80'):
+            with self.assertRaises(ValueError):
+                replace(old, speech_volume=val).validate()
+        with self.assertRaises(ValueError):
+            replace(old, personality_style='fake').validate()
+        for val in (-.1, 1.1):
+            with self.assertRaises(ValueError):
+                replace(old, elevenlabs_stability=val).validate()
+        with patch.dict(os.environ, {'ADAM_VOICE_VOLUME': '0.35',
+                                     'ADAM_PERSONALITY_STYLE': 'natural',
+                                     'ELEVENLABS_STABILITY': '0.7'}):
+            effective = old.effective()
+        self.assertEqual(effective.speech_volume, .35)
+        self.assertEqual(effective.personality_style, 'natural')
+        self.assertEqual(effective.elevenlabs_stability, .7)
+        with tempfile.TemporaryDirectory() as td:
+            store = PreferenceStore(Path(td) / 'prefs.json')
+            store.save(replace(old, speech_volume=.2, personality_style='technical'))
+            self.assertEqual(store.load().speech_volume, .2)
+            self.assertEqual(store.load().personality_style, 'technical')
+
     def test_roundtrip_atomic_private_file_and_no_secrets(self):
         with tempfile.TemporaryDirectory() as td:
             store = PreferenceStore(Path(td) / 'preferences.json')

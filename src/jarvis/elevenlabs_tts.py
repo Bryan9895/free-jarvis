@@ -22,7 +22,8 @@ def configured():
     return bool(os.getenv("ELEVENLABS_API_KEY", "").strip())
 
 
-def synthesize(text, filename, cancel, *, voice_id=None, model_id=None, speed=1.0):
+def synthesize(text, filename, cancel, *, voice_id=None, model_id=None, speed=1.0,
+               stability=0.65, similarity=0.80):
     """Recebe PCM S16LE 16 kHz e grava WAV somente após o fluxo terminar."""
     key = os.getenv("ELEVENLABS_API_KEY", "").strip()
     if not key:
@@ -31,6 +32,8 @@ def synthesize(text, filename, cancel, *, voice_id=None, model_id=None, speed=1.
     model_id = model_id or os.getenv("ELEVENLABS_MODEL_ID", DEFAULT_MODEL).strip()
     if not voice_id or not voice_id.isalnum():
         raise ValueError("ELEVENLABS_VOICE_ID inválido")
+    if not (0 <= float(stability) <= 1 and 0 <= float(similarity) <= 1):
+        raise ValueError("Configuração de estabilidade/semelhança inválida")
     if not 0.7 <= float(speed) <= 1.2:
         raise ValueError("Velocidade da voz fora do intervalo")
     if cancel.is_set():
@@ -41,7 +44,10 @@ def synthesize(text, filename, cancel, *, voice_id=None, model_id=None, speed=1.
         "/stream?output_format=pcm_16000",
         data=json.dumps({
             "text": str(text), "model_id": model_id,
-            "voice_settings": {"speed": float(speed)},
+            "voice_settings": {"speed": float(speed),
+                               "stability": float(stability),
+                               "similarity_boost": float(similarity),
+                               "use_speaker_boost": False},
         }).encode("utf-8"),
         headers={
             "Content-Type": "application/json",

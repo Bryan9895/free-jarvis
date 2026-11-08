@@ -115,7 +115,9 @@ def synthesize_for(voice, text, filename, cancel):
         return synthesize(text, filename, cancel,
                           voice_id=getattr(voice, "elevenlabs_voice_id", None),
                           model_id=getattr(voice, "elevenlabs_model_id", None),
-                          speed=getattr(voice, "elevenlabs_speed", 1.0))
+                          speed=getattr(voice, "elevenlabs_speed", 1.0),
+                          stability=getattr(voice, "elevenlabs_stability", 0.65),
+                          similarity=getattr(voice, "elevenlabs_similarity", 0.80))
     from .kokoro_engine import kokoro_synthesizer
     while not _engine_lock.acquire(timeout=.05):
         if cancel.is_set():

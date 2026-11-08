@@ -71,7 +71,7 @@ class VoiceTests(unittest.TestCase):
                 sys.modules, {"sounddevice": backend}), patch(
                 "jarvis.voice.tempfile.mkstemp",
                 side_effect=lambda **kwargs: actual_mkstemp(dir=directory, **kwargs)):
-            with self.assertRaisesRegex(VoiceError, "muito curta"):
+            with self.assertRaisesRegex(VoiceError, "Espaço liberado"):
                 VoiceIO().record_push_to_talk(cancel=cancel, finish=finish)
             self.assertEqual(list(Path(directory).iterdir()), [])
 
