@@ -1,5 +1,5 @@
-"""Compatibilidade com o antigo atalho de inicialização."""
-from jarvis.web_ui import launch
+"""Entrada antiga para compatibilidade: abre a GUI nativa do ADAM."""
+from jarvis.gui import launch
 
 if __name__ == "__main__":
     launch()
