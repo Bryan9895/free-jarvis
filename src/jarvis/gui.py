@@ -119,6 +119,7 @@ class AdamWindow:
         self.listener = None  # Escuta contínua desativada neste modo ADAM.
         self._space_release_job = None
         self._finalize_timeout_job = None
+        self._mic_stage = "aguardando inicialização"
         self.controller = None
         self.service = None
         self.turn_lock = threading.Lock()
@@ -291,6 +292,7 @@ class AdamWindow:
             self.stop()
         self.capture_cancel.clear()
         self.capture_finish.clear()
+        self._mic_stage = "iniciando gravação"
         self.capturing.set()
         self._state("preparando_microfone", "preparando microfone… segure ESPAÇO")
         threading.Thread(target=self._record, daemon=True, name="adam-space-record").start()
@@ -315,8 +317,9 @@ class AdamWindow:
         self._finalize_timeout_job = None
         if self.capturing.is_set() and not self.closed.is_set():
             self.capture_cancel.set()
-            self.events.put(("error", "Tempo excedido ao finalizar gravação. "
-                             "Feche outras instâncias do ADAM e verifique o microfone."))
+            self.events.put(("error", "Tempo excedido ao finalizar a gravação. "
+                             "Última fase: " + self._mic_stage[:85] + ". "
+                             "Feche outras instâncias e confira a fonte de áudio."))
 
     def _record(self):
         recording = None
@@ -443,6 +446,7 @@ class AdamWindow:
             elif kind == "output_level":
                 self.orb.set_level(value)
             elif kind == "manual_status":
+                self._mic_stage = value
                 if not self.capture_finish.is_set():
                     self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
                                 value[:85])
