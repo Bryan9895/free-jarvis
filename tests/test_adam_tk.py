@@ -86,9 +86,9 @@ class NativeTkTests(unittest.TestCase):
                     window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
                 path = Path(td) / "spoken.wav"
                 path.write_bytes(b"placeholder")
-                with patch.object(window.voice, "record_push_to_talk", return_value=path) as record, \\
-                     patch.object(window.voice, "record_turn") as old_vad, \\
-                     patch.object(window.voice, "transcribe", return_value="abra Firefox"), \\
+                with patch.object(window.voice, "record_push_to_talk", return_value=path) as record, \
+                     patch.object(window.voice, "record_turn") as old_vad, \
+                     patch.object(window.voice, "transcribe", return_value="abra Firefox"), \
                      patch.object(window, "_enqueue", return_value=True) as send:
                     window._record()
                 old_vad.assert_not_called()
