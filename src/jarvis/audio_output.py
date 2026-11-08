@@ -74,6 +74,9 @@ def play_pipeline(voice, chunks):
             try:
                 if voice._speech_cancel.is_set():
                     raise CancelledError('Reprodução cancelada')
+                from .wav_volume import attenuate_wav
+                attenuate_wav(item, getattr(voice, 'speech_volume', 1.0),
+                              cancel=voice._speech_cancel)
                 # PipeWire/PulseAudio é preferível no Ubuntu, sobretudo em headsets Bluetooth.
                 if voice.output_device:
                     player = ['paplay', '--device=' + voice.output_device, str(item)]
