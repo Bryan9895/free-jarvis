@@ -13,10 +13,11 @@ class LatencyHistory:
     def add(self, total_ms, first_text_ms=None):
         if type(total_ms) not in (int, float) or total_ms < 0:
             raise ValueError("Duração inválida")
-        self.total_ms.append(float(total_ms))
         if first_text_ms is not None:
             if type(first_text_ms) not in (int, float) or not 0 <= first_text_ms <= total_ms:
                 raise ValueError("Primeiro texto fora do turno")
+        self.total_ms.append(float(total_ms))
+        if first_text_ms is not None:
             self.first_text_ms.append(float(first_text_ms))
 
     def snapshot(self):

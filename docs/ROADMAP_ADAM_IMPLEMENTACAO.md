@@ -9,7 +9,7 @@
 | M5 — Latência | Streaming por frase; medidor de primeiro texto/total na GUI | Pendente baseline p50/p95 físico |
 | M6 — Personalidade/memória/modelos | Personalidade em arquivo e modelos editáveis; SQLite legado preservado | Pendente UX completa de memórias |
 | M7 — Automação desktop | Toolkit/autorizações conservados; diálogo Tk de aprovação | Pendente ensaio Wayland real |
-| M8 — Multiagentes de engenharia | Contrato de revisão descrito em `AGENTS.md`; execução independente requer provedores reais | Pendente ciclo Supervisor→Dev→Codex→GitHub |
+| M8 — Multiagentes de engenharia | Orquestrador `adam-team` com Supervisor→Desenvolvedor→Codex crítico→testes→commit/branch opcional | Pendente executar provedores FCC-CLAUDE e Codex CLI reais |
 | M9 — Hardware | `RobotTransport`/simulador, protocolo v1 | Pendente Orange Pi/ESP32, testes elétricos |
 
 ## Aceite de ponta a ponta

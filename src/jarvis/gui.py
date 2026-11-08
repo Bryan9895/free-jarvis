@@ -368,7 +368,7 @@ class AdamWindow:
                     from .service import JarvisService
                     self.service = JarvisService.from_config(
                         self.config, auto=self.auto,
-                        manual_callback=self._ask_approval if not self.auto else None,
+                        manual_callback=self._ask_approval,
                         report=lambda message: self.events.put(("progress", str(message))),
                     )
                 if kind == "model":
