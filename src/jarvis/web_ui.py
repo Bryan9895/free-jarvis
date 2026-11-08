@@ -389,6 +389,7 @@ class OrbHandler(BaseHTTPRequestHandler):
             return self._json(404, {"erro": "Rota inexistente"})
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             self.app.emit({"tipo": "aviso", "texto": str(exc)[:180]})
+            self.app.emit({"tipo": "estado", "estado": "parado"})
             self._json(400, {"erro": str(exc)[:180]})
 
     def _events(self):
