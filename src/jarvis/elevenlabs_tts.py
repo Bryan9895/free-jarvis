@@ -53,6 +53,7 @@ def synthesize(text, filename, cancel, *, voice_id=None, model_id=None, speed=1.
     filename = Path(filename)
     temporary = filename.with_name(filename.name + ".incomplete")
     total = 0
+    pending = b''
     try:
         with urlopen(request, timeout=30) as response, wave.open(str(temporary), "wb") as output:
             output.setnchannels(1)
@@ -67,9 +68,13 @@ def synthesize(text, filename, cancel, *, voice_id=None, model_id=None, speed=1.
                 total += len(chunk)
                 if total > MAX_AUDIO_BYTES:
                     raise RuntimeError("A resposta de áudio excedeu o limite de segurança.")
-                if len(chunk) % 2:
-                    raise RuntimeError("Fluxo PCM inválido")
-                output.writeframesraw(chunk)
+                pending += chunk
+                even = len(pending) & ~1
+                if even:
+                    output.writeframesraw(pending[:even])
+                    pending = pending[even:]
+        if pending:
+            raise RuntimeError("Fluxo PCM inválido")
         if total < 2:
             raise RuntimeError("ElevenLabs não retornou áudio")
         if cancel.is_set():
