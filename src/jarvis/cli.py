@@ -28,7 +28,7 @@ def main(argv=None):
     if argv[:1] == ['local']:
         from .local_setup import main as local_main
         return local_main(argv[1:])
-    parser = argparse.ArgumentParser(description="JARVIS + Free Claude Code",
+    parser = argparse.ArgumentParser(description="ADAM + Free Claude Code",
         epilog='Motor: jarvis-fcc local --help · Voz: jarvis-fcc kokoro --help')
     parser.add_argument('--profile', choices=('local', 'fcc'), help='Local offline ou Engenharia FCC')
     parser.add_argument('--local-model', help='Modelo Ollama instalado, sem prefixo de provedor')
@@ -103,8 +103,8 @@ def main(argv=None):
     if args.gui:
         if args.text_only:
             os.environ["JARVIS_GUI_VOICE"] = "0"
-        from .web_ui import serve
-        serve(c)
+        from .gui import main_gui
+        main_gui(c, auto=not args.manual_approve)
         return
     if args.doctor:
         from .doctor import collect, active, human, merge_active
@@ -252,7 +252,7 @@ def main(argv=None):
                             piper_model=os.getenv("JARVIS_PIPER_MODEL", ""), session_id=conversation.session_id)
             if args.push_to_talk:
                 print("MODO VOZ: Enter inicia fala até silêncio; digite sair para encerrar.")
-        print(f"JARVIS ativa | Perfil: {c.profile} | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
+        print(f"ADAM ativo | Perfil: {c.profile} | Workspace: {c.workspace} | Modelo inicial: {auto.active_model}")
         print("Modelos: /modelos, /modelo ID, /modelo atual, /modelo auto, /modelo todos")
         print("Desempenho: /rapido, /normal, /acoes, /metricas")
         print("Autorizações: /permissoes auto | manual | revogar | status  (atual: " + approval.mode + ")")
@@ -482,7 +482,7 @@ def main(argv=None):
                     from .wayland import WaylandError
                     try:
                         result = locate_target(client, auto.active_model, c.workspace, confirm, msg[len("/localizar "):])
-                        print("JARVIS (localização) >", json.dumps(result, ensure_ascii=False), "\\n")
+                        print("ADAM (localização) >", json.dumps(result, ensure_ascii=False), "\\n")
                     except (FCCError, WaylandError, OSError) as exc:
                         print("Erro ao localizar alvo:", exc, file=sys.stderr)
                     continue
