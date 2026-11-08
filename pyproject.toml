@@ -18,7 +18,10 @@ vision = ["Pillow>=10.0"]
 [project.scripts]
 jarvis-fcc = "jarvis.cli:main"
 jarvis = "jarvis.cli:main"
-jarvis-show = "jarvis.gui_instance:main"
+jarvis-show = "jarvis.web_ui:launch"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+jarvis = ["web/*.html", "web/*.json"]

@@ -2,6 +2,8 @@ from io import BytesIO
 import hashlib
 import json
 import os
+import sys
+from unittest import skipIf
 from pathlib import Path
 import tarfile
 import tempfile
@@ -25,6 +27,7 @@ class OllamaSetupTests(TestCase):
             'browser_download_url': SOURCE + '/releases/download/v1.2.3/ollama-linux-amd64.tar.zst'}]}
         return archive, release
 
+    @skipIf(sys.version_info < (3, 14), 'Extração .tar.zst requer Python 3.14+')
     def test_checksum_install_and_reuse_without_network(self):
         archive, release = self.fixture()
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'JARVIS_OLLAMA_DIR': directory}), \
@@ -41,6 +44,7 @@ class OllamaSetupTests(TestCase):
             manifest = json.loads((Path(directory) / 'runtime.json').read_text())
             self.assertEqual(manifest['archive_sha256'], hashlib.sha256(archive).hexdigest())
 
+    @skipIf(sys.version_info < (3, 14), 'Extração .tar.zst requer Python 3.14+')
     def test_corrupt_download_and_archive_traversal_never_publish(self):
         for bad_hash, traversal in ((True, False), (False, True)):
             with self.subTest(hash=bad_hash, traversal=traversal):

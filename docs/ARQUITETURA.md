@@ -5,7 +5,7 @@ O projeto segue uma migração incremental. Os nomes e interfaces existentes con
 ## Fluxo principal
 
 ```text
-CLI / GUI / voz revisada
+CLI / esfera web / voz revisada
           │
           ▼
      JarvisService ─────── tarefa / cancelar / capacidades
@@ -31,7 +31,7 @@ CLI / GUI / voz revisada
 
 | Camada | Módulos atuais | Regra de dependência |
 | --- | --- | --- |
-| Interfaces | `cli.py`, `gui.py`, `voice.py` | CLI e GUI chamam `JarvisService`; voz só transforma áudio em texto revisável ou texto em áudio local. |
+| Interfaces | `cli.py`, `web_ui.py`, `web/index.html`, `voice.py` | CLI e esfera web usam `JarvisService`; voz trata transcrição e síntese. O servidor web não executa ferramentas diretamente. |
 | Aplicação | `service.py`, `agent.py`, `natural_tasks.py`, `task_intent.py`, `planner.py` | Orquestra pedidos, chamadas, cancelamento cooperativo e planos; não importa widgets GUI. |
 | Provedor | `providers.py`, `fcc.py` | `ModelProvider` descreve Responses/modelos; `AutoModelClient` e `FCCClient` implementam adaptação FCC e fallback. |
 | Registro e política | `registry.py`, `tool_specs.py`, `schema_validation.py`, `approval.py`, `plugins.py` | `Toolkit.execute` revalida esquema e capacidade no ponto de execução; autoaprovação não muda capacidades. |
@@ -55,6 +55,6 @@ CLI / GUI / voz revisada
 - `tools.py` ainda abriga os executores de navegador, desktop e composição de aplicativos; `agent.py` ainda contém montagem de contexto e loop de ferramentas; `cli.py` ainda contém comandos e chat. A extração de `filesystem_tools.py` é o primeiro corte de módulo, e novas extrações devem manter a API atual coberta por regressão.
 - `ModelProvider` formaliza a API síncrona Responses, mas não oferece interrupção de transporte. `FCCClient` usa urllib com timeout; o cancelamento atua depois que a resposta retorna.
 - Planos são sequenciais e limitados a cinco etapas; as dependências entre etapas são implícitas pela ordem, sem DAG explícito.
-- A GUI possui conversa, tarefas, aprovação, capacidades, ambientes, histórico, métricas e voz; resta validar tarefas e cancelamento longos pela interface real.
+- A nova esfera substitui a GUI anterior. CLI e backend preservam tarefas, autorizações, ambientes e histórico; controles avançados ainda precisam ser reexpostos em configuração web. Falta validar voz, tarefas e cancelamento longos fisicamente.
 - O navegador bloqueia destinos privados/reservados por resolução e rota, mas não oferece isolamento de rede contra DNS rebinding.
 - Dois monitores, diálogos de salvamento, Firefox/VS Code no fluxo completo e microfone não foram validados fisicamente nesta entrega local.
