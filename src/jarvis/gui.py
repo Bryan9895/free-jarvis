@@ -118,6 +118,7 @@ class AdamWindow:
         self.voice.output_meter = lambda level: self.events.put(("output_level", level))
         self.listener = None  # Escuta contínua desativada neste modo ADAM.
         self._space_release_job = None
+        self._finalize_timeout_job = None
         self.controller = None
         self.service = None
         self.turn_lock = threading.Lock()
@@ -201,6 +202,7 @@ class AdamWindow:
         self.worker = threading.Thread(target=self._work, daemon=True, name="adam-core")
         self.worker.start()
         self.root.after(70, self._poll)
+        self.root.after(120, self.root.focus_set)
         # A escolha antiga 'continuous' nas preferências não inicia mais
         # captura de fundo nesta interface.
         self._state("parado")
@@ -307,6 +309,14 @@ class AdamWindow:
         if self.capturing.is_set():
             self.capture_finish.set()
             self._state("finalizando", "finalizando gravação…")
+            self._finalize_timeout_job = self.root.after(12000, self._recording_timeout)
+
+    def _recording_timeout(self):
+        self._finalize_timeout_job = None
+        if self.capturing.is_set() and not self.closed.is_set():
+            self.capture_cancel.set()
+            self.events.put(("error", "Tempo excedido ao finalizar gravação. "
+                             "Feche outras instâncias do ADAM e verifique o microfone."))
 
     def _record(self):
         recording = None
@@ -430,12 +440,16 @@ class AdamWindow:
             elif kind == "output_level":
                 self.orb.set_level(value)
             elif kind == "manual_status":
-                self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
-                            value[:85])
+                if not self.capture_finish.is_set():
+                    self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
+                                value[:85])
             elif kind == "manual_done":
                 if self._space_release_job is not None:
                     self.root.after_cancel(self._space_release_job)
                     self._space_release_job = None
+                if self._finalize_timeout_job is not None:
+                    self.root.after_cancel(self._finalize_timeout_job)
+                    self._finalize_timeout_job = None
             elif kind == "error":
                 self.warning.set(value[:350])
                 self._state("parado", "erro: " + value[:80])
@@ -555,6 +569,9 @@ class AdamWindow:
         if self._space_release_job is not None:
             self.root.after_cancel(self._space_release_job)
             self._space_release_job = None
+        if self._finalize_timeout_job is not None:
+            self.root.after_cancel(self._finalize_timeout_job)
+            self._finalize_timeout_job = None
         self.jobs.put(("shutdown", None))
         self.root.destroy()
 
