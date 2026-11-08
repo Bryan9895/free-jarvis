@@ -29,11 +29,36 @@ _capture_owner = coordinator.lock
 
 
 def exclusive_capture(method):
-    """Exclusão também entre adaptadores de diagnóstico e conversa."""
+    """Um único dono do áudio entre GUI, CLI, doctor e processos distintos.
+
+    A captura contínua conserva a tentativa não bloqueante. Somente o
+    botão manual pode aguardar a liberação de um dono que está encerrando.
+    A espera é limitada e cancelável; nunca fecha o stream de outro processo.
+    """
     @wraps(method)
     def capture(*args, **kwargs):
-        if not _capture_owner.acquire(blocking=False):
-            raise VoiceError("Microfone ocupado por outra captura; pare-a antes de continuar")
+        wait = kwargs.pop("_capture_wait", None)
+        if wait is None:
+            acquired = _capture_owner.acquire(blocking=False)
+        else:
+            if not isinstance(wait, (int, float)) or not 0 < wait <= 15:
+                raise ValueError("Prazo de captura inválido")
+            deadline = time.monotonic() + wait
+            acquired = False
+            while not acquired:
+                stop = getattr(args[0], "_stop", None) if args else None
+                if stop is not None and stop.is_set():
+                    raise VoiceError("Gravação cancelada enquanto aguardava o microfone")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                acquired = _capture_owner.acquire(timeout=min(remaining, .20))
+        if not acquired:
+            raise VoiceError(
+                "Microfone reservado por outra captura do ADAM. "
+                "Feche outras janelas/instâncias do ADAM ou Jarvis; "
+                "diagnostique com: fuser -v ~/.cache/jarvis-fcc/capture.lock"
+            )
         try:
             return method(*args, **kwargs)
         finally:
@@ -319,8 +344,11 @@ class VoiceIO:
         self._continue_pending = continue_pending
         if cancel is not None:
             listener._stop = cancel
+        if on_status is not None:
+            on_status("Aguardando posse exclusiva do microfone…")
         samples = listener._listen_for_command(sd, np, idle_timeout=self.start_timeout_seconds,
-                                              finish=finish, on_level=on_level)
+                                              finish=finish, on_level=on_level,
+                                              _capture_wait=8.)
         if samples is None:
             raise VoiceError("Captura cancelada ou nenhuma fala recebida; pedido não enviado")
         return listener._write_recording(samples)
