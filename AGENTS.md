@@ -41,7 +41,7 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 - Início: indicador de estado real, transcrição/conversa, campo de texto, microfone/mudo, parar e acesso a configurações.
 - Configurações: Voz, Microfone, Modelo de conversa, Diagnósticos e Avançado. Tarefas, planos, janelas e métricas continuam acessíveis, sem ocupar permanentemente a tela inicial.
 - Sem animação que finja captura ou execução; forma de onda, se existir, usa medidas reais.
-- Preserve Tkinter inicialmente. Registre uma decisão com custos e protótipo validado antes de qualquer migração de toolkit.
+- Em 08/11/2026 o usuário solicitou expressamente substituir toda a GUI Tkinter pela interface da esfera de matheustillimt-tech/jarvis. A interface web foi importada sob MIT e o backend usa JarvisService, não claude CLI. A migração exige validação real antes de considerar a experiência pronta. Preservar CLI, FCC, autorizações, GNOME e SQLite.
 
 ## Verificação e entrega
 
