@@ -12,7 +12,7 @@ import wave
 
 from .voice import VoiceIO, VoiceError
 
-TEST_PHRASE = 'Jarvis, abra o Firefox e organize as minhas janelas.'
+TEST_PHRASE = 'Adam, abra o Firefox e organize as minhas janelas.'
 
 
 def signal_metrics(pcm):
