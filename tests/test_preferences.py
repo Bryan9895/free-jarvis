@@ -23,6 +23,25 @@ class PreferenceTests(unittest.TestCase):
             effective = Preferences().effective()
             self.assertEqual((effective.followup_seconds, effective.start_timeout_seconds, effective.reconnect_attempts), (30, 12, 4))
 
+    def test_elevenlabs_preference_and_environment_overrides(self):
+        old = Preferences()
+        self.assertEqual(old.elevenlabs_voice_id, 'pNInz6obpgDQGcFmaJgB')
+        updated = replace(old, elevenlabs_voice_id='EXAVITQu4vr4xnSDxMaL',
+                          elevenlabs_speed=.85, persona_file='/tmp/adam.md')
+        updated.validate()
+        for invalid in (-.1, .5, 1.3, float('nan')):
+            with self.assertRaises(ValueError):
+                replace(updated, elevenlabs_speed=invalid).validate()
+        with patch.dict(os.environ, {'ELEVENLABS_VOICE_ID': 'voice1',
+                                     'ELEVENLABS_MODEL_ID': 'eleven_multilingual_v2',
+                                     'ELEVENLABS_SPEED': '0.9',
+                                     'ADAM_PERSONA_FILE': '/tmp/personalidade.txt'}):
+            effective = updated.effective()
+        self.assertEqual(effective.elevenlabs_voice_id, 'voice1')
+        self.assertEqual(effective.elevenlabs_model_id, 'eleven_multilingual_v2')
+        self.assertEqual(effective.elevenlabs_speed, 0.9)
+        self.assertEqual(effective.persona_file, '/tmp/personalidade.txt')
+
     def test_roundtrip_atomic_private_file_and_no_secrets(self):
         with tempfile.TemporaryDirectory() as td:
             store = PreferenceStore(Path(td) / 'preferences.json')

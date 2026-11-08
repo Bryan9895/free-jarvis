@@ -60,6 +60,22 @@ class AdamCoreTests(TestCase):
                 self.assertEqual(wav.getnframes(), len(data))
             self.assertFalse((Path(folder) / "spoken.wav.incomplete").exists())
 
+    def test_full_tts_pipeline_plays_mocked_elevenlabs_pcm(self):
+        from jarvis.voice import VoiceIO
+        samples = array("h", [250, -250] * 400)
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
+            "ELEVENLABS_API_KEY": "fake",
+            "JARVIS_PREFERENCES": str(Path(folder) / "preferences.json"),
+        }), patch("jarvis.elevenlabs_tts.urlopen", return_value=BytesIO(samples.tobytes())), \
+             patch("jarvis.voice.shutil.which", return_value="/usr/bin/paplay"), \
+             patch("jarvis.audio_output.shutil.which", return_value="/usr/bin/paplay"):
+            voice = VoiceIO()
+            self.assertEqual(voice.tts_backend, "elevenlabs")
+            with patch.object(voice, "_run_audio") as play:
+                self.assertEqual(voice.speak("Olá, teste."), "spoken")
+                self.assertEqual(play.call_count, 1)
+                self.assertEqual(play.call_args.args[0][0], "paplay")
+
     def test_cancel_avoids_network_call_and_output_file(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"ELEVENLABS_API_KEY": "fake"}), \
              patch("jarvis.elevenlabs_tts.urlopen") as request:

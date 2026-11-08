@@ -50,7 +50,9 @@ class VoiceIO:
         piper_model = os.getenv('JARVIS_PIPER_MODEL', piper_model or preferences.piper_model)
         self.piper_model = Path(piper_model).expanduser() if piper_model else None
         self.tts_backend = preferences.tts_backend
-        self.elevenlabs_speed = float(os.getenv('ELEVENLABS_SPEED', '1.0'))
+        self.elevenlabs_speed = preferences.elevenlabs_speed
+        self.elevenlabs_voice_id = preferences.elevenlabs_voice_id
+        self.elevenlabs_model_id = preferences.elevenlabs_model_id
         self.output_meter = None
         from .kokoro_assets import assets_directory
         self.kokoro_directory = assets_directory(preferences.kokoro_directory or None)
@@ -231,8 +233,8 @@ class VoiceIO:
             raise VoiceError('Modelo de voz Piper não encontrado em JARVIS_PIPER_MODEL')
         if self.output_device and not shutil.which('paplay'):
             raise VoiceError('Saída selecionada requer paplay (pulseaudio-utils)')
-        if not self.output_device and not shutil.which('aplay'):
-            raise VoiceError("Instale 'alsa-utils' para executar aplay")
+        if not self.output_device and not (shutil.which('paplay') or shutil.which('aplay')):
+            raise VoiceError("Instale pulseaudio-utils ou alsa-utils para saída de áudio")
         from .audio_output import play_pipeline
         with coordinator.output(self._speech_cancel):
             return play_pipeline(self, chunks)
@@ -494,7 +496,7 @@ class WakeWordConversation:
                     accepted = self.on_command(TracedText(transcript,
                         getattr(self.voice, 'last_capture_trace', None)))
                     if accepted is False:
-                        self.on_status("Pedido de voz não enviado: aguarde a tarefa atual e diga Jarvis novamente.")
+                        self.on_status("Pedido de voz não enviado: aguarde a tarefa atual e diga Adam novamente.")
                         while not self._stop.is_set() and not self._resume.wait(0.2):
                             pass
                         conversation = False

@@ -27,7 +27,8 @@ por enquanto o backend é FCC; outras opções podem ser configuradas no futuro.
 
 def personality_instructions():
     """A personalidade nunca substitui instruções de segurança do motor."""
-    path = os.getenv("ADAM_PERSONA_FILE", "").strip()
+    from .preferences import PreferenceStore
+    path = PreferenceStore().load().effective().persona_file.strip()
     if not path:
         return DEFAULT_PERSONALITY
     file = Path(path).expanduser()

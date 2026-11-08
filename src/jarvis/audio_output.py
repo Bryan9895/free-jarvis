@@ -4,6 +4,7 @@ from pathlib import Path
 from queue import Queue, Empty, Full
 from threading import Event, Thread
 import os
+import shutil
 import tempfile
 
 from .cancellation import CancelledError
@@ -73,7 +74,13 @@ def play_pipeline(voice, chunks):
             try:
                 if voice._speech_cancel.is_set():
                     raise CancelledError('Reprodução cancelada')
-                player = ['paplay', '--device=' + voice.output_device, str(item)] if voice.output_device else ['aplay', '-q', str(item)]
+                # PipeWire/PulseAudio é preferível no Ubuntu, sobretudo em headsets Bluetooth.
+                if voice.output_device:
+                    player = ['paplay', '--device=' + voice.output_device, str(item)]
+                elif shutil.which('paplay'):
+                    player = ['paplay', str(item)]
+                else:
+                    player = ['aplay', '-q', str(item)]
                 mark('player_start_proxy')  # não comprova áudio físico no fone
                 voice._run_audio(player)
                 mark('player_end')

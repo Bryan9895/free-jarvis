@@ -18,6 +18,29 @@ jobs:
           sudo apt-get install -y xvfb python3-tk
           xvfb-run -a python -m unittest discover -s tests -p 'test_adam_tk.py' -v
 
+  python314-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Check Ubuntu launcher syntax and Python requirements
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libportaudio2 libsndfile1
+          bash -n tools/install_ubuntu.sh
+          python -m venv .venv
+          .venv/bin/python -m pip install -e '.[voice,desktop]'
+      - name: Verify voice stack and ADAM without hardware
+        run: |
+          .venv/bin/python -m pip check
+          # Em CI headless não há servidor PulseAudio nem dispositivo físico:
+          # verificar presença do pacote em vez de inicializar PortAudio.
+          .venv/bin/python -c 'import importlib.metadata as md; assert md.version("sounddevice"); import numpy, av, faster_whisper; import jarvis.gui; import jarvis.elevenlabs_tts'
+          .venv/bin/python -m unittest discover -s tests -p 'test_adam.py' -v
+
   browser-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 15
