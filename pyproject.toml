@@ -21,6 +21,7 @@ jarvis = "jarvis.cli:main"
 jarvis-show = "jarvis.gui:launch"
 adam = "jarvis.cli:main"
 adam-show = "jarvis.gui:launch"
+adam-team = "jarvis.engineering_team:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
