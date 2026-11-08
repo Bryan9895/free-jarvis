@@ -117,6 +117,7 @@ class AdamWindow:
         self.voice.tts_backend = "elevenlabs"
         self.voice.output_meter = lambda level: self.events.put(("output_level", level))
         self.listener = None
+        self._listener_shutting_down = None
         self.controller = None
         self.service = None
         self.turn_lock = threading.Lock()
@@ -296,8 +297,9 @@ class AdamWindow:
 
     def stop_listen(self):
         listener = self.listener
-        if listener is None:
+        if listener is None or self._listener_shutting_down is listener:
             return
+        self._listener_shutting_down = listener
         # Não descartar a referência enquanto a thread ainda pode estar
         # abrindo o stream: isso deixava uma captura órfã, embora a UI já
         # mostrasse "Ativar escuta". Encerrar sem bloquear a thread do Tk.
@@ -312,6 +314,9 @@ class AdamWindow:
     def toggle_listen(self):
         if self.capturing.is_set():
             self.warning.set("Conclua a gravação antes de alterar a escuta contínua.")
+            return
+        if self._listener_shutting_down is not None:
+            self.warning.set("Aguarde a escuta liberar completamente o microfone.")
             return
         if self.listener is None:
             self.start_listen()
@@ -393,6 +398,7 @@ class AdamWindow:
             self.capturing.clear()
             self.events.put(("manual_done", None))
             if (listener is not None and self.listener is listener
+                    and self._listener_shutting_down is not listener
                     and not self.turn_lock.locked() and not self.closed.is_set()):
                 listener.resume_or_restart()
             if not self.turn_lock.locked():
@@ -452,7 +458,8 @@ class AdamWindow:
                 if kind == "ask":
                     if self.turn_lock.locked():
                         self.turn_lock.release()
-                    if self.listener is not None and not self.capturing.is_set():
+                    if (self.listener is not None and not self.capturing.is_set()
+                            and self._listener_shutting_down is not self.listener):
                         self.listener.resume_or_restart()
                 if kind == "ask" and self._turn_started_at is not None:
                     took = round((time.monotonic() - self._turn_started_at) * 1000)
@@ -501,9 +508,11 @@ class AdamWindow:
                 if self.listener is old_listener:
                     if stopped:
                         self.listener = None
+                        self._listener_shutting_down = None
                         self.listen_button.configure(text="Ativar escuta", state="normal")
                         self._state("parado")
                     else:
+                        self._listener_shutting_down = None
                         self.listen_button.configure(text="Parar escuta novamente",
                                                      state="normal")
                         self.warning.set(
