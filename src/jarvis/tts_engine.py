@@ -109,6 +109,11 @@ _engine_lock = Lock()
 
 def synthesize_for(voice, text, filename, cancel):
     """Reuse the player queue; keep only one TTS backend resident at a time."""
+    backend = getattr(voice, "tts_backend", "elevenlabs")
+    if backend == "elevenlabs":
+        from .elevenlabs_tts import synthesize
+        return synthesize(text, filename, cancel,
+                          speed=getattr(voice, "elevenlabs_speed", 1.0))
     from .kokoro_engine import kokoro_synthesizer
     while not _engine_lock.acquire(timeout=.05):
         if cancel.is_set():
