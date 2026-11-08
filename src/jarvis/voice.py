@@ -55,7 +55,7 @@ def exclusive_capture(method):
                 acquired = _capture_owner.acquire(timeout=min(remaining, .20))
         if not acquired:
             raise VoiceError(
-                "Microfone reservado por outra captura do ADAM. "
+                "Microfone ocupado por outra captura do ADAM. "
                 "Feche outras janelas/instâncias do ADAM ou Jarvis; "
                 "diagnostique com: fuser -v ~/.cache/jarvis-fcc/capture.lock"
             )
