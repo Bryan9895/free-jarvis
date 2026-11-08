@@ -16,7 +16,7 @@ class Preferences:
     local_model: str = 'gemma4:e2b'
     audio_device: str = ''
     piper_model: str = ''
-    tts_backend: str = 'piper'
+    tts_backend: str = 'elevenlabs'
     kokoro_directory: str = ''
     kokoro_python: str = ''
     output_device: str = ''  # nome de sink Pulse/PipeWire, nunca índice SoundDevice
@@ -40,8 +40,8 @@ class Preferences:
             local_model(self.local_model)
         except FCCError as exc:
             raise ValueError(str(exc)) from exc
-        if self.tts_backend not in ('piper', 'kokoro'):
-            raise ValueError('Voz deve usar piper ou kokoro')
+        if self.tts_backend not in ('elevenlabs', 'piper', 'kokoro'):
+            raise ValueError('Voz deve usar elevenlabs')
         if type(self.clap_enabled) is not bool:
             raise ValueError('Ativação por palma deve ser booleana')
         for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest',
