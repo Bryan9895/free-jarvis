@@ -65,6 +65,43 @@ class NativeTkTests(unittest.TestCase):
                 except tk.TclError:
                     pass
 
+    def test_text_stream_reaches_tk_with_fake_fcc_service(self):
+        class FakeService:
+            supports_turn_cancellation = True
+            agent = SimpleNamespace(last_metrics={})
+            def ask_stream(self, message, on_text=None, cancel_token=None):
+                self.message = message
+                on_text("ADAM ")
+                on_text("funcionou.")
+                return "ADAM funcionou."
+            def close(self):
+                pass
+            def cancel_current(self):
+                pass
+        fake = FakeService()
+        root = tk.Tk()
+        try:
+            with patch.dict(os.environ, {"JARVIS_GUI_VOICE": "0"}), patch(
+                    "jarvis.preferences.PreferenceStore.load",
+                    return_value=Preferences(voice_mode="muted")), patch(
+                    "jarvis.service.JarvisService.from_config", return_value=fake):
+                window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
+                self.assertTrue(window._enqueue("teste do FCC"))
+                deadline = time.monotonic() + 2.
+                while window.turn_lock.locked() and time.monotonic() < deadline:
+                    root.update()
+                    time.sleep(.01)
+                root.update()
+                self.assertEqual(fake.message, "teste do FCC")
+                self.assertEqual(window.result.get(), "ADAM funcionou.")
+                self.assertTrue(window.metrics.get())
+                window.close()
+        finally:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+
     def test_approval_request_is_presented_on_tk_main_thread(self):
         root = tk.Tk()
         try:
