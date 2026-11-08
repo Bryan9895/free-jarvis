@@ -17,7 +17,7 @@ class WakeWordTests(unittest.TestCase):
             root = Path(td)
             model = root / 'wake.onnx'
             model.write_bytes(b'fixture-only-not-a-model')
-            data = {'version': 1, 'keyword': 'jarvis', 'language': 'pt-BR',
+            data = {'version': 1, 'keyword': 'adam', 'language': 'pt-BR',
                     'format': 'pcm_float32_16000', 'license': 'fixture', 'model': model.name,
                     'sha256': hashlib.sha256(model.read_bytes()).hexdigest(),
                     'evaluation': {'calls': 20, 'correct': 18, 'negative_minutes': 30,
@@ -25,7 +25,7 @@ class WakeWordTests(unittest.TestCase):
             path = root / 'manifest.json'
             path.write_text(json.dumps(data))
             self.assertEqual(WakeArtifact.load(path).model, model)
-            for change in ({'keyword': 'hey_jarvis'}, {'license': ''}, {'sha256': 'bad'}, {'evaluation': {}}):
+            for change in ({'keyword': 'hey_adam'}, {'license': ''}, {'sha256': 'bad'}, {'evaluation': {}}):
                 with self.subTest(change=change):
                     path.write_text(json.dumps({**data, **change}))
                     with self.assertRaises(ValueError): WakeArtifact.load(path)
