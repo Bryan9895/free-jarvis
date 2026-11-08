@@ -27,6 +27,54 @@ class VoiceTests(unittest.TestCase):
         activity.start()
         self.addCleanup(activity.stop)
 
+    def test_space_recording_writes_pcm_without_vad(self):
+        import numpy as np
+        import threading
+        import wave
+        finish, cancel = threading.Event(), threading.Event()
+        statuses = []
+        class FakeStream:
+            def __init__(self, **kwargs): self.callback = kwargs["callback"]
+            def __enter__(self):
+                for _ in range(4):
+                    samples = np.full((1280, 1), 550, dtype=np.int16)
+                    self.callback(samples, len(samples), None, None)
+                finish.set()
+                return self
+            def __exit__(self, *_): return False
+        backend = SimpleNamespace(InputStream=FakeStream)
+        with patch.dict(sys.modules, {"sounddevice": backend}), patch(
+                "jarvis.audio_activity.SileroActivity", side_effect=AssertionError("VAD proibido")):
+            path = VoiceIO().record_push_to_talk(cancel=cancel, finish=finish, on_status=statuses.append)
+        try:
+            with wave.open(str(path), "rb") as wav:
+                self.assertEqual(wav.getframerate(), 16000)
+                self.assertEqual(wav.getsampwidth(), 2)
+                self.assertEqual(wav.getnframes(), 1280 * 4)
+            self.assertTrue(any("Ouvindo" in status for status in statuses))
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_space_recording_release_before_sound_reports_error(self):
+        import threading
+        import tempfile
+        import wave
+        finish, cancel = threading.Event(), threading.Event()
+        finish.set()
+        class FakeStream:
+            def __init__(self, **kwargs): pass
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+        backend = SimpleNamespace(InputStream=FakeStream)
+        actual_mkstemp = tempfile.mkstemp
+        with tempfile.TemporaryDirectory() as directory, patch.dict(
+                sys.modules, {"sounddevice": backend}), patch(
+                "jarvis.voice.tempfile.mkstemp",
+                side_effect=lambda **kwargs: actual_mkstemp(dir=directory, **kwargs)):
+            with self.assertRaisesRegex(VoiceError, "muito curta"):
+                VoiceIO().record_push_to_talk(cancel=cancel, finish=finish)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_record_duration_bounds(self):
         voice = VoiceIO()
         for seconds in (0, -1, 16, 999):

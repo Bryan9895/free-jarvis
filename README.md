@@ -9,7 +9,7 @@ JavaScript na interface.**
 ## Arquitetura
 
 ```text
-Microfone (captura única + VAD) -----> faster-whisper -----> ADAM (personality)
+Espaço segurado (captura exclusiva) --> faster-whisper --> ADAM (personality)
        |                                                       |
        +-----> RMS (Tkinter Canvas)                    JarvisService / Agent
                                                                |
@@ -54,9 +54,11 @@ adam --gui --text-only
 # atalhos equivalentes: adam-show ou jarvis-fcc --gui
 ```
 
-Na GUI: **“Adam”** ativa a conversa contínua por transcrição local; **segure
-Espaço** ou o botão para falar manualmente; **T** abre o campo de texto;
-**H** mostra ou esconde a conversa; **Esc** interrompe uma resposta.
+Na GUI: **segure ESPAÇO para gravar** e **solte para enviar a fala ao Whisper/FCC**.
+Não existe escuta contínua, wake word por “Adam” ou botão de gravação por
+clique nesta versão. **T** abre o campo de texto, **H** mostra/esconde a
+conversa e **Esc** interrompe uma resposta. A interface precisa estar com o
+foco do teclado, sem o campo de texto selecionado.
 Configurações permitem alterar o ID do modelo FCC anunciado no catálogo.
 Os comandos antigos `jarvis-fcc`, `jarvis` e `jarvis-show` permanecem
 como aliases de compatibilidade. O pacote chama-se `adam-assistant`, mas
@@ -101,9 +103,9 @@ adam --profile local      # seleciona perfil Ollama/OpenJarvis, quando preparado
 
 ### Restrições atuais
 
-- A ativação por **Adam** usa o caminho local de transcrição quando não há
-  detector acústico treinado especificamente para essa palavra. Um
-  detector treinado para “Jarvis” NÃO deve ser reaproveitado como “Adam”.
+- A ativação acústica por **Adam** está **desativada na GUI**. Nenhum
+  detector contínuo abre o microfone em segundo plano. O suporte a wake word
+  permanece somente como código legado/futuro, sem uso nesta interface.
 - A esfera mede RMS do microfone na captura exclusiva. Na fala, anima com
   a amplitude do WAV reproduzido (aproximação; não é medição acústica).
 - Testes automatizados não substituem validação real de Wayland, Bluetooth,
@@ -126,13 +128,26 @@ Ver documentação técnica em `docs/ARQUITETURA.md` e `AGENTS.md`.
 - **Latência**: UI registra tempo até o primeiro delta e duração total; metas de subsegundo ainda não foram comprovadas no seu PC.
 - **Não concluído**: wake word acústico dedicado, barge-in por voz sem pressionar botão, Orange Pi/ESP32 físicos, operação 100% offline e ajuste fino medido no hardware.
 
-### Botão Falar e escuta contínua (correção de captura)
+### Modo temporário de voz: segurar Espaço
 
-Na GUI, clique **Falar** uma vez e aguarde o estado **Ouvindo** antes de começar.
-O VAD encerra a gravação após a pausa configurada; clique **Encerrar fala**
-para terminar antes. **Espaço** ainda funciona como segurar/soltar.
-Se a escuta contínua estiver ativa, o ADAM pausa a captura, aguarda o
-microfone ser liberado e só então inicia a gravação manual. Caso a preparação
-do detector VAD demore, o ADAM interrompe e reinicia a escuta contínua
-após concluir o turno. Se a thread anterior não terminar, não abre um
-segundo stream simultâneo: mostra uma mensagem de erro.
+O ADAM agora só grava enquanto a tecla **Espaço** estiver pressionada.
+Soltar a tecla finaliza o WAV; não há VAD ou janela fixa de 6 segundos.
+Um limite técnico de 10 minutos descarta gravações excessivas em vez de
+executar pedidos incompletos. Se a finalização ultrapassar 12 segundos,
+a interface mostra erro de tempo limite, sem permanecer eternamente no estado
+“Finalizando…”. Se houver outra instância do ADAM com o microfone aberto,
+ela precisa ser fechada antes de testar.
+
+A captura manual independe da chave ElevenLabs: Whisper transcreve localmente,
+FCC responde por texto e ElevenLabs lê a resposta se tiver credencial válida.
+
+Para executar com chave **sem salvá-la no repositório ou histórico do shell**:
+
+```bash
+bash tools/start_adam.sh
+```
+
+A chave ElevenLabs deve ser criada **na sua conta** em Developers → API Keys,
+com permissão Text to Speech e limite de créditos recomendado. O script
+solicita a chave sem ecoar sua digitação e a entrega apenas ao processo ADAM;
+não grava credenciais em disco. Sem chave, a voz falada não será produzida.

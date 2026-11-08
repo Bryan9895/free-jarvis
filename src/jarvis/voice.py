@@ -354,6 +354,89 @@ class VoiceIO:
         return listener._write_recording(samples)
 
 
+    @exclusive_capture
+    def record_push_to_talk(self, *, cancel, finish, on_level=None, on_status=None):
+        """Captura SOMENTE enquanto Espaço estiver pressionado: sem VAD, wake, nem limite de 6 s.
+
+        O stream é criado na própria thread de gravação e o arquivo só é entregue
+        ao Whisper depois de soltar a tecla. A exclusão entre processos é mantida.
+        """
+        if cancel.is_set():
+            raise VoiceError("Gravação cancelada")
+        try:
+            import sounddevice as sd
+        except ImportError as exc:
+            raise VoiceError("Instale os pacotes de áudio: pip install -e '.[voice]'") from exc
+
+        from .audio_devices import input_format
+        from .audio_activity import PCMNormalizer
+        selected = input_format(sd, self.device, self.sample_rate)
+        normalizer = PCMNormalizer(selected.rate, 16000)
+        frames = queue.Queue(maxsize=64)
+        lost = threading.Event()
+        fd, name = tempfile.mkstemp(prefix="adam_ptt_", suffix=".wav")
+        path = Path(name)
+        written = 0
+        last_frame = time.monotonic()
+
+        def receive(indata, _count, _time_info, status):
+            if status:
+                lost.set()
+            try:
+                frames.put_nowait(indata.copy())
+            except queue.Full:
+                lost.set()
+
+        try:
+            with os.fdopen(fd, "wb") as raw:
+                with wave.open(raw, "wb") as wav:
+                    wav.setnchannels(1)
+                    wav.setsampwidth(2)
+                    wav.setframerate(16000)
+                    blocksize = max(1, round(1280 * selected.rate / 16000))
+                    with sd.InputStream(samplerate=selected.rate, channels=selected.channels,
+                                        dtype="int16", device=self.device, blocksize=blocksize,
+                                        callback=receive):
+                        started = time.monotonic()
+                        if on_status is not None:
+                            on_status("Ouvindo — segure Espaço e fale; solte para enviar")
+                        while not cancel.is_set():
+                            if lost.is_set():
+                                raise VoiceError("Quadros perdidos no microfone; pedido descartado")
+                            if finish.is_set() and frames.empty():
+                                break
+                            if time.monotonic() - started > 600:
+                                raise VoiceError("Limite de segurança de 10 minutos; pedido descartado")
+                            try:
+                                pcm = frames.get(timeout=.12)
+                            except queue.Empty:
+                                if not finish.is_set() and time.monotonic() - last_frame > 3:
+                                    raise VoiceError("Microfone não entregou áudio; confira a entrada padrão")
+                                continue
+                            last_frame = time.monotonic()
+                            samples = normalizer.feed(pcm)
+                            if len(samples):
+                                wav.writeframesraw(samples.tobytes())
+                                written += len(samples)
+                                if on_level is not None:
+                                    from .voice_diagnostics import signal_metrics
+                                    on_level(signal_metrics(samples.tobytes()))
+                        if lost.is_set():
+                            raise VoiceError("Quadros perdidos no microfone; pedido descartado")
+                        if cancel.is_set():
+                            raise VoiceError("Gravação cancelada")
+                    tail = normalizer.flush()
+                    if len(tail):
+                        wav.writeframesraw(tail.tobytes())
+                        written += len(tail)
+            if written < 1600:
+                raise VoiceError("Gravação muito curta. Segure Espaço enquanto fala e solte ao terminar.")
+            return path
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+
+
 class WakeWordConversation:
     """Escuta a frase de ativação localmente e entrega uma fala por vez."""
 

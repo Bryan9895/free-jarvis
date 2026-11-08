@@ -36,30 +36,40 @@ class NativeTkTests(unittest.TestCase):
         finally:
             root.destroy()
 
-    def test_click_to_talk_starts_then_finishes_without_releasing_mouse(self):
+    def test_space_hold_release_handles_auto_repeat_and_completes(self):
         root = tk.Tk()
         try:
             with patch("jarvis.preferences.PreferenceStore.load",
-                       return_value=Preferences(voice_mode="muted")):
+                       return_value=Preferences(voice_mode="continuous")):
                 window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
-            def manual_capture():
-                window.capture_finish.wait(1.)
+            # Mesmo que a preferência antiga esteja em continuous, não abre listener.
+            root.update()
+            self.assertIsNone(window.listener)
+            self.assertFalse(hasattr(window, "listen_button"))
+            self.assertFalse(hasattr(window, "mic_button"))
+            def fake_capture():
+                window.capture_finish.wait(2.)
                 window.capturing.clear()
                 window.events.put(("manual_done", None))
-            with patch.object(window, "_record", side_effect=manual_capture):
-                window._click_to_talk()
-                self.assertEqual(window.mic_button.cget("text"), "Encerrar fala")
+            event = SimpleNamespace(keysym="space")
+            with patch.object(window, "_record", side_effect=fake_capture):
+                window._press(event)
                 self.assertTrue(window.capturing.is_set())
+                window._release(event)
+                # Simula autorepeat X11: release + press sem liberar a tecla.
+                window._press(event)
                 self.assertFalse(window.capture_finish.is_set())
-                window._click_to_talk()
-                self.assertTrue(window.capture_finish.is_set())
-                until = time.monotonic() + 1.
-                while (window.mic_button.cget("text") != "Falar"
-                       and time.monotonic() < until):
+                self.assertIsNone(window._space_release_job)
+                window._release(event)
+                deadline = time.monotonic() + 2.
+                while not window.capture_finish.is_set() and time.monotonic() < deadline:
                     root.update()
                     time.sleep(.01)
-                root.update()
-                self.assertEqual(window.mic_button.cget("text"), "Falar")
+                self.assertTrue(window.capture_finish.is_set())
+                while window.capturing.is_set() and time.monotonic() < deadline:
+                    root.update()
+                    time.sleep(.01)
+                self.assertFalse(window.capturing.is_set())
             window.close()
         finally:
             try:
@@ -67,58 +77,24 @@ class NativeTkTests(unittest.TestCase):
             except tk.TclError:
                 pass
 
-    def test_stop_listen_keeps_listener_until_capture_is_released(self):
-        from unittest.mock import Mock
-        root = tk.Tk()
-        try:
-            with patch("jarvis.preferences.PreferenceStore.load",
-                       return_value=Preferences(voice_mode="muted")):
-                window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
-            release = threading.Event()
-            listening = Mock()
-            listening.stop.side_effect = lambda timeout: release.wait(timeout)
-            window.listener = listening
-            window.stop_listen()
-            self.assertIs(window.listener, listening)
-            self.assertEqual(window.listen_button.cget("state"), "disabled")
-            window.start_listen()
-            self.assertIs(window.listener, listening)
-            release.set()
-            deadline = time.monotonic() + 2.
-            while window.listener is not None and time.monotonic() < deadline:
-                root.update()
-                time.sleep(.01)
-            self.assertIsNone(window.listener)
-            self.assertEqual(window.listen_button.cget("text"), "Ativar escuta")
-            window.close()
-        finally:
-            try:
-                root.destroy()
-            except tk.TclError:
-                pass
-
-    def test_manual_button_recovers_when_listener_pause_times_out(self):
-        from unittest.mock import Mock
+    def test_ptt_capture_uses_manual_stream_not_vad_or_listener(self):
         root = tk.Tk()
         with tempfile.TemporaryDirectory() as td:
             try:
                 with patch("jarvis.preferences.PreferenceStore.load",
-                           return_value=Preferences(voice_mode="muted")):
+                           return_value=Preferences(voice_mode="manual")):
                     window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
-                listener = Mock()
-                listener.pause.return_value = False
-                listener.stop.return_value = True
-                window.listener = listener
                 path = Path(td) / "spoken.wav"
-                path.write_bytes(b"fake wav")
-                with patch.object(window.voice, "record_turn", return_value=path) as record, \
-                     patch.object(window.voice, "transcribe", return_value="abra firefox"), \
-                     patch.object(window, "_enqueue", return_value=True):
+                path.write_bytes(b"placeholder")
+                with patch.object(window.voice, "record_push_to_talk", return_value=path) as record, \
+                     patch.object(window.voice, "record_turn") as old_vad, \
+                     patch.object(window.voice, "transcribe", return_value="abra Firefox"), \
+                     patch.object(window, "_enqueue", return_value=True) as send:
                     window._record()
-                listener.pause.assert_called_once_with(timeout=2.)
-                listener.stop.assert_called_once_with(timeout=10.)
+                old_vad.assert_not_called()
                 record.assert_called_once()
-                listener.resume_or_restart.assert_called_once()
+                self.assertEqual(record.call_args.kwargs["_capture_wait"], 4.)
+                send.assert_called_once_with("abra Firefox")
                 self.assertFalse(path.exists())
                 window.close()
             finally:
@@ -220,7 +196,7 @@ class NativeTkTests(unittest.TestCase):
             except tk.TclError:
                 pass
 
-    def test_text_only_mode_disables_microphone_and_keeps_desktop(self):
+    def test_text_only_mode_rejects_space_capture(self):
         root = tk.Tk()
         try:
             with patch.dict(os.environ, {"JARVIS_GUI_VOICE": "0"}), patch(
@@ -229,8 +205,9 @@ class NativeTkTests(unittest.TestCase):
                 window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
             root.update()
             self.assertTrue(window.details)
-            self.assertEqual(str(window.mic_button.cget("state")), "disabled")
             self.assertIsNone(window.listener)
+            self.assertEqual(window._press(SimpleNamespace(keysym="space")), "break")
+            self.assertFalse(window.capturing.is_set())
             window.close()
         finally:
             try:

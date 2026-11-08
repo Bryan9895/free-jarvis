@@ -116,8 +116,9 @@ class AdamWindow:
         # A interface ADAM usa exclusivamente o TTS ElevenLabs.
         self.voice.tts_backend = "elevenlabs"
         self.voice.output_meter = lambda level: self.events.put(("output_level", level))
-        self.listener = None
-        self._listener_shutting_down = None
+        self.listener = None  # Escuta contínua desativada neste modo ADAM.
+        self._space_release_job = None
+        self._finalize_timeout_job = None
         self.controller = None
         self.service = None
         self.turn_lock = threading.Lock()
@@ -183,20 +184,14 @@ class AdamWindow:
         button = dict(bg="#141419", fg="#ececf3", activebackground="#292931",
                       activeforeground="#ffffff", bd=0, relief="flat", font=("DejaVu Sans", 10),
                       cursor="hand2", padx=14, pady=8)
-        # Clique para iniciar; o fim de fala também é automático via VAD.
-        # Segundo clique conclui a gravação. Espaço continua push-to-talk.
-        self.mic_button = tk.Button(actions, text="Falar", command=self._click_to_talk, **button)
-        self.mic_button.pack(side="left", padx=5)
-        self.listen_button = tk.Button(actions, text="Desativar escuta", command=self.toggle_listen, **button)
-        self.listen_button.pack(side="left", padx=5)
-        if not self.voice_enabled:
-            self.mic_button.configure(state="disabled")
-            self.listen_button.configure(state="disabled")
+        # O modo ADAM manual não cria microfone em segundo plano.
+        # Somente Espaço pressionado abre o stream.
+        self.actions = actions
         tk.Button(actions, text="Parar", command=self.stop, **button).pack(side="left", padx=5)
         tk.Button(actions, text="⚙", command=self.settings, **button).pack(side="left", padx=5)
 
         tk.Label(bottom,
-                 text="Diga “Adam” · clique Falar para gravar · ESPAÇO segurar · T digitar · H detalhes · ESC cancelar",
+                 text="Segure ESPAÇO para falar · solte para enviar · T digitar · H detalhes · ESC cancelar",
                  bg="#000000", fg="#4e4e5a", font=("DejaVu Sans", 9)).pack(pady=(14, 0))
 
         root.bind("<KeyPress-space>", self._press)
@@ -207,10 +202,9 @@ class AdamWindow:
         self.worker = threading.Thread(target=self._work, daemon=True, name="adam-core")
         self.worker.start()
         self.root.after(70, self._poll)
-        if self.voice_enabled and PreferenceStore().load().effective().voice_mode == "continuous":
-            self.root.after(150, self.start_listen)
-        else:
-            self.listen_button.configure(text="Ativar escuta")
+        self.root.after(120, self.root.focus_set)
+        # A escolha antiga 'continuous' nas preferências não inicia mais
+        # captura de fundo nesta interface.
         self._state("parado")
 
     def _state(self, state, description=None):
@@ -225,7 +219,7 @@ class AdamWindow:
 
     def _toggle_text(self, on):
         if on:
-            self.text_frame.pack(fill="x", pady=(0, 7), before=self.mic_button.master)
+            self.text_frame.pack(fill="x", pady=(0, 7), before=self.actions)
             self.entry.focus_set()
         else:
             self.text_frame.pack_forget()
@@ -281,106 +275,62 @@ class AdamWindow:
     def _on_mic_level(self, metrics):
         self.events.put(("mic_level", metrics.get("rms", 0.)))
 
-    def start_listen(self):
-        if (not self.voice_enabled or self.listener is not None or self.closed.is_set()
-                or self.capturing.is_set()):
-            return
-        from .voice import WakeWordConversation
-        self.listener = WakeWordConversation(
-            self.voice, self._on_command,
-            on_status=lambda status: self.events.put(("listen_status", status)),
-            on_level=self._on_mic_level,
-        )
-        self.listener.start()
-        self.listen_button.configure(text="Desativar escuta")
-        self._state("aguardando_ativacao", "aguardando Adam")
-
-    def stop_listen(self):
-        listener = self.listener
-        if listener is None or self._listener_shutting_down is listener:
-            return
-        self._listener_shutting_down = listener
-        # Não descartar a referência enquanto a thread ainda pode estar
-        # abrindo o stream: isso deixava uma captura órfã, embora a UI já
-        # mostrasse "Ativar escuta". Encerrar sem bloquear a thread do Tk.
-        self.listen_button.configure(text="Parando escuta…", state="disabled")
-        self._state("preparando_microfone", "encerrando escuta contínua…")
-        def finish_stop():
-            stopped = listener.stop(timeout=12.)
-            self.events.put(("listen_stopped", (listener, stopped)))
-        threading.Thread(target=finish_stop, daemon=True,
-                         name="adam-stop-listener").start()
-
-    def toggle_listen(self):
-        if self.capturing.is_set():
-            self.warning.set("Conclua a gravação antes de alterar a escuta contínua.")
-            return
-        if self._listener_shutting_down is not None:
-            self.warning.set("Aguarde a escuta liberar completamente o microfone.")
-            return
-        if self.listener is None:
-            self.start_listen()
-        else:
-            self.stop_listen()
-
-    def _click_to_talk(self):
-        if self.capturing.is_set():
-            self.capture_finish.set()
-            self.mic_button.configure(text="Finalizando…")
-            return
-        self._press()
-        if self.capturing.is_set():
-            self.mic_button.configure(text="Encerrar fala")
-
     def _press(self, event=None):
         if event is not None and getattr(event, "keysym", "") == "space":
-            if self.root.focus_get() == self.entry:
+            if self.root.focus_get() is self.entry:
                 return
-            if getattr(event, "type", None) == "2" and self.capturing.is_set():
-                return "break"
-        if not self.voice_enabled or self.capturing.is_set():
+        # Em X11, o autorepeat emite um KeyRelease curto antes do próximo
+        # KeyPress. Cancele a liberação agendada sem interromper a fala.
+        if self._space_release_job is not None:
+            self.root.after_cancel(self._space_release_job)
+            self._space_release_job = None
+        if not self.voice_enabled or self.capturing.is_set() or self.closed.is_set():
             return "break"
         if self.turn_lock.locked():
-            # Barge-in manual: cancela a resposta antes de reabrir o microfone.
-            # Não é detector acústico de interrupção; requer segurar o botão.
+            # Interromper a resposta falada antes da próxima solicitação.
             self.stop()
         self.capture_cancel.clear()
         self.capture_finish.clear()
         self.capturing.set()
-        threading.Thread(target=self._record, daemon=True, name="adam-record").start()
-        self._state("preparando_microfone", "liberando microfone…")
+        self._state("preparando_microfone", "preparando microfone… segure ESPAÇO")
+        threading.Thread(target=self._record, daemon=True, name="adam-space-record").start()
         return "break"
 
-    def _release(self, _event=None):
+    def _release(self, event=None):
+        if event is not None and getattr(event, "keysym", "") == "space":
+            if self.root.focus_get() is self.entry:
+                return
+        if self.capturing.is_set() and self._space_release_job is None:
+            self._space_release_job = self.root.after(120, self._finish_space_recording)
+        return "break"
+
+    def _finish_space_recording(self):
+        self._space_release_job = None
         if self.capturing.is_set():
             self.capture_finish.set()
-        return "break"
+            self._state("finalizando", "finalizando gravação…")
+            self._finalize_timeout_job = self.root.after(12000, self._recording_timeout)
+
+    def _recording_timeout(self):
+        self._finalize_timeout_job = None
+        if self.capturing.is_set() and not self.closed.is_set():
+            self.capture_cancel.set()
+            self.events.put(("error", "Tempo excedido ao finalizar gravação. "
+                             "Feche outras instâncias do ADAM e verifique o microfone."))
 
     def _record(self):
         recording = None
-        listener = self.listener
         try:
-            if listener is not None and not listener.pause(timeout=2.):
-                # VAD inicial ainda pode estar carregando na thread contínua.
-                # Stop é cooperativo; só prosseguir com a captura quando a
-                # thread parou E o lock global de áudio foi liberado.
-                self.events.put(("phase", "liberando_microfone"))
-                if not listener.stop(timeout=10.):
-                    raise RuntimeError("O microfone não foi liberado pela escuta contínua. "
-                                       "Desative a escuta e tente novamente.")
-                from .voice import _capture_owner
-                if not _capture_owner.acquire(timeout=2.):
-                    raise RuntimeError("Outra captura ainda utiliza o microfone.")
-                _capture_owner.release()
-            if self.capture_cancel.is_set() or self.closed.is_set():
-                return
-            self.events.put(("phase", "ouvindo"))
-            recording = self.voice.record_turn(
+            recording = self.voice.record_push_to_talk(
                 cancel=self.capture_cancel,
                 finish=self.capture_finish,
                 on_level=self._on_mic_level,
                 on_status=lambda status: self.events.put(("manual_status", status)),
+                _capture_wait=4.,
             )
+            # A espera de 12 s vale somente para fechar o microfone, não
+            # para o Whisper (que pode demorar em CPU sem GPU).
+            self.events.put(("manual_recorded", None))
             self.events.put(("phase", "transcrevendo"))
             message = self.voice.transcribe(recording)
             if not self.capture_cancel.is_set() and not self.closed.is_set():
@@ -397,12 +347,8 @@ class AdamWindow:
                 recording.unlink(missing_ok=True)
             self.capturing.clear()
             self.events.put(("manual_done", None))
-            if (listener is not None and self.listener is listener
-                    and self._listener_shutting_down is not listener
-                    and not self.turn_lock.locked() and not self.closed.is_set()):
-                listener.resume_or_restart()
             if not self.turn_lock.locked():
-                self.events.put(("phase", "aguardando_ativacao" if self.listener else "parado"))
+                self.events.put(("phase", "parado"))
 
     def _ask_approval(self, message):
         """Solicita permissão na thread Tk. Nunca mostra messagebox no worker."""
@@ -458,9 +404,7 @@ class AdamWindow:
                 if kind == "ask":
                     if self.turn_lock.locked():
                         self.turn_lock.release()
-                    if (self.listener is not None and not self.capturing.is_set()
-                            and self._listener_shutting_down is not self.listener):
-                        self.listener.resume_or_restart()
+                    # Não existe listener contínuo neste modo.
                 if kind == "ask" and self._turn_started_at is not None:
                     took = round((time.monotonic() - self._turn_started_at) * 1000)
                     if self._first_text_at is not None:
@@ -468,7 +412,7 @@ class AdamWindow:
                         self.events.put(("metrics", (took, first)))
                     else:
                         self.events.put(("metrics", (took, None)))
-                self.events.put(("phase", "aguardando_ativacao" if self.listener else "parado"))
+                self.events.put(("phase", "parado"))
 
     def _poll(self):
         if self.closed.is_set():
@@ -499,30 +443,20 @@ class AdamWindow:
             elif kind == "output_level":
                 self.orb.set_level(value)
             elif kind == "manual_status":
-                self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
-                            value[:85])
+                if not self.capture_finish.is_set():
+                    self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
+                                value[:85])
+            elif kind == "manual_recorded":
+                if self._finalize_timeout_job is not None:
+                    self.root.after_cancel(self._finalize_timeout_job)
+                    self._finalize_timeout_job = None
             elif kind == "manual_done":
-                self.mic_button.configure(text="Falar")
-            elif kind == "listen_stopped":
-                old_listener, stopped = value
-                if self.listener is old_listener:
-                    if stopped:
-                        self.listener = None
-                        self._listener_shutting_down = None
-                        self.listen_button.configure(text="Ativar escuta", state="normal")
-                        self._state("parado")
-                    else:
-                        self._listener_shutting_down = None
-                        self.listen_button.configure(text="Parar escuta novamente",
-                                                     state="normal")
-                        self.warning.set(
-                            "A thread de escuta ainda está encerrando. "
-                            "Não inicie outra instância até liberar o microfone.")
-            elif kind == "listen_status":
-                if "indisponível" in value or "Falha" in value or "Descartado" in value:
-                    self._state("parado", value[:86])
-                elif "Aguardando Adam" in value:
-                    self._state("aguardando_ativacao")
+                if self._space_release_job is not None:
+                    self.root.after_cancel(self._space_release_job)
+                    self._space_release_job = None
+                if self._finalize_timeout_job is not None:
+                    self.root.after_cancel(self._finalize_timeout_job)
+                    self._finalize_timeout_job = None
             elif kind == "error":
                 self.warning.set(value[:350])
                 self._state("parado", "erro: " + value[:80])
@@ -576,7 +510,7 @@ class AdamWindow:
         dialog.configure(bg="#101015")
         dialog.title("ADAM · Configurações")
         dialog.resizable(False, False)
-        dialog.geometry("560x660")
+        dialog.geometry("560x560")
         dialog.transient(self.root)
         f = tk.Frame(dialog, bg="#101015", padx=25, pady=17)
         f.pack(fill="both", expand=True)
@@ -602,10 +536,8 @@ class AdamWindow:
         tts_model = field("Modelo de TTS", current.elevenlabs_model_id)
         speed = field("Velocidade (0.7 a 1.2)", current.elevenlabs_speed)
         persona = field("Arquivo de personalidade (opcional)", current.persona_file)
-        silence = field("Fim de fala após silêncio (ms: 600 a 1800)", current.silence_ms)
-        voice_mode = tk.StringVar(value=current.voice_mode)
-        tk.Label(f, text="Modo de escuta", fg="#d6d6e1", bg="#101015").pack(anchor="w")
-        tk.OptionMenu(f, voice_mode, "continuous", "manual", "muted").pack(anchor="w")
+        tk.Label(f, text="Microfone: segure ESPAÇO e solte para enviar. Escuta contínua desativada.",
+                 bg="#101015", fg="#c8c8d2", wraplength=510).pack(anchor="w")
         tk.Label(f, text="Perfil/modelo local exigem reiniciar o ADAM. A chave nunca é salva.",
                  bg="#101015", fg="#9696a5", wraplength=510).pack(anchor="w", pady=(9, 5))
 
@@ -620,8 +552,7 @@ class AdamWindow:
                     elevenlabs_voice_id=voice_id.get().strip(),
                     elevenlabs_model_id=tts_model.get().strip(),
                     elevenlabs_speed=float(speed.get().strip()),
-                    persona_file=persona.get().strip(), silence_ms=int(silence.get().strip()),
-                    voice_mode=voice_mode.get(),
+                    persona_file=persona.get().strip(), voice_mode="manual",
                 ).validate()
                 store.save(new)
             except (ValueError, OSError) as exc:
@@ -631,10 +562,6 @@ class AdamWindow:
             self.voice.elevenlabs_model_id = new.elevenlabs_model_id
             self.voice.elevenlabs_speed = new.elevenlabs_speed
             self.voice.silence_seconds = new.silence_ms / 1000
-            if self.voice_enabled and new.voice_mode == "continuous":
-                self.start_listen()
-            elif self.listener is not None:
-                self.stop_listen()
             if new.inference_profile == self.config.profile and new.conversation_model:
                 self.jobs.put(("model", new.conversation_model))
             self.warning.set("Preferências salvas. Reinicie para trocar perfil, modelo local ou variáveis de ambiente.")
@@ -646,8 +573,12 @@ class AdamWindow:
     def close(self):
         self.closed.set()
         self.stop()
-        if self.listener is not None:
-            self.listener.stop(timeout=.2)
+        if self._space_release_job is not None:
+            self.root.after_cancel(self._space_release_job)
+            self._space_release_job = None
+        if self._finalize_timeout_job is not None:
+            self.root.after_cancel(self._finalize_timeout_job)
+            self._finalize_timeout_job = None
         self.jobs.put(("shutdown", None))
         self.root.destroy()
 
