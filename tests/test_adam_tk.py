@@ -36,6 +36,66 @@ class NativeTkTests(unittest.TestCase):
         finally:
             root.destroy()
 
+    def test_click_to_talk_starts_then_finishes_without_releasing_mouse(self):
+        root = tk.Tk()
+        try:
+            with patch("jarvis.preferences.PreferenceStore.load",
+                       return_value=Preferences(voice_mode="muted")):
+                window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
+            def manual_capture():
+                window.capture_finish.wait(1.)
+                window.capturing.clear()
+                window.events.put(("manual_done", None))
+            with patch.object(window, "_record", side_effect=manual_capture):
+                window._click_to_talk()
+                self.assertEqual(window.mic_button.cget("text"), "Encerrar fala")
+                self.assertTrue(window.capturing.is_set())
+                self.assertFalse(window.capture_finish.is_set())
+                window._click_to_talk()
+                self.assertTrue(window.capture_finish.is_set())
+                until = time.monotonic() + 1.
+                while window.capturing.is_set() and time.monotonic() < until:
+                    root.update()
+                    time.sleep(.01)
+                root.update()
+                self.assertEqual(window.mic_button.cget("text"), "Falar")
+            window.close()
+        finally:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+
+    def test_manual_button_recovers_when_listener_pause_times_out(self):
+        from unittest.mock import Mock
+        root = tk.Tk()
+        with tempfile.TemporaryDirectory() as td:
+            try:
+                with patch("jarvis.preferences.PreferenceStore.load",
+                           return_value=Preferences(voice_mode="muted")):
+                    window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
+                listener = Mock()
+                listener.pause.return_value = False
+                listener.stop.return_value = True
+                window.listener = listener
+                path = Path(td) / "spoken.wav"
+                path.write_bytes(b"fake wav")
+                with patch.object(window.voice, "record_turn", return_value=path) as record, \
+                     patch.object(window.voice, "transcribe", return_value="abra firefox"), \
+                     patch.object(window, "_enqueue", return_value=True):
+                    window._record()
+                listener.pause.assert_called_once_with(timeout=2.)
+                listener.stop.assert_called_once_with(timeout=10.)
+                record.assert_called_once()
+                listener.resume_or_restart.assert_called_once()
+                self.assertFalse(path.exists())
+                window.close()
+            finally:
+                try:
+                    root.destroy()
+                except tk.TclError:
+                    pass
+
     def test_settings_saves_preference_without_credentials(self):
         with tempfile.TemporaryDirectory() as td:
             root = tk.Tk()
