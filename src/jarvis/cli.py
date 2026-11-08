@@ -103,8 +103,8 @@ def main(argv=None):
     if args.gui:
         if args.text_only:
             os.environ["JARVIS_GUI_VOICE"] = "0"
-        from .gui import main_gui
-        main_gui(c, auto=not args.manual_approve)
+        from .web_ui import serve
+        serve(c)
         return
     if args.doctor:
         from .doctor import collect, active, human, merge_active
