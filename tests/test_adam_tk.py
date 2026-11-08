@@ -54,7 +54,8 @@ class NativeTkTests(unittest.TestCase):
                 window._click_to_talk()
                 self.assertTrue(window.capture_finish.is_set())
                 until = time.monotonic() + 1.
-                while window.capturing.is_set() and time.monotonic() < until:
+                while (window.mic_button.cget("text") != "Falar"
+                       and time.monotonic() < until):
                     root.update()
                     time.sleep(.01)
                 root.update()
