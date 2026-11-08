@@ -2,7 +2,9 @@
 
 ## Objetivo do produto
 
-Assistente desktop em português brasileiro para Bryan, no Ubuntu GNOME Wayland. Deve ouvir a chamada **Jarvis**, compreender pedidos sem cronômetro de fala, executar ferramentas autorizadas, verificar o resultado e responder com voz natural. A conversa é a tela principal. Diagnósticos e operações avançadas ficam em configurações.
+O produto chama-se **ADAM — Assistente Digital Autônomo Modular**. O backend principal é FCC e o frontend obrigatório é **Tkinter Canvas nativo**, sem HTML/JS, HTTP local ou navegador para UI. A voz principal é **ElevenLabs** via Python/PCM; sem chave/internet, avisar, sem fallback automático. Manter Ollama apenas como alternativa opt-in. Preparar arquitetura transportável para Orange Pi (Linux), e tratar ESP32 como periférico/sensores, não como host de inferência pesada.
+
+Assistente desktop em português brasileiro para Bryan, no Ubuntu GNOME Wayland. Deve ouvir a chamada **Adam**, compreender pedidos sem cronômetro de fala, executar ferramentas autorizadas, verificar o resultado e responder com voz natural. A conversa é a tela principal. Diagnósticos e operações avançadas ficam em configurações.
 
 O relato do usuário sobre falhas reais prevalece sobre uma demonstração com mocks. Não declare voz/autonomia prontas apenas porque a suíte passou.
 
@@ -22,7 +24,7 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 3. Uma sessão possui um único dono do dispositivo de captura. Wake word, VAD e diagnóstico recebem áudio pelo coordenador, sem streams concorrentes nem perda silenciosa de quadros.
 4. Detecção de ativação, fim de fala, STT, execução e TTS são etapas distintas. Modelo de conversa não é modelo Whisper; nível de áudio não comprova fala compreendida.
 5. Não use seis segundos como duração obrigatória de pedido. Um limite técnico de buffer pode segmentar o áudio, mas não finalizar/truncar a intenção sem informar o usuário.
-6. “Jarvis” isolado é requisito. Um modelo que só detecta “Hey Jarvis” não satisfaz esse requisito. Valide pronúncia brasileira e documente disponibilidade do detector antes de anunciá-lo como ativo.
+6. “Adam” isolado é requisito. Um modelo que só detecta “Hey Adam” não satisfaz esse requisito. Valide pronúncia brasileira e documente disponibilidade do detector antes de anunciá-lo como ativo.
 7. Controle transições com IDs de sessão/turno, eventos tipados e cancelamento. Ignore resultados atrasados de turnos cancelados; não duplique comandos nem confirmações.
 8. Texto para tela e texto para voz são representações distintas. Não leia Markdown, caminhos extensos, JSON ou blocos de código literalmente como resposta comum.
 9. Use carregamento tardio/cache limitado para STT/TTS. O alvo tem 8 GB de RAM, CPU e Bluetooth; não exija GPU, nuvem de áudio ou múltiplos modelos Whisper carregados.
@@ -41,7 +43,7 @@ O relato do usuário sobre falhas reais prevalece sobre uma demonstração com m
 - Início: indicador de estado real, transcrição/conversa, campo de texto, microfone/mudo, parar e acesso a configurações.
 - Configurações: Voz, Microfone, Modelo de conversa, Diagnósticos e Avançado. Tarefas, planos, janelas e métricas continuam acessíveis, sem ocupar permanentemente a tela inicial.
 - Sem animação que finja captura ou execução; forma de onda, se existir, usa medidas reais.
-- Em 08/11/2026 o usuário solicitou expressamente substituir toda a GUI Tkinter pela interface da esfera de matheustillimt-tech/jarvis. A interface web foi importada sob MIT e o backend usa JarvisService, não claude CLI. A migração exige validação real antes de considerar a experiência pronta. Preservar CLI, FCC, autorizações, GNOME e SQLite.
+- A interface Web/JS da referência foi substituída por Tkinter Canvas por solicitação expressa posterior em 08/11/2026. Não restabelecer o frontend Web. Preserve CLI, FCC, autorizações, GNOME, SQLite e evite dois microfones.
 
 ## Verificação e entrega
 

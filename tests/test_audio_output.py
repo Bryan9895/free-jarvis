@@ -25,7 +25,7 @@ class AudioOutputTests(unittest.TestCase):
             played.append(path.read_text())
             if len(played) == 1:
                 self.assertTrue(second.wait(1))
-        voice = SimpleNamespace(piper_model='model', _speech_cancel=Event(), output_device='', _run_audio=play)
+        voice = SimpleNamespace(tts_backend='piper', piper_model='model', _speech_cancel=Event(), output_device='', _run_audio=play)
         with patch('jarvis.tts_engine.synthesizer.synthesize', side_effect=synthesize):
             self.assertEqual(play_pipeline(voice, iter(('primeira', 'segunda', 'terceira'))), 'spoken')
         self.assertEqual(played, ['primeira', 'segunda', 'terceira'])
@@ -37,7 +37,7 @@ class AudioOutputTests(unittest.TestCase):
             paths.append(path)
             path.write_text(text)
         def fail(_): raise RuntimeError('player failed')
-        voice = SimpleNamespace(piper_model='model', _speech_cancel=Event(), output_device='', _run_audio=fail)
+        voice = SimpleNamespace(tts_backend='piper', piper_model='model', _speech_cancel=Event(), output_device='', _run_audio=fail)
         with patch('jarvis.tts_engine.synthesizer.synthesize', side_effect=synthesize):
             with self.assertRaisesRegex(RuntimeError, 'player failed'):
                 play_pipeline(voice, iter(str(i) for i in range(100)))

@@ -50,6 +50,8 @@ class VoiceIO:
         piper_model = os.getenv('JARVIS_PIPER_MODEL', piper_model or preferences.piper_model)
         self.piper_model = Path(piper_model).expanduser() if piper_model else None
         self.tts_backend = preferences.tts_backend
+        self.elevenlabs_speed = float(os.getenv('ELEVENLABS_SPEED', '1.0'))
+        self.output_meter = None
         from .kokoro_assets import assets_directory
         self.kokoro_directory = assets_directory(preferences.kokoro_directory or None)
         self.kokoro_python = preferences.kokoro_python
@@ -221,6 +223,8 @@ class VoiceIO:
         return self.speak_stream(speech_chunks(text))
 
     def speak_stream(self, chunks):
+        if self.tts_backend == 'elevenlabs' and not os.getenv('ELEVENLABS_API_KEY', '').strip():
+            return 'disabled'
         if self.tts_backend == 'piper' and self.piper_model is None:
             return 'disabled'
         if self.tts_backend == 'piper' and not self.piper_model.is_file():
@@ -238,7 +242,9 @@ class VoiceIO:
         if self.tts_backend == 'piper' and (self.piper_model is None or not self.piper_model.is_file()):
             raise VoiceError('Selecione uma voz local instalada antes de preparar')
         from .tts_engine import synthesize_for
-        fd, filename = tempfile.mkstemp(prefix='jarvis_warmup_', suffix='.wav')
+        if self.tts_backend == 'elevenlabs' and not os.getenv('ELEVENLABS_API_KEY', '').strip():
+            raise VoiceError('Configure ELEVENLABS_API_KEY para preparar a voz')
+        fd, filename = tempfile.mkstemp(prefix='adam_warmup_', suffix='.wav')
         os.close(fd)
         try:
             synthesize_for(self, 'Voz preparada.', Path(filename), self._speech_cancel)
@@ -257,6 +263,14 @@ class VoiceIO:
             raise CancelledError("Resposta falada cancelada")
         process = subprocess.Popen(command, stdin=subprocess.PIPE if text is not None else subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        meter_stop = threading.Event()
+        meter = None
+        if callable(self.output_meter) and text is None and command and str(command[-1]).endswith('.wav'):
+            from .audio_meter import follow_wav
+            meter = threading.Thread(target=follow_wav,
+                args=(command[-1], self.output_meter, meter_stop), daemon=True,
+                name='adam-output-meter')
+            meter.start()
         deadline = time.monotonic() + 90
         try:
             pending = text
@@ -273,6 +287,9 @@ class VoiceIO:
                 except subprocess.TimeoutExpired:
                     pending = None
         finally:
+            meter_stop.set()
+            if meter is not None:
+                meter.join(timeout=0.25)
             if process.poll() is None:
                 process.terminate()
                 try:
@@ -311,7 +328,7 @@ class WakeWordConversation:
 
     FRAME_SAMPLES = 1280  # Blocos de 80 ms para detecção de atividade de voz.
     WAKE_PATTERN = re.compile(
-        r"^\s*(?:(?:hey|ei)\s+)?(?:d?jarv(?:is|es|ez)|dav(?:i|ie)s|de\s+avis|a\s+visa)\b[\s,.:;!?-]*",
+        r"^\s*(?:(?:hey|ei)\s+)?(?:adam|adã|adão)\b[\s,.:;!?-]*",
         re.IGNORECASE,
     )
 
@@ -322,7 +339,7 @@ class WakeWordConversation:
                  *, device=None, silence_seconds=None,
                  max_command_seconds=120, on_transcript=lambda _text: None,
                  activity_factory=None, wake_engine=None, on_event=lambda _: None,
-                 on_activation=lambda _: None):
+                 on_activation=lambda _: None, on_level=None):
         self.voice = voice
         self.on_command = on_command
         self.on_status = on_status
@@ -345,6 +362,7 @@ class WakeWordConversation:
         self._acoustically_activated = False
         self._clap_activated = False
         self.on_activation = on_activation
+        self.on_level = on_level
         from .clap import ClapDetector
         self.clap = ClapDetector()
         self.audio_metrics = {'frames': 0, 'lost_turns': 0, 'queue_peak': 0}
@@ -364,7 +382,7 @@ class WakeWordConversation:
         self._stop.clear()
         self._resume.set()
         self._thread = threading.Thread(target=self._run, daemon=True,
-                                        name="jarvis-wakeword-listener")
+                                        name="adam-wakeword-listener")
         self._thread.start()
 
     def stop(self, timeout=2):
@@ -401,8 +419,8 @@ class WakeWordConversation:
                     self.wake_engine = OnnxWakeWordEngine(WakeArtifact.load(self.voice.wake_manifest))
                 except Exception as exc:
                     self.on_status('Detector acústico indisponível: ' + str(exc))
-            self.on_status('Aguardando Jarvis — detector acústico local.' if self.wake_engine is not None else
-                           'Aguardando Jarvis — fallback por transcrição local; detector acústico não validado.')
+            self.on_status('Aguardando Adam — detector acústico local.' if self.wake_engine is not None else
+                           'Aguardando Adam — fallback por transcrição local; detector acústico não validado.')
             conversation = False
             capture_failures = 0
             while not self._stop.is_set():
@@ -419,7 +437,8 @@ class WakeWordConversation:
                 generation = self._generation
                 try:
                     samples = self._listen_for_command(
-                        sd, np, idle_timeout=self.voice.followup_seconds if conversation else None)
+                        sd, np, idle_timeout=self.voice.followup_seconds if conversation else None,
+                        on_level=self.on_level)
                 except PendingVoiceTurn as exc:
                     conversation = False
                     self._resume.clear()
@@ -442,7 +461,7 @@ class WakeWordConversation:
                     continue
                 if samples is None:
                     conversation = False
-                    self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
+                    self.on_status("Conversa pausada. Diga Adam para iniciar outra.")
                     continue
                 self.on_status("Entendendo: transcrevendo localmente e verificando ativação no fallback…")
                 recording = self._write_recording(samples)
@@ -452,13 +471,13 @@ class WakeWordConversation:
                     if woke and not self._acoustically_activated:
                         activated, transcript = self.extract_wake_command(transcript)
                         if not activated:
-                            self.on_status("Fala reconhecida, mas sem ativação. Comece o pedido com Jarvis.")
+                            self.on_status("Fala reconhecida, mas sem ativação. Comece o pedido com Adam.")
                             continue
                     else:
                         transcript = self.remove_wake_word(transcript)
                 except VoiceError as exc:
                     conversation = False
-                    self.on_status(f"Fala não reconhecida: {exc}. Aguardando Jarvis novamente…")
+                    self.on_status(f"Fala não reconhecida: {exc}. Aguardando Adam novamente…")
                     continue
                 finally:
                     recording.unlink(missing_ok=True)
@@ -468,7 +487,7 @@ class WakeWordConversation:
                     stop_text = self.WAKE_PATTERN.sub("", transcript, count=1)
                     if stop_text.casefold().strip(" .,!?:;") in self.STOP_PHRASES:
                         conversation = False
-                        self.on_status("Conversa pausada. Diga Jarvis para iniciar outra.")
+                        self.on_status("Conversa pausada. Diga Adam para iniciar outra.")
                         continue
                     self._resume.clear()
                     from .latency import TracedText
@@ -487,8 +506,8 @@ class WakeWordConversation:
                     conversation = not self._clap_activated
                 else:
                     conversation = bool(woke)
-                    self.on_status("Jarvis ativada. Pode falar seu pedido." if woke else
-                                   "Não reconheci a fala. Aguardando Jarvis…")
+                    self.on_status("Adam ativado. Pode falar seu pedido." if woke else
+                                   "Não reconheci a fala. Aguardando Adam…")
             self.on_status("Escuta contínua parada.")
         except Exception as exc:
             self.on_status(f"Escuta contínua indisponível: {exc}")
@@ -618,7 +637,7 @@ class WakeWordConversation:
                             self._acoustically_activated = True
                             wake_wait_started = last_frame
                             trace.mark('wake_detected')
-                            self.on_status('Jarvis ativado. Ouvindo o pedido.')
+                            self.on_status('Adam ativado. Ouvindo o pedido.')
                             coordinator.transition(trace, 'ouvindo', 'ativação acústica', self.on_event)
                         else:
                             # Pré-áudio permanece no endpoint, mas não inicia

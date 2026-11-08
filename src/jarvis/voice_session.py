@@ -23,8 +23,8 @@ def run_voice_session(service, voice: VoiceIO, *, report=print, listener_factory
 
     listener = listener_factory(voice, commands.put, status)
     listener.start()
-    report("Voz contínua ativa. Diga 'Jarvis' seguido do pedido. "
-           "Diga 'Jarvis, sair' ou pressione Ctrl+C para encerrar.")
+    report("Voz contínua ativa. Diga 'Adam' seguido do pedido. "
+           "Diga 'Adam, sair' ou pressione Ctrl+C para encerrar.")
     try:
         while True:
             try:
@@ -34,11 +34,11 @@ def run_voice_session(service, voice: VoiceIO, *, report=print, listener_factory
             if command is None:
                 break
             try:
-                if command.casefold().strip(" .,!?:;") in {"sair", "encerrar jarvis"}:
+                if command.casefold().strip(" .,!?:;") in {"sair", "encerrar adam"}:
                     break
                 report("Você (voz) > " + command)
                 controller.run(command, voice=voice, on_text=lambda _: None,
-                               display=lambda answer: report("JARVIS > " + answer))
+                               display=lambda answer: report("ADAM > " + answer))
             except Exception as exc:
                 report("Falha no turno de voz: " + str(exc))
             finally:
@@ -60,7 +60,7 @@ class MixedInput:
 
     def start(self):
         self.listener.start()
-        self.report("Digite sua mensagem ou diga 'Jarvis' seguido do pedido. Ctrl+C encerra.")
+        self.report("Digite sua mensagem ou diga 'Adam' seguido do pedido. Ctrl+C encerra.")
 
     def read(self, stdin, *, ready=None):
         import select

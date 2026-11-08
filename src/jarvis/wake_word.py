@@ -1,7 +1,7 @@
 """Adaptador acústico opcional: sem artefato aceito, permanece o fallback STT.
 
 Contrato de artefato próprio: ONNX recebe PCM float32 mono 16 kHz [1, 16000]
-e retorna uma probabilidade escalar. Não aceita hey_jarvis como Jarvis isolado.
+e retorna uma probabilidade escalar. Não aceita hey_adam como Adam isolado.
 """
 from collections import deque
 from dataclasses import dataclass
@@ -30,10 +30,10 @@ class WakeArtifact:
     def load(cls, filename):
         path = Path(filename).expanduser()
         data = json.loads(path.read_text())
-        if (data.get('version') != 1 or data.get('keyword', '').casefold() != 'jarvis'
+        if (data.get('version') != 1 or data.get('keyword', '').casefold() != 'adam'
                 or data.get('language') != 'pt-BR' or data.get('format') != 'pcm_float32_16000'
                 or not isinstance(data.get('license'), str) or not data['license'].strip()):
-            raise ValueError('Manifesto deve identificar Jarvis isolado pt-BR, formato e licença')
+            raise ValueError('Manifesto deve identificar Adam isolado pt-BR, formato e licença')
         evaluation = data.get('evaluation', {})
         if not isinstance(evaluation, dict):
             raise ValueError('Avaliação acústica inválida')

@@ -309,7 +309,7 @@ class KokoroSpeechTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = PreferenceStore(Path(directory) / 'prefs.json')
             store.path.write_text('{"version":1,"piper_model":"old.onnx"}')
-            self.assertEqual(store.load().tts_backend, 'piper')
+            self.assertEqual(store.load().tts_backend, 'elevenlabs')
             saved = replace(store.load(), tts_backend='kokoro', kokoro_directory='/weights', kokoro_python='/python3.12')
             store.save(saved)
             self.assertEqual(store.load(), saved)
