@@ -163,26 +163,24 @@ class VoiceTests(unittest.TestCase):
             self.assertFalse(audio.exists())
 
     def test_wake_word_variants_are_removed_before_submission(self):
-        examples = (("Jarvis, abra o Firefox", "abra o Firefox"),
-                    ("Hey Jarvis: organize as janelas", "organize as janelas"),
-                    ("Jarves feche o terminal", "feche o terminal"),
-                    ("Djarvis, abra o projeto", "abra o projeto"),
-                    ("Davies, abra o Firefox", "abra o Firefox"),
-                    ("De avis: abra o Firefox", "abra o Firefox"))
+        examples = (("Adam, abra o Firefox", "abra o Firefox"),
+                    ("Hey Adam: organize as janelas", "organize as janelas"),
+                    ("Ei Adam feche o terminal", "feche o terminal"),
+                    ("Adão, abra o projeto", "abra o projeto"))
         for transcript, expected in examples:
             with self.subTest(transcript=transcript):
                 self.assertEqual(WakeWordConversation.remove_wake_word(transcript), expected)
 
     def test_wake_word_only_becomes_empty_command(self):
-        self.assertEqual(WakeWordConversation.remove_wake_word("Hey Jarvis!"), "")
+        self.assertEqual(WakeWordConversation.remove_wake_word("Hey Adam!"), "")
 
     def test_wake_command_must_start_with_wake_word(self):
-        self.assertEqual(WakeWordConversation.extract_wake_command("Jarves, abra Firefox"),
+        self.assertEqual(WakeWordConversation.extract_wake_command("Adam, abra Firefox"),
                          (True, "abra Firefox"))
-        self.assertEqual(WakeWordConversation.extract_wake_command("Hey Jarvis"),
+        self.assertEqual(WakeWordConversation.extract_wake_command("Hey Adam"),
                          (True, ""))
-        self.assertEqual(WakeWordConversation.extract_wake_command("Davies."),
-                         (True, ""))
+        self.assertEqual(WakeWordConversation.extract_wake_command("Jarvis, abra Firefox"),
+                         (False, "Jarvis, abra Firefox"))
         self.assertEqual(WakeWordConversation.extract_wake_command("Abra Firefox"),
                          (False, "Abra Firefox"))
 
@@ -217,7 +215,7 @@ class VoiceTests(unittest.TestCase):
             for path in files:
                 path.write_bytes(b"audio")
             voice = VoiceIO()
-            voice.transcribe = Mock(side_effect=[VoiceError("silêncio"), "Jarvis, olá"])
+            voice.transcribe = Mock(side_effect=[VoiceError("silêncio"), "Adam, olá"])
             commands, statuses = [], []
             listener = WakeWordConversation(voice, lambda text: (
                 commands.append(text), listener._stop.set()), statuses.append)
@@ -247,7 +245,7 @@ class VoiceTests(unittest.TestCase):
         import numpy as np
         with tempfile.TemporaryDirectory() as td:
             voice = VoiceIO()
-            voice.transcribe = Mock(side_effect=["Olá mundo", "Jarvis, olá"])
+            voice.transcribe = Mock(side_effect=["Olá mundo", "Adam, olá"])
             statuses = []
             submitted = Mock(return_value=False)
             listener = WakeWordConversation(voice, submitted, statuses.append)
@@ -360,7 +358,7 @@ class VoiceTests(unittest.TestCase):
             path = Path(td) / 'sample.wav'
             path.write_bytes(b'controlled')
             listener = WakeWordConversation(voice, lambda _: listener.resume())
-            voice.transcribe = Mock(return_value='Jarvis, olá')
+            voice.transcribe = Mock(return_value='Adam, olá')
             calls = []
             def capture(*_args, **kwargs):
                 calls.append(kwargs['idle_timeout'])
@@ -398,7 +396,7 @@ class VoiceTests(unittest.TestCase):
             listener = WakeWordConversation(voice, command)
             listener._listen_for_command = Mock(return_value=np.array([600], dtype=np.int16))
             listener._write_recording = Mock(return_value=path)
-            voice.transcribe = Mock(side_effect=lambda _: (listener.stop(timeout=0), 'Jarvis abra Firefox')[1])
+            voice.transcribe = Mock(side_effect=lambda _: (listener.stop(timeout=0), 'Adam abra Firefox')[1])
             with patch.dict(sys.modules, {'sounddevice': SimpleNamespace()}):
                 listener._run()
             command.assert_not_called()
