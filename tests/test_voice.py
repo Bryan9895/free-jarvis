@@ -105,6 +105,56 @@ class VoiceTests(unittest.TestCase):
         finally:
             recording.unlink()
 
+    def test_manual_capture_waits_for_previous_holder_and_releases(self):
+        import threading
+        import time
+        from jarvis.voice import exclusive_capture
+        owner = threading.Lock()
+        owner.acquire()
+        calls = []
+        @exclusive_capture
+        def capture():
+            calls.append("success")
+        with patch("jarvis.voice._capture_owner", owner):
+            helper = threading.Thread(target=lambda: (time.sleep(.06), owner.release()))
+            helper.start()
+            capture(_capture_wait=.5)
+            helper.join()
+        self.assertEqual(calls, ["success"])
+        self.assertFalse(owner.locked())
+
+    def test_manual_capture_timeout_mentions_other_instance(self):
+        import threading
+        from jarvis.voice import exclusive_capture
+        owner = threading.Lock()
+        owner.acquire()
+        @exclusive_capture
+        def capture(): self.fail("captura simultânea não permitida")
+        try:
+            with patch("jarvis.voice._capture_owner", owner):
+                with self.assertRaisesRegex(VoiceError, "fuser -v"):
+                    capture(_capture_wait=.02)
+        finally:
+            owner.release()
+
+    def test_cancel_manual_while_waiting_for_owner(self):
+        import threading
+        from jarvis.voice import exclusive_capture
+        owner = threading.Lock()
+        owner.acquire()
+        class Listener:
+            _stop = threading.Event()
+            @exclusive_capture
+            def capture(self): self.fail("não deve executar")
+        listener = Listener()
+        listener._stop.set()
+        try:
+            with patch("jarvis.voice._capture_owner", owner):
+                with self.assertRaisesRegex(VoiceError, "cancelada"):
+                    listener.capture(_capture_wait=.5)
+        finally:
+            owner.release()
+
     def test_pause_waits_until_global_capture_lock_is_released(self):
         import threading
         lock = threading.Lock()
