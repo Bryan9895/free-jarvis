@@ -117,6 +117,7 @@ class AdamWindow:
         self.voice.tts_backend = "elevenlabs"
         self.voice.output_meter = lambda level: self.events.put(("output_level", level))
         self.listener = None
+        self._listener_shutting_down = None
         self.controller = None
         self.service = None
         self.turn_lock = threading.Lock()
@@ -281,7 +282,8 @@ class AdamWindow:
         self.events.put(("mic_level", metrics.get("rms", 0.)))
 
     def start_listen(self):
-        if not self.voice_enabled or self.listener is not None or self.closed.is_set():
+        if (not self.voice_enabled or self.listener is not None or self.closed.is_set()
+                or self.capturing.is_set()):
             return
         from .voice import WakeWordConversation
         self.listener = WakeWordConversation(
@@ -294,15 +296,27 @@ class AdamWindow:
         self._state("aguardando_ativacao", "aguardando Adam")
 
     def stop_listen(self):
-        listener, self.listener = self.listener, None
-        if listener is not None:
-            listener.stop(timeout=.2)
-        self.listen_button.configure(text="Ativar escuta")
-        self._state("parado")
+        listener = self.listener
+        if listener is None or self._listener_shutting_down is listener:
+            return
+        self._listener_shutting_down = listener
+        # Não descartar a referência enquanto a thread ainda pode estar
+        # abrindo o stream: isso deixava uma captura órfã, embora a UI já
+        # mostrasse "Ativar escuta". Encerrar sem bloquear a thread do Tk.
+        self.listen_button.configure(text="Parando escuta…", state="disabled")
+        self._state("preparando_microfone", "encerrando escuta contínua…")
+        def finish_stop():
+            stopped = listener.stop(timeout=12.)
+            self.events.put(("listen_stopped", (listener, stopped)))
+        threading.Thread(target=finish_stop, daemon=True,
+                         name="adam-stop-listener").start()
 
     def toggle_listen(self):
         if self.capturing.is_set():
             self.warning.set("Conclua a gravação antes de alterar a escuta contínua.")
+            return
+        if self._listener_shutting_down is not None:
+            self.warning.set("Aguarde a escuta liberar completamente o microfone.")
             return
         if self.listener is None:
             self.start_listen()
@@ -384,6 +398,7 @@ class AdamWindow:
             self.capturing.clear()
             self.events.put(("manual_done", None))
             if (listener is not None and self.listener is listener
+                    and self._listener_shutting_down is not listener
                     and not self.turn_lock.locked() and not self.closed.is_set()):
                 listener.resume_or_restart()
             if not self.turn_lock.locked():
@@ -443,7 +458,8 @@ class AdamWindow:
                 if kind == "ask":
                     if self.turn_lock.locked():
                         self.turn_lock.release()
-                    if self.listener is not None and not self.capturing.is_set():
+                    if (self.listener is not None and not self.capturing.is_set()
+                            and self._listener_shutting_down is not self.listener):
                         self.listener.resume_or_restart()
                 if kind == "ask" and self._turn_started_at is not None:
                     took = round((time.monotonic() - self._turn_started_at) * 1000)
@@ -487,6 +503,21 @@ class AdamWindow:
                             value[:85])
             elif kind == "manual_done":
                 self.mic_button.configure(text="Falar")
+            elif kind == "listen_stopped":
+                old_listener, stopped = value
+                if self.listener is old_listener:
+                    if stopped:
+                        self.listener = None
+                        self._listener_shutting_down = None
+                        self.listen_button.configure(text="Ativar escuta", state="normal")
+                        self._state("parado")
+                    else:
+                        self._listener_shutting_down = None
+                        self.listen_button.configure(text="Parar escuta novamente",
+                                                     state="normal")
+                        self.warning.set(
+                            "A thread de escuta ainda está encerrando. "
+                            "Não inicie outra instância até liberar o microfone.")
             elif kind == "listen_status":
                 if "indisponível" in value or "Falha" in value or "Descartado" in value:
                     self._state("parado", value[:86])

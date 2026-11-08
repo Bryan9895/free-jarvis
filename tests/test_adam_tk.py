@@ -67,6 +67,36 @@ class NativeTkTests(unittest.TestCase):
             except tk.TclError:
                 pass
 
+    def test_stop_listen_keeps_listener_until_capture_is_released(self):
+        from unittest.mock import Mock
+        root = tk.Tk()
+        try:
+            with patch("jarvis.preferences.PreferenceStore.load",
+                       return_value=Preferences(voice_mode="muted")):
+                window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
+            release = threading.Event()
+            listening = Mock()
+            listening.stop.side_effect = lambda timeout: release.wait(timeout)
+            window.listener = listening
+            window.stop_listen()
+            self.assertIs(window.listener, listening)
+            self.assertEqual(window.listen_button.cget("state"), "disabled")
+            window.start_listen()
+            self.assertIs(window.listener, listening)
+            release.set()
+            deadline = time.monotonic() + 2.
+            while window.listener is not None and time.monotonic() < deadline:
+                root.update()
+                time.sleep(.01)
+            self.assertIsNone(window.listener)
+            self.assertEqual(window.listen_button.cget("text"), "Ativar escuta")
+            window.close()
+        finally:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+
     def test_manual_button_recovers_when_listener_pause_times_out(self):
         from unittest.mock import Mock
         root = tk.Tk()
