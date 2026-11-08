@@ -328,6 +328,9 @@ class AdamWindow:
                 on_status=lambda status: self.events.put(("manual_status", status)),
                 _capture_wait=4.,
             )
+            # A espera de 12 s vale somente para fechar o microfone, não
+            # para o Whisper (que pode demorar em CPU sem GPU).
+            self.events.put(("manual_recorded", None))
             self.events.put(("phase", "transcrevendo"))
             message = self.voice.transcribe(recording)
             if not self.capture_cancel.is_set() and not self.closed.is_set():
@@ -443,6 +446,10 @@ class AdamWindow:
                 if not self.capture_finish.is_set():
                     self._state("ouvindo" if "Ouvindo" in value else "preparando_microfone",
                                 value[:85])
+            elif kind == "manual_recorded":
+                if self._finalize_timeout_job is not None:
+                    self.root.after_cancel(self._finalize_timeout_job)
+                    self._finalize_timeout_job = None
             elif kind == "manual_done":
                 if self._space_release_job is not None:
                     self.root.after_cancel(self._space_release_job)
