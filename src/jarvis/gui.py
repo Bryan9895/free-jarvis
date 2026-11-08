@@ -200,8 +200,8 @@ class AdamWindow:
 
         root.bind("<KeyPress-space>", self._press)
         root.bind("<KeyRelease-space>", self._release)
-        root.bind("<KeyPress-t>", lambda e: self._toggle_text(True))
-        root.bind("<KeyPress-h>", self._toggle_details)
+        root.bind("<KeyPress-t>", self._open_text_shortcut)
+        root.bind("<KeyPress-h>", self._details_shortcut)
         root.bind("<Escape>", lambda _: self.stop())
         self.worker = threading.Thread(target=self._work, daemon=True, name="adam-core")
         self.worker.start()
@@ -229,6 +229,18 @@ class AdamWindow:
         else:
             self.text_frame.pack_forget()
             self.root.focus_set()
+
+    def _open_text_shortcut(self, event=None):
+        if self.root.focus_get() is self.entry:
+            return
+        self._toggle_text(True)
+        return "break"
+
+    def _details_shortcut(self, event=None):
+        if self.root.focus_get() is self.entry:
+            return
+        self._toggle_details()
+        return "break"
 
     def _toggle_details(self, _event=None):
         self.details = not self.details
