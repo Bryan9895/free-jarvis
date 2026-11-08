@@ -76,6 +76,9 @@ class VoiceIO:
         self.piper_model = Path(piper_model).expanduser() if piper_model else None
         self.tts_backend = preferences.tts_backend
         self.elevenlabs_speed = preferences.elevenlabs_speed
+        self.speech_volume = preferences.speech_volume
+        self.elevenlabs_stability = preferences.elevenlabs_stability
+        self.elevenlabs_similarity = preferences.elevenlabs_similarity
         self.elevenlabs_voice_id = preferences.elevenlabs_voice_id
         self.elevenlabs_model_id = preferences.elevenlabs_model_id
         self.output_meter = None

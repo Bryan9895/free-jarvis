@@ -20,6 +20,10 @@ class Preferences:
     elevenlabs_voice_id: str = 'pNInz6obpgDQGcFmaJgB'
     elevenlabs_model_id: str = 'eleven_flash_v2_5'
     elevenlabs_speed: float = 1.0
+    speech_volume: float = 0.65
+    personality_style: str = 'cinematic'
+    elevenlabs_stability: float = 0.65
+    elevenlabs_similarity: float = 0.80
     persona_file: str = ''
     kokoro_directory: str = ''
     kokoro_python: str = ''
@@ -56,6 +60,12 @@ class Preferences:
             raise ValueError('Modelo ElevenLabs inválido')
         if type(self.elevenlabs_speed) not in (float, int) or not math.isfinite(self.elevenlabs_speed) or not .7 <= self.elevenlabs_speed <= 1.2:
             raise ValueError('Velocidade ElevenLabs deve ser entre 0.7 e 1.2')
+        for field in ('speech_volume', 'elevenlabs_stability', 'elevenlabs_similarity'):
+            value = getattr(self, field)
+            if type(value) not in (float, int) or not math.isfinite(value) or not 0 <= value <= 1:
+                raise ValueError(field + ' deve estar entre 0 e 1')
+        if self.personality_style not in ('cinematic', 'natural', 'technical'):
+            raise ValueError('Estilo de personalidade desconhecido')
         if type(self.clap_enabled) is not bool:
             raise ValueError('Ativação por palma deve ser booleana')
         for key in ('stt_model', 'conversation_model', 'audio_device', 'piper_model', 'output_device', 'wake_manifest',
@@ -96,8 +106,14 @@ class Preferences:
                               'persona_file': 'ADAM_PERSONA_FILE'}.items():
             if variable in os.environ:
                 values[key] = os.environ[variable]
-        if 'ELEVENLABS_SPEED' in os.environ:
-            values['elevenlabs_speed'] = float(os.environ['ELEVENLABS_SPEED'])
+        for key, env in (('elevenlabs_speed', 'ELEVENLABS_SPEED'),
+                         ('speech_volume', 'ADAM_VOICE_VOLUME'),
+                         ('elevenlabs_stability', 'ELEVENLABS_STABILITY'),
+                         ('elevenlabs_similarity', 'ELEVENLABS_SIMILARITY')):
+            if env in os.environ:
+                values[key] = float(os.environ[env])
+        if 'ADAM_PERSONALITY_STYLE' in os.environ:
+            values['personality_style'] = os.environ['ADAM_PERSONALITY_STYLE']
         if 'JARVIS_SILENCE_MS' in os.environ:
             values['silence_ms'] = int(os.environ['JARVIS_SILENCE_MS'])
         if 'JARVIS_VAD_THRESHOLD' in os.environ:
