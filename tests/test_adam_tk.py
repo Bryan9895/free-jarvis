@@ -88,10 +88,10 @@ class NativeTkTests(unittest.TestCase):
                 window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
                 self.assertTrue(window._enqueue("teste do FCC"))
                 deadline = time.monotonic() + 2.
-                while window.turn_lock.locked() and time.monotonic() < deadline:
+                while ((window.result.get() != "ADAM funcionou." or not window.metrics.get())
+                       and time.monotonic() < deadline):
                     root.update()
                     time.sleep(.01)
-                root.update()
                 self.assertEqual(fake.message, "teste do FCC")
                 self.assertEqual(window.result.get(), "ADAM funcionou.")
                 self.assertTrue(window.metrics.get())
