@@ -124,3 +124,31 @@ Configuração inicial. Veja o [fluxo guiado e suas pendências](docs/CONFIGURAC
 
 A GUI também compara dois modelos preparados e permite revisar qualidade antes
 de indicar uma seleção: [comparação Local pela interface](docs/COMPARACAO_MODELOS_GUI.md).
+
+## Nova interface: esfera do Jarvis
+
+A opção \`jarvis-fcc --gui\` (ou \`jarvis-show\`) abre a interface web da esfera
+original de Matheus Tilli em **http://127.0.0.1:8790**. A interface Tkinter
+foi substituída; o núcleo \`JarvisService\`, o FCC, a CLI, o SQLite e as
+ferramentas de automação permanecem.
+
+- **Espaço** (segurar): gravar no navegador. **T**: digitar.
+  **H**: mostrar a transcrição e o texto. **N**: limpar a conversa visual.
+- Para entrada de áudio no navegador: instale \`ffmpeg\`, o extra \`.[voice]\`
+  e prepare o modelo Whisper local conforme a documentação.
+- Opcional: \`export ELEVENLABS_API_KEY="sua-chave"\` e
+  \`export JARVIS_MODELO_VOZ="eleven_flash_v2_5"\`.
+  Nunca inclua sua chave no Git. Sem chave, a interface usa o sintetizador
+  Piper/Kokoro **já configurado** (se houver). Sem TTS configurado, usa texto.
+- Porta customizada: \`export JARVIS_UI_PORT=8790\`. A API escuta somente
+  em **127.0.0.1**, sem expor chaves ao navegador.
+- A página vem do repositório de referência sob licença MIT, atribuída em
+  \`THIRD_PARTY_NOTICES.md\`. O app nativo Swift/macOS não foi importado,
+  pois não roda em Ubuntu ou Windows.
+
+**Limitações da primeira integração:** reconhecimento por palavra-chave
+\`Jarvis\` continua disponível em \`jarvis-fcc --voice\`, mas ainda não está
+integrado à captura do navegador; a página usa segurar Espaço. \`N\` não
+apaga a memória SQLite. Áudio, Bluetooth, FCC e custo ElevenLabs ainda
+precisam de teste na máquina real. O arquivo \`src/jarvis/web/index.html\`
+preserva a aparência da referência e não executa ferramentas diretamente.
