@@ -21,7 +21,7 @@ source .venv/bin/activate
 python -m pip install -e ".[desktop]"
 jarvis-fcc --doctor
 jarvis-fcc --doctor --doctor-format human
-jarvis-show                 # mostra a janela existente ou inicia uma única GUI
+jarvis-show                 # inicia a esfera web no navegador
 ```
 
 Para o navegador ou a voz, instale apenas o extra necessário:
@@ -33,7 +33,7 @@ python -m playwright install chromium
 python -m pip install -e ".[voice]"
 ```
 
-A GUI usa Tkinter do Python do sistema (`python3-tk` no Ubuntu, se ausente). Chromium e áudio são carregados apenas quando usados. As extensões GNOME para inventário e controle de janelas são opcionais e devem ser instaladas pelo usuário; consulte [guia de uso](docs/GUIA_DE_USO.md).
+A GUI usa a esfera web original da referência (HTML/JS) em servidor HTTP local; Tkinter não é mais necessário. Chromium e áudio são carregados apenas quando usados. As extensões GNOME para inventário e controle de janelas são opcionais e devem ser instaladas pelo usuário; consulte [guia de uso](docs/GUIA_DE_USO.md).
 
 ## Configuração e início
 
@@ -52,7 +52,7 @@ jarvis-fcc --health
 jarvis-fcc --models
 jarvis-fcc --check-fcc
 jarvis-fcc                 # terminal
-jarvis-fcc --gui           # interface gráfica
+jarvis-fcc --gui           # esfera web (http://127.0.0.1:8790)
 jarvis-fcc --voice         # push-to-talk no terminal
 ```
 
