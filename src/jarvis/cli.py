@@ -55,7 +55,7 @@ def main(argv=None):
     parser.add_argument("--check-fcc", action="store_true", help="Teste real da API e modelo com failover")
     parser.add_argument("--audio-devices", action="store_true", help="Listar entradas de áudio sem conectar ao FCC")
     parser.add_argument("--audio-device", metavar="NOME", help="Nome inequívoco da entrada SoundDevice")
-    parser.add_argument("--voice", action="store_true", help="Conversa contínua: diga Jarvis seguido do comando, sem Enter")
+    parser.add_argument("--voice", action="store_true", help="Conversa contínua: diga Adam seguido do comando, sem Enter")
     parser.add_argument("--text-only", action="store_true", help="Somente mensagens; não inicia microfone")
     parser.add_argument("--push-to-talk", action="store_true", help="Modo antigo: Enter grava e permite revisar a transcrição")
     parser.add_argument("--gui", action="store_true", help="Abrir interface gráfica com conversa de voz opcional")
@@ -79,7 +79,7 @@ def main(argv=None):
         if args.local_model is not None:
             changes['local_model'] = args.local_model
         store.save(replace(store.load(), **changes).validate())
-        print('Perfil salvo. Reinicie o Jarvis para aplicar; variáveis explícitas têm precedência.')
+        print('Perfil salvo. Reinicie o ADAM para aplicar; variáveis explícitas têm precedência.')
         return
     if args.profile is not None:
         os.environ['JARVIS_PROFILE'] = args.profile

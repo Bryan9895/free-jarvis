@@ -49,10 +49,14 @@ def collect(config):
     cached = snapshots.is_dir() and any(path.is_file() for path in snapshots.glob('*/model.bin'))
     add('stt_cache', 'installation', 'OK' if cached else 'Falta', 'jarvis-fcc local install-stt --model ' + preferences.stt_model)
     kokoro = kokoro_status()
-    add('tts', 'configuration', 'OK' if preferences.tts_backend == 'kokoro' and kokoro['assets'] != 'Falta' and kokoro['runtime'] != 'Falta'
-        or preferences.tts_backend == 'piper' and bool(preferences.piper_model) and Path(preferences.piper_model).expanduser().is_file()
-        else 'Falta', 'Configurações → Voz → Saída')
-    add('player', 'installation', 'OK' if shutil.which('paplay' if preferences.output_device else 'aplay') else 'Falta',
+    from .elevenlabs_tts import configured as elevenlabs_configured
+    tts_ready = (preferences.tts_backend == 'elevenlabs' and elevenlabs_configured()
+        or preferences.tts_backend == 'kokoro' and kokoro['assets'] != 'Falta' and kokoro['runtime'] != 'Falta'
+        or preferences.tts_backend == 'piper' and bool(preferences.piper_model) and Path(preferences.piper_model).expanduser().is_file())
+    add('tts', 'configuration', 'OK' if tts_ready else 'Falta',
+        'Defina ELEVENLABS_API_KEY no ambiente (sem persistir a chave)')
+    add('player', 'installation', 'OK' if shutil.which('paplay' if preferences.output_device else 'paplay') or
+        (not preferences.output_device and shutil.which('aplay')) else 'Falta',
         'Instalar/configurar o player da saída selecionada')
     add('routing', 'configuration', 'OK' if local else 'Não testado',
         'Local: sem fallback remoto' if local else 'Verificar o provedor efetivo do FCC', True)
@@ -64,7 +68,7 @@ def collect(config):
     add('playback', 'functional', 'Não testado', 'jarvis-fcc --doctor --active-test playback')
     add('microphone', 'physical', 'Não testado', 'Solicitar --active-test microphone')
     add('audible', 'physical', 'Não testado', 'Ouvir a frase no fone e confirmar fisicamente')
-    add('wake_word', 'configuration', 'Não testado', 'Avaliar Jarvis isolado; fallback STT identificado')
+    add('wake_word', 'configuration', 'Não testado', 'Treinar/validar detector acústico de Adam; fallback por STT em uso')
     add('clap', 'physical', 'Não testado', 'Ensaiar palmas e negativos na sessão preparada')
     add('gnome', 'physical', 'Não testado' if platform.system() == 'Linux' else 'Não aplicável',
         'Verificar portais/permissões GNOME na sessão real')
@@ -83,7 +87,7 @@ def collect(config):
 def human(report):
     labels = {'installation': 'Instalação', 'configuration': 'Configuração',
               'functional': 'Funcional', 'physical': 'Físico'}
-    lines = [f"Jarvis Doctor · {report['platform']} · perfil {report['profile']}"]
+    lines = [f"ADAM Doctor · {report['platform']} · perfil {report['profile']}"]
     lines.append(f"Reconhecimento: {report.get('stt_model', 'Não testado')} · Voz: {report.get('tts_backend', 'Não testado')}")
     for check in report['checks']:
         lines.append(f"{labels[check['category']]} · {check['id']}: {check['state']}" +

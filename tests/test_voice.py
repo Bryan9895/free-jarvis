@@ -281,7 +281,7 @@ class VoiceTests(unittest.TestCase):
                 self.assertEqual(run.call_count, 1)
                 synthesize.assert_called_once()
                 self.assertEqual(synthesize.call_args.args[1], 'Olá')
-                self.assertEqual(run.call_args_list[0].args[0][0], "aplay")
+                self.assertIn(run.call_args_list[0].args[0][0], ("aplay", "paplay"))
 
     def test_explicit_warmup_synthesizes_without_playback_or_leftover_wav(self):
         with tempfile.TemporaryDirectory() as td:

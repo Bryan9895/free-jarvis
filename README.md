@@ -42,14 +42,15 @@ offline** no robô, será necessário escolher outro TTS local futuramente.
 Requer Python 3.10+, Python Tkinter do sistema e um servidor FCC configurado.
 
 ```bash
-sudo apt install python3-tk alsa-utils
-python3 -m venv .venv
+sudo apt install python3-full python3-venv python3-tk pulseaudio-utils alsa-utils
+bash tools/install_ubuntu.sh
 source .venv/bin/activate
-python -m pip install -e '.[voice,desktop]'
 export FCC_URL=http://127.0.0.1:8082
 export JARVIS_PROFILE=fcc
 export ELEVENLABS_API_KEY="sua-chave"
 adam --gui
+# também é possível testar a interface SEM microfone e SEM chave:
+adam --gui --text-only
 # atalhos equivalentes: adam-show ou jarvis-fcc --gui
 ```
 
@@ -114,3 +115,13 @@ adam --profile local      # seleciona perfil Ollama/OpenJarvis, quando preparado
   exige uma migração separada.
 
 Ver documentação técnica em `docs/ARQUITETURA.md` e `AGENTS.md`.
+
+## Marcos de implementação (v0.5.0)
+
+- **Instalação**: `tools/install_ubuntu.sh` cria e instala o venv sem modificar o Python gerenciado pelo Ubuntu.
+- **Desktop**: interface Tkinter nativa, permissões por diálogo seguro, configuração persistente de modelo/perfil/ElevenLabs/persona e modo texto sem microfone.
+- **Voz**: ElevenLabs exclusivo por padrão; `paplay` preferido em PipeWire/PulseAudio, especialmente Bluetooth.
+- **Diagnóstico**: `adam --doctor --doctor-format human` distingue presença da chave ElevenLabs de ensaio físico de áudio.
+- **Robô**: contrato de transporte simulado e seguro em `robot_transport.py`; nenhum motor nem serial real é ativado.
+- **Latência**: UI registra tempo até o primeiro delta e duração total; metas de subsegundo ainda não foram comprovadas no seu PC.
+- **Não concluído**: wake word acústico dedicado, barge-in por voz sem pressionar botão, Orange Pi/ESP32 físicos, operação 100% offline e ajuste fino medido no hardware.
