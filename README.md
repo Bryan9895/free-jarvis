@@ -42,7 +42,7 @@ offline** no robô, será necessário escolher outro TTS local futuramente.
 Requer Python 3.10+, Python Tkinter do sistema e um servidor FCC configurado.
 
 ```bash
-sudo apt install python3-full python3-venv python3-tk pulseaudio-utils alsa-utils
+sudo apt install python3-full python3-venv python3-tk libportaudio2 libsndfile1 pulseaudio-utils alsa-utils
 bash tools/install_ubuntu.sh
 source .venv/bin/activate
 export FCC_URL=http://127.0.0.1:8082

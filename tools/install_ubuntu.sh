@@ -11,6 +11,10 @@ if ! python3 -c 'import venv, tkinter' >/dev/null 2>&1; then
   echo "  sudo apt update && sudo apt install python3-venv python3-tk python3-full"
   exit 1
 fi
+if ! python3 -c 'import ctypes.util; assert ctypes.util.find_library("portaudio")' >/dev/null 2>&1; then
+  echo "Biblioteca de áudio ausente. Execute: sudo apt install libportaudio2 libsndfile1"
+  exit 1
+fi
 if ! command -v aplay >/dev/null && ! command -v paplay >/dev/null; then
   echo "Instale um reprodutor: sudo apt install pulseaudio-utils alsa-utils"
 fi
