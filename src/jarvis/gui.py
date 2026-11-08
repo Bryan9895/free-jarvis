@@ -139,6 +139,9 @@ class AdamWindow:
         tk.Label(top, text="A D A M", bg="#000000", fg="#eeeeee",
                  font=("DejaVu Sans", 15, "bold")).pack(side="left")
         self.status = tk.StringVar(value="iniciando · FCC")
+        from .latency_history import LatencyHistory
+        self.latency_history = LatencyHistory()
+        self.metrics = tk.StringVar(value="")
         self.warning = tk.StringVar(value="")
         if self.voice_enabled and not os.getenv("ELEVENLABS_API_KEY", "").strip():
             self.warning.set("Sem ELEVENLABS_API_KEY: o texto funciona, mas a voz ficará muda.")
@@ -172,6 +175,8 @@ class AdamWindow:
 
         tk.Label(bottom, textvariable=self.warning, bg="#000000", fg="#f0ad71",
                  font=("DejaVu Sans", 9), wraplength=850).pack(pady=(2, 5))
+        tk.Label(bottom, textvariable=self.metrics, bg="#000000", fg="#666677",
+                 font=("DejaVu Sans", 9)).pack(pady=(0, 5))
         actions = tk.Frame(bottom, bg="#000000")
         actions.pack(pady=(8, 0))
         button = dict(bg="#141419", fg="#ececf3", activebackground="#292931",
@@ -398,9 +403,9 @@ class AdamWindow:
                     took = round((time.monotonic() - self._turn_started_at) * 1000)
                     if self._first_text_at is not None:
                         first = round((self._first_text_at - self._turn_started_at) * 1000)
-                        self.events.put(("metrics", f"Latência medida: primeiro texto {first} ms · turno {took} ms"))
+                        self.events.put(("metrics", (took, first)))
                     else:
-                        self.events.put(("metrics", f"Tempo do turno: {took} ms (sem delta textual)"))
+                        self.events.put(("metrics", (took, None)))
                 self.events.put(("phase", "aguardando_ativacao" if self.listener else "parado"))
 
     def _poll(self):
@@ -452,7 +457,17 @@ class AdamWindow:
             elif kind == "model":
                 self.status.set("modelo: " + value)
             elif kind == "metrics":
-                self.warning.set(value)
+                total, first = value
+                self.latency_history.add(total, first)
+                overview = self.latency_history.snapshot()
+                first_summary = overview["first_text"]
+                if first_summary["n"]:
+                    self.metrics.set(
+                        f"Primeiro texto: {first if first is not None else '—'} ms · "
+                        f"p50 {first_summary['p50']:.0f} ms · p95 {first_summary['p95']:.0f} ms · "
+                        f"Turno {total} ms")
+                else:
+                    self.metrics.set(f"Turno {total} ms · sem delta textual")
         self.root.after(45, self._poll)
 
     def stop(self):

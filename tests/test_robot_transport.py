@@ -16,6 +16,7 @@ class RobotContractTests(unittest.TestCase):
                        RobotPacket("sensor_read", "../secret"), RobotPacket("ping", "x")):
             with self.assertRaises(ValueError):
                 packet.encode()
-        for raw in (b"{}", b"hello\n", b'{"v":1,"action":"motor_move","value":3}\n'):
+        for raw in (b"{}", b"hello\n", b'{"v":1,"action":"motor_move","value":3}\n',
+                    b'{"v":1,"action":[],"value":null}\n'):
             with self.assertRaises(ValueError):
                 RobotPacket.decode(raw)

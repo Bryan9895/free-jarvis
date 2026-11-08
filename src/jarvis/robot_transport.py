@@ -19,7 +19,7 @@ class RobotPacket:
     value: object = None
 
     def encode(self) -> bytes:
-        if self.action not in SAFE_COMMANDS:
+        if not isinstance(self.action, str) or self.action not in SAFE_COMMANDS:
             raise ValueError("Comando de periférico desconhecido ou não permitido")
         if self.action == "led" and self.value not in (0, 1, False, True):
             raise ValueError("LED exige valor 0 ou 1")
@@ -40,7 +40,7 @@ class RobotPacket:
         if len(raw) > MAX_FRAME_BYTES or not raw.endswith(b"\n"):
             raise ValueError("Quadro incompleto ou muito grande")
         try:
-            data = json.loads(raw)
+            data = json.loads(raw.decode("utf-8"))
         except (UnicodeError, ValueError) as exc:
             raise ValueError("Quadro JSON inválido") from exc
         if not isinstance(data, dict) or set(data) != {"v", "action", "value"} or data["v"] != 1:

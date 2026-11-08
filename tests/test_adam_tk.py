@@ -31,6 +31,24 @@ class NativeTkTests(unittest.TestCase):
         finally:
             root.destroy()
 
+    def test_text_only_mode_disables_microphone_and_keeps_desktop(self):
+        root = tk.Tk()
+        try:
+            with patch.dict(os.environ, {"JARVIS_GUI_VOICE": "0"}), patch(
+                    "jarvis.preferences.PreferenceStore.load",
+                    return_value=Preferences(voice_mode="continuous")):
+                window = AdamWindow(root, SimpleNamespace(profile="fcc", model=""), auto=False)
+            root.update()
+            self.assertTrue(window.details)
+            self.assertEqual(str(window.mic_button.cget("state")), "disabled")
+            self.assertIsNone(window.listener)
+            window.close()
+        finally:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
+
     def test_desktop_window_starts_without_fcc_or_microphone(self):
         root = tk.Tk()
         try:
