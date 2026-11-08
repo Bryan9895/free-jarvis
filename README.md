@@ -125,3 +125,14 @@ Ver documentação técnica em `docs/ARQUITETURA.md` e `AGENTS.md`.
 - **Robô**: contrato de transporte simulado e seguro em `robot_transport.py`; nenhum motor nem serial real é ativado.
 - **Latência**: UI registra tempo até o primeiro delta e duração total; metas de subsegundo ainda não foram comprovadas no seu PC.
 - **Não concluído**: wake word acústico dedicado, barge-in por voz sem pressionar botão, Orange Pi/ESP32 físicos, operação 100% offline e ajuste fino medido no hardware.
+
+### Botão Falar e escuta contínua (correção de captura)
+
+Na GUI, clique **Falar** uma vez e aguarde o estado **Ouvindo** antes de começar.
+O VAD encerra a gravação após a pausa configurada; clique **Encerrar fala**
+para terminar antes. **Espaço** ainda funciona como segurar/soltar.
+Se a escuta contínua estiver ativa, o ADAM pausa a captura, aguarda o
+microfone ser liberado e só então inicia a gravação manual. Caso a preparação
+do detector VAD demore, o ADAM interrompe e reinicia a escuta contínua
+após concluir o turno. Se a thread anterior não terminar, não abre um
+segundo stream simultâneo: mostra uma mensagem de erro.
