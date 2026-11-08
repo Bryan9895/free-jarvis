@@ -13,6 +13,7 @@ from .loop_guard import LoopGuard
 from .providers import ModelProvider
 from .latency import mark
 from .local_intents import task_add_intent
+from .personality import personality_instructions
 
 SYSTEM = (
     "Você é ADAM, assistente em português brasileiro. Use ferramentas quando necessário. "
@@ -363,7 +364,7 @@ class Agent:
                 tools = available if round_index < MAX_TOOL_ROUNDS and chosen == "tools" else []
                 payload = {
                     "model": self.model,
-                    "instructions": SYSTEM + "\n\n" + __import__("jarvis.personality", fromlist=["personality_instructions"]).personality_instructions(),
+                    "instructions": SYSTEM + "\n\n" + personality_instructions(),
                     "input": messages,
                     "tools": tools,
                     "stream": True,
