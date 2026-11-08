@@ -263,6 +263,14 @@ class VoiceIO:
             raise CancelledError("Resposta falada cancelada")
         process = subprocess.Popen(command, stdin=subprocess.PIPE if text is not None else subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        meter_stop = threading.Event()
+        meter = None
+        if callable(self.output_meter) and text is None and command and str(command[-1]).endswith('.wav'):
+            from .audio_meter import follow_wav
+            meter = threading.Thread(target=follow_wav,
+                args=(command[-1], self.output_meter, meter_stop), daemon=True,
+                name='adam-output-meter')
+            meter.start()
         deadline = time.monotonic() + 90
         try:
             pending = text
@@ -279,6 +287,9 @@ class VoiceIO:
                 except subprocess.TimeoutExpired:
                     pending = None
         finally:
+            meter_stop.set()
+            if meter is not None:
+                meter.join(timeout=0.25)
             if process.poll() is None:
                 process.terminate()
                 try:
