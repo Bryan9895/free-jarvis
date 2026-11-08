@@ -103,6 +103,9 @@ class AdamWindow:
         self.events = Queue()
         self.jobs = Queue()
         self.voice = VoiceIO()
+        # Modelo acústico treinado para Jarvis não é compatível com Adam.
+        # Usar fallback por transcrição até existir artefato Adam validado.
+        self.voice.wake_manifest = ""
         # A interface ADAM usa exclusivamente o TTS ElevenLabs.
         self.voice.tts_backend = "elevenlabs"
         self.voice.output_meter = lambda level: self.events.put(("output_level", level))
@@ -310,8 +313,15 @@ class AdamWindow:
                 self.events.put(("phase", "parado"))
 
     def _work(self):
-        while not self.closed.is_set():
+        while True:
             kind, value = self.jobs.get()
+            if kind == "shutdown":
+                if self.service is not None:
+                    try:
+                        self.service.close()
+                    except RuntimeError:
+                        pass
+                return
             try:
                 if self.service is None:
                     from .service import JarvisService
@@ -430,6 +440,7 @@ class AdamWindow:
         self.stop()
         if self.listener is not None:
             self.listener.stop(timeout=.2)
+        self.jobs.put(("shutdown", None))
         self.root.destroy()
 
 
