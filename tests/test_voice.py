@@ -148,7 +148,9 @@ class VoiceTests(unittest.TestCase):
     def test_missing_piper_model(self):
         with tempfile.TemporaryDirectory() as td:
             with self.assertRaises(VoiceError):
-                VoiceIO(piper_model=str(Path(td) / "missing.onnx")).speak("Olá")
+                voice = VoiceIO(piper_model=str(Path(td) / "missing.onnx"))
+                voice.tts_backend = 'piper'
+                voice.speak("Olá")
 
     def test_audio_file_is_deleted(self):
         with tempfile.TemporaryDirectory() as td:
@@ -224,7 +226,7 @@ class VoiceTests(unittest.TestCase):
             with patch.dict(sys.modules, {"sounddevice": SimpleNamespace()}):
                 listener._run()
             self.assertEqual(commands, ["olá"])
-            self.assertTrue(any("Aguardando Jarvis novamente" in x for x in statuses))
+            self.assertTrue(any("Aguardando Adam novamente" in x for x in statuses))
             self.assertTrue(all(not path.exists() for path in files))
 
     def test_continuous_capture_without_frames_has_deadline(self):
@@ -275,6 +277,7 @@ class VoiceTests(unittest.TestCase):
             model = Path(td) / "voice.onnx"
             model.write_bytes(b"mock")
             voice = VoiceIO(piper_model=str(model))
+            voice.tts_backend = 'piper'
             with patch("jarvis.voice.shutil.which", return_value="/bin/true"), patch.object(voice, '_run_audio') as run, patch('jarvis.tts_engine.synthesizer.synthesize') as synthesize:
                 self.assertEqual(voice.speak("Olá"), "spoken")
                 self.assertEqual(run.call_count, 1)
@@ -287,6 +290,7 @@ class VoiceTests(unittest.TestCase):
             model = Path(td) / 'voice.onnx'
             model.write_bytes(b'fixture')
             voice = VoiceIO(piper_model=str(model))
+            voice.tts_backend = 'piper'
             with patch('jarvis.tts_engine.synthesizer.synthesize') as synthesize, patch.object(voice, '_run_audio') as player:
                 voice.warmup()
             synthesize.assert_called_once()
@@ -429,6 +433,7 @@ class VoiceTests(unittest.TestCase):
             model = Path(td) / 'voice.onnx'
             model.write_bytes(b'mock')
             voice = VoiceIO(piper_model=str(model))
+            voice.tts_backend = 'piper'
             text = ' '.join('Frase completa.' for _ in range(300))
             with patch('jarvis.voice.shutil.which', return_value='/bin/true'), patch.object(voice, '_run_audio'), patch('jarvis.tts_engine.synthesizer.synthesize') as run:
                 self.assertEqual(voice.speak(text), 'spoken')
